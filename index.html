@@ -687,7 +687,7 @@
     </div>
     <div class="hrailfill"></div>
     <div id="homeDrop" class="hdrop">
-      <b>+ Add PDF</b><span>drop here or tap to choose</span>
+      <b>+ Add book</b><span>PDF or EPUB · drop here or tap to choose</span>
     </div>
   </aside>
   <main class="homemain" id="homeMain"></main>
@@ -698,8 +698,8 @@
     <div class="brand"><span class="dot"></span><h1>Lumen</h1><small>read &amp; listen</small></div>
     <div class="railhome"><button id="railHomeBtn">← Library</button></div>
     <div id="drop" class="drop">
-      <b>Drop PDFs here</b><span>or tap to choose · add as many as you like</span>
-      <input id="file" type="file" accept="application/pdf" multiple hidden />
+      <b>Drop books here</b><span>PDF or EPUB · add as many as you like</span>
+      <input id="file" type="file" accept="application/pdf,application/epub+zip,.epub" multiple hidden />
     </div>
     <div class="railtabs">
       <button id="tabLib" class="on">Library</button>
@@ -1372,9 +1372,756 @@ function yieldToUI(){ return new Promise(function(r){ setTimeout(r, 0); }); }
 
 /* Open anything: a normal PDF, a damaged one, a password-protected one, or an
    image the user photographed or screenshotted. Never throw a bare error. */
+/* ============================================================================
+   EPUB
+   An EPUB is a zip of XHTML. It has no pages — the reader makes them. That is
+   exactly why it beats a PDF on a tablet: the type is set for this screen
+   instead of being a photograph of A4. Everything below turns a .epub into the
+   same shape the rest of Lumen already speaks: a pdf.js-looking document whose
+   pages hand back word boxes and paint themselves onto a canvas.
+
+   The layout is computed once, when the book is added, and then stored with the
+   book. Reopening never re-typesets, so a highlight made in March still sits on
+   the same words in July.
+============================================================================ */
+
+/* ---- page geometry, in CSS pixels at scale 1 ---------------------------- */
+var EP_W = 820, EP_H = 1180;          /* a touch taller than A5 — good on a 4:3 tablet */
+var EP_MX = 76, EP_MT = 82, EP_MB = 92;
+
+/* A fixed table, because a word records only its index into it. Changing the
+   order of this array would move every stored word onto the wrong font. */
+var EP_FONTS = [
+  { s:19.5, w:'400', i:false, fam:'serif'  },   /* 0  body                 */
+  { s:19.5, w:'700', i:false, fam:'serif'  },   /* 1  body bold            */
+  { s:19.5, w:'400', i:true,  fam:'serif'  },   /* 2  body italic          */
+  { s:19.5, w:'700', i:true,  fam:'serif'  },   /* 3  body bold italic     */
+  { s:31,   w:'700', i:false, fam:'serif'  },   /* 4  h1                   */
+  { s:25,   w:'700', i:false, fam:'serif'  },   /* 5  h2                   */
+  { s:21.5, w:'700', i:false, fam:'serif'  },   /* 6  h3+                  */
+  { s:18,   w:'400', i:true,  fam:'serif'  },   /* 7  quote                */
+  { s:16.5, w:'400', i:false, fam:'mono'   },   /* 8  code                 */
+  { s:16,   w:'400', i:false, fam:'serif'  }    /* 9  caption / small      */
+];
+var EP_SERIF = 'Georgia,"Noto Serif","Droid Serif","Times New Roman",serif';
+var EP_MONO  = '"Roboto Mono","Droid Sans Mono",monospace';
+function epFontCss(f){
+  var d = EP_FONTS[f] || EP_FONTS[0];
+  return (d.i ? 'italic ' : '') + d.w + ' ' + d.s + 'px ' + (d.fam === 'mono' ? EP_MONO : EP_SERIF);
+}
+
+/* ---- zip ---------------------------------------------------------------- */
+function epUtf8(u8){
+  try{ return new TextDecoder('utf-8').decode(u8); }
+  catch(e){
+    var s = '';
+    for(var i=0;i<u8.length;i++) s += String.fromCharCode(u8[i]);
+    try{ return decodeURIComponent(escape(s)); }catch(e2){ return s; }
+  }
+}
+function epZipIndex(buf){
+  var dv = new DataView(buf), u8 = new Uint8Array(buf);
+  var eocd = -1, floor = Math.max(0, u8.length - 66000);
+  for(var i = u8.length - 22; i >= floor; i--){
+    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error('not a zip file');
+  var count = dv.getUint16(eocd + 10, true);
+  var p     = dv.getUint32(eocd + 16, true);
+  var map = {};
+  for(var n = 0; n < count; n++){
+    if(p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) break;
+    var method = dv.getUint16(p + 10, true);
+    var csize  = dv.getUint32(p + 20, true);
+    var nlen   = dv.getUint16(p + 28, true);
+    var elen   = dv.getUint16(p + 30, true);
+    var clen   = dv.getUint16(p + 32, true);
+    var lho    = dv.getUint32(p + 42, true);
+    var name   = epUtf8(u8.subarray(p + 46, p + 46 + nlen));
+    map[name]  = { method:method, csize:csize, lho:lho };
+    p += 46 + nlen + elen + clen;
+  }
+  return map;
+}
+function epInflate(u8){
+  if(typeof DecompressionStream === 'undefined'){
+    return Promise.reject(new Error('This browser cannot unzip EPUBs (no DecompressionStream).'));
+  }
+  var ds = new DecompressionStream('deflate-raw');
+  var wr = ds.writable.getWriter();
+  wr.write(u8); wr.close();
+  return new Response(ds.readable).arrayBuffer().then(function(ab){ return new Uint8Array(ab); });
+}
+function epRead(buf, ent){
+  if(!ent) return Promise.resolve(null);
+  var dv = new DataView(buf), u8 = new Uint8Array(buf);
+  var nlen = dv.getUint16(ent.lho + 26, true);
+  var elen = dv.getUint16(ent.lho + 28, true);
+  var at   = ent.lho + 30 + nlen + elen;
+  var raw  = u8.subarray(at, at + ent.csize);
+  if(ent.method === 0) return Promise.resolve(raw.slice(0));
+  if(ent.method === 8) return epInflate(raw);
+  return Promise.reject(new Error('unsupported zip compression (' + ent.method + ')'));
+}
+
+/* ---- paths -------------------------------------------------------------- */
+function epJoin(base, href){
+  href = String(href || '').split('#')[0];
+  try{ href = decodeURIComponent(href); }catch(e){}
+  if(!href) return '';
+  if(href.charAt(0) === '/') return href.replace(/^\/+/, '');
+  var parts = (base ? base.split('/') : []);
+  parts.pop();
+  var bits = href.split('/');
+  for(var i=0;i<bits.length;i++){
+    if(bits[i] === '.' || bits[i] === '') continue;
+    if(bits[i] === '..') parts.pop();
+    else parts.push(bits[i]);
+  }
+  return parts.join('/');
+}
+function epParseXml(text){
+  var d = null;
+  try{ d = new DOMParser().parseFromString(text, 'application/xhtml+xml'); }catch(e){}
+  if(!d || d.getElementsByTagName('parsererror').length){
+    try{ d = new DOMParser().parseFromString(text, 'text/html'); }catch(e){ d = null; }
+  }
+  return d;
+}
+/* namespace-blind tag lookup — EPUBs are wildly inconsistent about prefixes */
+function epTags(root, name){
+  var out = [], all = root.getElementsByTagName('*');
+  for(var i=0;i<all.length;i++){
+    var t = all[i].tagName || '';
+    var bare = t.indexOf(':') >= 0 ? t.split(':').pop() : t;
+    if(bare.toLowerCase() === name) out.push(all[i]);
+  }
+  return out;
+}
+
+/* ---- the package file --------------------------------------------------- */
+async function epOpenPackage(buf){
+  var index = epZipIndex(buf);
+
+  var containerName = null, k;
+  for(k in index){ if(k.toLowerCase() === 'meta-inf/container.xml'){ containerName = k; break; } }
+  var opfPath = null;
+  if(containerName){
+    var cx = epParseXml(epUtf8(await epRead(buf, index[containerName])));
+    if(cx){
+      var rf = epTags(cx, 'rootfile')[0];
+      if(rf) opfPath = rf.getAttribute('full-path');
+    }
+  }
+  if(!opfPath){
+    for(k in index){ if(/\.opf$/i.test(k)){ opfPath = k; break; } }
+  }
+  if(!opfPath) throw new Error('no package file — this may not be an EPUB');
+
+  var opf = epParseXml(epUtf8(await epRead(buf, index[opfPath])));
+  if(!opf) throw new Error('the package file is unreadable');
+
+  var manifest = {}, items = epTags(opf, 'item'), i;
+  for(i=0;i<items.length;i++){
+    var id = items[i].getAttribute('id');
+    if(!id) continue;
+    manifest[id] = {
+      href:  epJoin(opfPath, items[i].getAttribute('href')),
+      type:  (items[i].getAttribute('media-type') || '').toLowerCase(),
+      props: (items[i].getAttribute('properties') || '').toLowerCase()
+    };
+  }
+
+  var spine = [], refs = epTags(opf, 'itemref');
+  for(i=0;i<refs.length;i++){
+    var it = manifest[refs[i].getAttribute('idref')];
+    if(!it) continue;
+    if(it.props.indexOf('nav') >= 0) continue;                 /* the table of contents is not a chapter */
+    if(/x?html|xml/.test(it.type) || /\.x?html?$/i.test(it.href)) spine.push(it.href);
+  }
+  if(!spine.length){
+    for(k in index){ if(/\.x?html?$/i.test(k)) spine.push(k); }
+    spine.sort();
+  }
+
+  /* encryption.xml turns up in two very different situations. Most of the time
+     it is Adobe font obfuscation, which is harmless and must not stop the book
+     opening. Occasionally it means the chapters themselves are encrypted, which
+     no reader can undo. Tell them apart by what is actually encrypted. */
+  var encName = null;
+  for(k in index){ if(/^meta-inf\/encryption\.xml$/i.test(k)) encName = k; }
+  if(encName){
+    try{
+      var ex = epParseXml(epUtf8(await epRead(buf, index[encName])));
+      if(ex){
+        var refs2 = epTags(ex, 'cipherreference'), locked = [];
+        for(i=0;i<refs2.length;i++){
+          var uri = epJoin('x', refs2[i].getAttribute('URI') || refs2[i].getAttribute('uri') || '');
+          if(uri) locked.push(uri);
+        }
+        for(i=0;i<spine.length;i++){
+          if(locked.indexOf(spine[i]) >= 0){
+            throw new Error('this EPUB is DRM-protected, so its text cannot be read');
+          }
+        }
+      }
+    }catch(e){
+      if(/DRM-protected/.test(e && e.message)) throw e;
+    }
+  }
+
+  var title = '', author = '';
+  var t = epTags(opf, 'title')[0];   if(t) title  = (t.textContent || '').trim();
+  var a = epTags(opf, 'creator')[0]; if(a) author = (a.textContent || '').trim();
+
+  /* the cover, by either of the two conventions */
+  var cover = '';
+  for(k in manifest){
+    if(manifest[k].props.indexOf('cover-image') >= 0){ cover = manifest[k].href; break; }
+  }
+  if(!cover){
+    var metas = epTags(opf, 'meta');
+    for(i=0;i<metas.length;i++){
+      if((metas[i].getAttribute('name') || '').toLowerCase() === 'cover'){
+        var ci = manifest[metas[i].getAttribute('content')];
+        if(ci) cover = ci.href;
+        break;
+      }
+    }
+  }
+  if(!cover){
+    for(k in manifest){ if(/cover/i.test(manifest[k].href) && /^image\//.test(manifest[k].type)){ cover = manifest[k].href; break; } }
+  }
+
+  return { index:index, opfPath:opfPath, manifest:manifest, spine:spine,
+           title:title, author:author, cover:cover };
+}
+
+/* ---- XHTML -> blocks ---------------------------------------------------- */
+var EP_SKIP  = { script:1, style:1, head:1, title:1, link:1, meta:1, nav:1, svg:0 };
+var EP_BLOCK = { p:'p', div:'p', h1:'h1', h2:'h2', h3:'h3', h4:'h3', h5:'h3', h6:'h3',
+                 li:'li', blockquote:'quote', pre:'code', figcaption:'cap', td:'p', th:'p',
+                 dt:'h3', dd:'p', section:'p', article:'p', header:'p', footer:'p',
+                 main:'p', aside:'quote', tr:'p', ul:'p', ol:'p', dl:'p', table:'p', body:'p' };
+
+function epBlocks(docEl, baseHref){
+  var blocks = [];
+  var buf = [], curType = 'p';
+  var listStack = [];
+
+  function flush(type){
+    var runs = [], i;
+    for(i=0;i<buf.length;i++){
+      if(buf[i].s) runs.push(buf[i]);
+    }
+    buf = [];
+    var joined = runs.map(function(r){ return r.s; }).join('');
+    if(!/\S/.test(joined)) return;
+    blocks.push({ t: type || curType, runs: runs });
+  }
+
+  function walk(node, style){
+    var kids = node.childNodes, i;
+    for(i=0;i<kids.length;i++){
+      var ch = kids[i];
+      if(ch.nodeType === 3){
+        var txt = String(ch.nodeValue || '').replace(/\s+/g, ' ');
+        if(txt) buf.push({ s:txt, b:style.b, i:style.i, c:style.c });
+        continue;
+      }
+      if(ch.nodeType !== 1) continue;
+
+      var raw = ch.tagName || '';
+      var tag = (raw.indexOf(':') >= 0 ? raw.split(':').pop() : raw).toLowerCase();
+
+      if(EP_SKIP[tag]) continue;
+
+      if(tag === 'br'){ flush(curType); continue; }
+      if(tag === 'hr'){ flush(curType); blocks.push({ t:'rule' }); continue; }
+
+      if(tag === 'img' || tag === 'image'){
+        var src = ch.getAttribute('src') || ch.getAttribute('xlink:href') || ch.getAttribute('href');
+        if(src){
+          flush(curType);
+          blocks.push({ t:'img', src: epJoin(baseHref, src),
+                        alt: (ch.getAttribute('alt') || '').trim() });
+        }
+        continue;
+      }
+
+      if(tag === 'ul' || tag === 'ol'){
+        flush(curType);
+        listStack.push({ ordered: tag === 'ol', n: 0 });
+        walk(ch, style);
+        flush(curType);
+        listStack.pop();
+        continue;
+      }
+
+      var bt = EP_BLOCK[tag];
+      if(bt){
+        flush(curType);
+        var prev = curType;
+        /* A <blockquote> or <li> almost always wraps its text in a <p>. Without
+           this, the wrapper's styling is thrown away the moment we step inside. */
+        if(bt === 'p' && (prev === 'quote' || prev === 'li' || prev === 'code')) bt = prev;
+        curType = bt;
+        if(tag === 'li'){
+          var lst = listStack.length ? listStack[listStack.length - 1] : null;
+          var marker = '\u2022\u00a0';
+          if(lst && lst.ordered){ lst.n++; marker = lst.n + '.\u00a0'; }
+          buf.push({ s: marker, b:false, i:false, c:false });
+        }
+        walk(ch, style);
+        flush(bt);
+        curType = prev;
+        continue;
+      }
+
+      /* inline */
+      var st = { b:style.b, i:style.i, c:style.c };
+      if(tag === 'b' || tag === 'strong') st.b = true;
+      if(tag === 'i' || tag === 'em' || tag === 'cite') st.i = true;
+      if(tag === 'code' || tag === 'kbd' || tag === 'samp') st.c = true;
+      walk(ch, st);
+    }
+  }
+
+  var body = docEl.getElementsByTagName('body')[0] || docEl.documentElement || docEl;
+  walk(body, { b:false, i:false, c:false });
+  flush(curType);
+  return blocks;
+}
+
+/* ---- the typesetter ----------------------------------------------------- */
+/* Style per block type: font index, leading, space above/below, indent. */
+function epStyle(t){
+  switch(t){
+    case 'h1':    return { f:4, lead:1.22, above:34, below:20, indent:0,  pad:0,  align:'center' };
+    case 'h2':    return { f:5, lead:1.26, above:30, below:15, indent:0,  pad:0,  align:'left' };
+    case 'h3':    return { f:6, lead:1.32, above:22, below:10, indent:0,  pad:0,  align:'left' };
+    case 'quote': return { f:7, lead:1.58, above:12, below:12, indent:0,  pad:34, align:'left' };
+    case 'code':  return { f:8, lead:1.45, above:12, below:12, indent:0,  pad:22, align:'left' };
+    case 'li':    return { f:0, lead:1.62, above:3,  below:3,  indent:0,  pad:30, align:'left' };
+    case 'cap':   return { f:9, lead:1.45, above:6,  below:14, indent:0,  pad:0,  align:'center' };
+    default:      return { f:0, lead:1.62, above:0,  below:0,  indent:26, pad:0,  align:'left' };
+  }
+}
+function epFontFor(base, run){
+  if(run.c) return 8;
+  if(base !== 0) return base;              /* headings and quotes keep their own face */
+  if(run.b && run.i) return 3;
+  if(run.b) return 1;
+  if(run.i) return 2;
+  return 0;
+}
+
+function epMeasurer(){
+  var cv = document.createElement('canvas');
+  var ctx = cv.getContext('2d');
+  var cache = Object.create(null);
+  var curF = -1;
+  return function(text, f){
+    var key = f + '\u0000' + text;
+    var hit = cache[key];
+    if(hit !== undefined) return hit;
+    if(f !== curF){ ctx.font = epFontCss(f); curF = f; }
+    var w = ctx.measureText(text).width;
+    if(Object.keys(cache).length < 60000) cache[key] = w;
+    return w;
+  };
+}
+
+/* Break the runs of one block into words that already know their font.
+   A word is often split across runs — "<strong>wife</strong>." is two runs but
+   one word. Left unmerged, narration reads a full stop as its own word and a
+   tap selects half a word, so contiguous fragments are stitched back together.
+   The merged word takes the face of its longest fragment. */
+function epWordsOf(block, baseF){
+  var out = [], i, j;
+  var openWord = false;
+  for(i=0;i<block.runs.length;i++){
+    var r = block.runs[i];
+    var f = epFontFor(baseF, r);
+    var toks = r.s.split(/(\s+)/);
+    var firstTok = true;
+    for(j=0;j<toks.length;j++){
+      var tk = toks[j];
+      if(!tk) continue;
+      if(/^\s+$/.test(tk)){
+        if(out.length) out[out.length - 1].sp = true;
+        openWord = false; firstTok = false;
+        continue;
+      }
+      var last = out.length ? out[out.length - 1] : null;
+      if(openWord && firstTok && last && !last.sp){
+        last.t += tk;
+        if(tk.length > last.best){ last.best = tk.length; last.f = f; }
+      }else{
+        out.push({ t:tk, f:f, sp:false, best:tk.length });
+      }
+      openWord = true; firstTok = false;
+    }
+  }
+  return out;
+}
+
+async function epLayout(pkg, buf, onProgress){
+  var measure = epMeasurer();
+  var colW = EP_W - EP_MX * 2;
+  var pages = [];
+  var cur = { words:[], imgs:[] };
+  var y = EP_MT;
+
+  function newPage(){
+    if(cur.words.length || cur.imgs.length) pages.push(cur);
+    cur = { words:[], imgs:[] };
+    y = EP_MT;
+  }
+  function room(h){ return y + h <= EP_H - EP_MB; }
+
+  /* the cover art becomes page one, so the library thumbnail is the real cover */
+  if(pkg.cover && pkg.index[pkg.cover]){
+    cur.imgs.push({ src:pkg.cover, x:0, y:0, w:EP_W, h:EP_H, cover:true });
+    newPage();
+  }
+
+  for(var si=0; si<pkg.spine.length; si++){
+    var href = pkg.spine[si];
+    var ent  = pkg.index[href];
+    if(!ent) continue;
+
+    var xdoc = null;
+    try{ xdoc = epParseXml(epUtf8(await epRead(buf, ent))); }catch(e){ xdoc = null; }
+    if(!xdoc) continue;
+
+    var blocks = epBlocks(xdoc, href);
+    if(!blocks.length) continue;
+
+    /* every chapter opens a fresh page — that is what makes it feel like a book */
+    if(cur.words.length || cur.imgs.length) newPage();
+
+    for(var bi=0; bi<blocks.length; bi++){
+      var b = blocks[bi];
+      var st = epStyle(b.t);
+
+      if(b.t === 'rule'){
+        if(!room(26)) newPage(); else y += 26;
+        continue;
+      }
+
+      if(b.t === 'img'){
+        var iw = colW, ih = Math.min(EP_H - EP_MT - EP_MB, colW * 1.05);
+        if(!room(ih + 20)){
+          newPage();
+          ih = Math.min(EP_H - EP_MT - EP_MB, colW * 1.05);
+        }
+        cur.imgs.push({ src:b.src, x:EP_MX, y:y, w:iw, h:ih, cover:false });
+        y += ih + 20;
+        continue;
+      }
+
+      var fd   = EP_FONTS[st.f];
+      var lh   = fd.s * st.lead;
+      var words = epWordsOf(b, st.f);
+      if(!words.length) continue;
+
+      var avail = colW - st.pad;
+      var spaceW = {};
+      var spW = function(f){
+        if(spaceW[f] === undefined) spaceW[f] = measure(' ', f);
+        return spaceW[f];
+      };
+
+      /* A URL or a long compound can be wider than the column. Break it on
+         characters rather than let it run off the edge of the page. */
+      var cap = avail - st.indent, fitted = [], q0, k0;
+      for(q0=0; q0<words.length; q0++){
+        var wd0 = words[q0];
+        if(wd0.t.length < 2 || measure(wd0.t, wd0.f) <= cap){ fitted.push(wd0); continue; }
+        var chunk = '';
+        for(k0=0; k0<wd0.t.length; k0++){
+          var chx = wd0.t.charAt(k0);
+          if(chunk && measure(chunk + chx, wd0.f) > cap){
+            fitted.push({ t:chunk, f:wd0.f, sp:false, best:chunk.length });
+            chunk = '';
+          }
+          chunk += chx;
+        }
+        if(chunk) fitted.push({ t:chunk, f:wd0.f, sp:wd0.sp, best:chunk.length });
+      }
+      words = fitted;
+
+      /* headings should not be stranded alone at the foot of a page */
+      if(st.above){
+        if(room(st.above + lh)) y += st.above;
+        else newPage();
+      }
+      if((b.t === 'h1' || b.t === 'h2') && !room(lh * 2.2)) newPage();
+
+      var line = [], lineW = 0, first = true;
+      var flushLine = function(last){
+        if(!line.length) return;
+        if(!room(lh)) newPage();
+        var indent = (first && st.indent && b.t === 'p') ? st.indent : 0;
+        var startX = EP_MX + st.pad + indent;
+        var width  = avail - indent;
+        var gaps = 0, q;
+        for(q=0;q<line.length-1;q++) if(line[q].sp) gaps++;
+
+        var extra = 0;
+        if(!last && gaps > 0 && st.align === 'left'){
+          var slack = width - lineW;
+          if(slack > 0 && slack < width * 0.22) extra = slack / gaps;      /* justify, but never stretch to rivers */
+        }
+        if(st.align === 'center') startX = EP_MX + st.pad + (width - lineW) / 2;
+
+        var x = startX;
+        var baseline = y + fd.s * 0.82;
+        var r1 = function(v){ return Math.round(v * 10) / 10; };   /* sub-pixel precision is dead weight in storage */
+        for(q=0;q<line.length;q++){
+          var wd = line[q];
+          cur.words.push({
+            text: wd.t, x: r1(x), y: r1(baseline - wd.fs * 0.86), w: r1(wd.w),
+            h: r1(wd.fs * 1.18), fh: wd.fs, skip:false, f: wd.f, bl: r1(baseline)
+          });
+          x += wd.w;
+          if(q < line.length - 1 && wd.sp) x += wd.spw + extra;
+        }
+        y += lh;
+        line = []; lineW = 0; first = false;
+      };
+
+      for(var wi=0; wi<words.length; wi++){
+        var w = words[wi];
+        var ww = measure(w.t, w.f);
+        var sw = spW(w.f);
+        var indentNow = (first && st.indent && b.t === 'p') ? st.indent : 0;
+        var limit = avail - indentNow;
+        var add = lineW + (line.length ? (line[line.length-1].sp ? sw : 0) : 0) + ww;
+
+        if(line.length && add > limit){
+          flushLine(false);
+          indentNow = (first && st.indent && b.t === 'p') ? st.indent : 0;
+          add = ww;
+        }
+        if(line.length && line[line.length-1].sp) lineW += sw;
+        line.push({ t:w.t, f:w.f, w:ww, sp:w.sp, spw:sw, fs:EP_FONTS[w.f].s });
+        lineW += ww;
+      }
+      flushLine(true);
+      if(st.below) y += st.below;
+    }
+
+    if(onProgress && si % 4 === 3) await onProgress(si + 1, pkg.spine.length);
+  }
+  newPage();
+  if(!pages.length) pages.push({ words:[], imgs:[] });
+  return pages;
+}
+
+/* An EPUB needs none of the column-detection a PDF does — we set the type, so
+   reading order is simply the order we laid it down in. Lines are grouped by
+   baseline purely so the rest of the pipeline gets the shape it expects. */
+function epOrder(words, H){
+  var lines = [], cur = null, i;
+  for(i=0;i<words.length;i++){
+    var w = words[i];
+    var key = (w.bl != null ? w.bl : w.y);
+    if(!cur || cur.key !== key){ cur = { key:key, arr:[] }; lines.push(cur); }
+    cur.arr.push(w);
+  }
+  var hs = words.map(function(w){ return w.h || 11; }).sort(function(a,b){ return a-b; });
+  return {
+    order: words,
+    lines: lines.map(function(l){ return l.arr; }),
+    medH: hs.length ? hs[Math.floor(hs.length/2)] : 11
+  };
+}
+
+/* ---- the document adapter ---------------------------------------------- */
+/* Looks and behaves like a pdf.js document, so every other part of Lumen —
+   narration, highlights, ink, Bionic, stats — works without knowing about it. */
+function epMakeDoc(pages, meta, imageLoader){
+  var cache = Object.create(null);
+
+  function need(src){
+    if(cache[src] !== undefined) return Promise.resolve(cache[src]);
+    if(!imageLoader){ cache[src] = null; return Promise.resolve(null); }
+    /* A picture that never decodes must not hold the page hostage. Whatever
+       happens, this settles — worst case the page paints without the image. */
+    return new Promise(function(res){
+      var settled = false;
+      var finish = function(im){
+        if(settled) return;
+        settled = true;
+        cache[src] = im || null;
+        res(cache[src]);
+      };
+      var timer = setTimeout(function(){ finish(null); }, 8000);
+      imageLoader(src).then(function(im){ clearTimeout(timer); finish(im); },
+                            function(){ clearTimeout(timer); finish(null); });
+    });
+  }
+  /* The cover is page one, and the library thumbnail is taken from a single
+     render call — so a page must not report itself painted until its pictures
+     have actually decoded. */
+  function ready(pi){
+    var pg = pages[pi] || { imgs:[] };
+    var list = pg.imgs || [];
+    if(!list.length) return Promise.resolve();
+    return Promise.all(list.map(function(r){ return need(r.src); }));
+  }
+
+  function drawPage(pi, ctx2d, vp){
+    var pg = pages[pi] || { words:[], imgs:[] };
+    var sc = vp.width / EP_W;
+
+    ctx2d.save();
+    ctx2d.fillStyle = '#ffffff';
+    ctx2d.fillRect(0, 0, vp.width, vp.height);
+    ctx2d.textBaseline = 'alphabetic';
+    ctx2d.fillStyle = '#12100e';
+
+    var i, curF = -1;
+    for(i=0;i<pg.words.length;i++){
+      var w = pg.words[i];
+      if(w.f !== curF){ ctx2d.font = epFontCss(w.f); curF = w.f; }
+      ctx2d.fillText(w.text, w.x * sc, (w.bl != null ? w.bl : w.y + w.h * 0.8) * sc);
+    }
+    ctx2d.restore();
+
+    for(i=0;i<(pg.imgs || []).length;i++) paintImage(pg.imgs[i], ctx2d, sc);
+  }
+
+  function paintImage(rec, ctx2d, sc){
+    var img = cache[rec.src];
+    if(!img) return;
+    var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    if(!iw || !ih) return;
+    var k = Math.min(rec.w / iw, rec.h / ih);
+    var dw = iw * k, dh = ih * k;
+    var dx = rec.x + (rec.w - dw) / 2, dy = rec.y + (rec.h - dh) / 2;
+    try{ ctx2d.drawImage(img, dx * sc, dy * sc, dw * sc, dh * sc); }catch(e){}
+  }
+
+  return {
+    numPages: pages.length,
+    __epub: true,
+    __epubPages: pages,
+    getPage: function(n){
+      var pi = (n | 0) - 1;
+      return Promise.resolve({
+        getViewport: function(o){
+          var sc = (o && o.scale) || 1;
+          return { width: EP_W * sc, height: EP_H * sc, scale: sc,
+                   transform: [sc, 0, 0, -sc, 0, EP_H * sc] };
+        },
+        getTextContent: function(){ return Promise.resolve({ items: [] }); },
+        __words: (pages[pi] && pages[pi].words) || [],
+        render: function(ctx){
+          var killed = false;
+          var p = ready(pi).catch(function(){}).then(function(){
+            if(killed) return;
+            try{ drawPage(pi, ctx.canvasContext, ctx.viewport); }catch(e){}
+          });
+          return { promise: p, cancel: function(){ killed = true; } };
+        }
+      });
+    },
+    getMetadata: function(){
+      return Promise.resolve({ info: { Title: meta.title || '', Author: meta.author || '' } });
+    },
+    destroy: function(){
+      for(var k in cache){
+        var im = cache[k];
+        if(im && im.src && im.src.indexOf('blob:') === 0){ try{ URL.revokeObjectURL(im.src); }catch(e){} }
+      }
+      cache = Object.create(null);
+    }
+  };
+}
+
+/* Decode one image out of the zip, on demand. */
+function epImageLoader(getBuf, index){
+  return function(src){
+    return Promise.resolve(getBuf()).then(function(buf){
+      var ent = index[src];
+      if(!ent) return null;
+      return epRead(buf, ent).then(function(bytes){
+        if(!bytes) return null;
+        var ext = (src.split('.').pop() || '').toLowerCase();
+        var mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif'
+                 : ext === 'svg' ? 'image/svg+xml' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        var url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        return new Promise(function(res){
+          var im = new Image();
+          im.onload  = function(){ res(im); };
+          im.onerror = function(){ try{ URL.revokeObjectURL(url); }catch(e){} res(null); };
+          im.src = url;
+        });
+      });
+    }).catch(function(){ return null; });
+  };
+}
+
+/* Fresh from the file: parse, typeset, hand back a document. */
+async function epubToDoc(buf, fileName, onProgress){
+  var pkg = await epOpenPackage(buf);
+  var pages = await epLayout(pkg, buf, onProgress);
+
+  /* A DRM-locked book unzips fine and then hands back gibberish instead of
+     XHTML, so the only honest test is whether any words came out the far end.
+     Better to refuse it here than to add an empty book to the library. */
+  var words = 0;
+  for(var i=0;i<pages.length;i++) words += pages[i].words.length;
+  if(words < 5){
+    var locked = false;
+    for(var k in pkg.index){ if(/^meta-inf\/(encryption|rights)\.xml$/i.test(k)) locked = true; }
+    throw new Error(locked
+      ? 'this EPUB is DRM-protected, so its text cannot be read'
+      : 'no readable text was found in this EPUB');
+  }
+
+  var doc = epMakeDoc(pages, { title: pkg.title, author: pkg.author },
+                      epImageLoader(function(){ return buf; }, pkg.index));
+  doc.__epubImgs = pages.map(function(p){ return p.imgs || []; });
+  doc.__epubMeta = { title: pkg.title, author: pkg.author };
+  return doc;
+}
+
+/* Reopening: the layout was stored with the book, so nothing is re-typeset.
+   The zip is only touched again if a page actually contains a picture. */
+function epubDocFromSaved(savedPages, imgsPerPage, meta, getBytes){
+  var lazyBuf = null, lazyIdx = null;
+  var pages = savedPages.map(function(p, i){
+    return { words: p.words || [], imgs: (imgsPerPage && imgsPerPage[i]) || [] };
+  });
+  var loader = function(src){
+    return Promise.resolve()
+      .then(function(){ return lazyBuf || getBytes(); })
+      .then(function(buf){
+        if(!buf) return null;
+        lazyBuf = buf;
+        if(!lazyIdx) lazyIdx = epZipIndex(buf);
+        return epImageLoader(function(){ return lazyBuf; }, lazyIdx)(src);
+      })
+      .catch(function(){ return null; });
+  };
+  return epMakeDoc(pages, meta || {}, loader);
+}
+
 async function openAnyDocument(file, bytes){
   const isImage = /^image\//.test(file.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
   if(isImage) return { doc: await imageToDoc(file), scanned:true };
+
+  if(isEpubFile(file)){
+    const edoc = await epubToDoc(bytes, file.name, async function(done, total){
+      toast('Setting the type for \u201C'+file.name+'\u201D \u2014 '+Math.round(done*100/total)+'%');
+      await yieldToUI();
+    });
+    return { doc: edoc, scanned:false, epub:true };
+  }
 
   const attempt = function(pw){
     return pdfjsLib.getDocument({
@@ -1400,6 +2147,9 @@ async function openAnyDocument(file, bytes){
     }
     throw err;
   }
+}
+function isEpubFile(f){
+  return /epub\+zip/.test(f.type || '') || /\.epub$/i.test(f.name || '');
 }
 /* an image becomes a one-page book, so screenshots and photos open like anything else */
 async function imageToDoc(file){
@@ -1470,6 +2220,7 @@ async function ingest(file){
 
   const opened = await openAnyDocument(file, bytes);
   const doc = opened.doc;
+  const isEpubBook = !!opened.epub;
 
   const pages=[], edgeCounts={};
   const N = doc.numPages;
@@ -1478,9 +2229,13 @@ async function ingest(file){
       const page = await doc.getPage(p);
       const vp1  = page.getViewport({ scale:1 });
       let raw = [];
-      try{ raw = rawWords(await page.getTextContent(), vp1); }
-      catch(e){ raw = []; }                       // an unreadable text layer costs one page, not the book
-      const ord  = orderPage(raw, vp1.width, vp1.height);
+      if(page.__words){
+        raw = page.__words;                       // an EPUB was typeset by us; its words are already exact
+      }else{
+        try{ raw = rawWords(await page.getTextContent(), vp1); }
+        catch(e){ raw = []; }                     // an unreadable text layer costs one page, not the book
+      }
+      const ord  = isEpubBook ? epOrder(raw, vp1.height) : orderPage(raw, vp1.width, vp1.height);
       const H    = vp1.height, medH = ord.medH;
 
       ord.lines.forEach(function(l){
@@ -1505,6 +2260,7 @@ async function ingest(file){
   pages.forEach(function(pg){
     const H=pg.H, medH=pg.medH;
 
+    if(!isEpubBook){
     // 1. running heads / feet / page numbers
     pg.lines.forEach(function(l){
       const y=l[0].y;
@@ -1546,6 +2302,8 @@ async function ingest(file){
       first.skip = true;
     });
 
+    }
+
     // 5. what the voice will actually say
     pg.words.forEach(function(w){
       const src = w.joined || w.text;
@@ -1581,7 +2339,15 @@ async function ingest(file){
     if(i % 24 === 23) await yieldToUI();
   }
   store.set('card:'+id, { name:file.name, title:realTitle, numPages:doc.numPages,
-                          totalWords:total, genre:genre, paged:true, scanned: total<12 });
+                          totalWords:total, genre:genre, paged:true, scanned: total<12,
+                          kind: isEpubBook ? 'epub' : '' });
+  if(isEpubBook){
+    bk.kind = 'epub';
+    /* Where the pictures sit on each page. Tiny next to the word map, and it
+       means reopening never has to unzip the book again unless a page
+       actually has a picture on it. */
+    store.set('eimg:'+id, doc.__epubImgs || []);
+  }
 
   ensureCover(existing || bk);                                     // render the cover now, while the doc is open
   if(total < 12) toast('No text layer in this file \u2014 it will display, but cannot be narrated.');
@@ -1624,9 +2390,10 @@ document.addEventListener('drop', function(e){ e.preventDefault(); if(e.dataTran
 async function addFiles(list){
   const pdfs = Array.prototype.slice.call(list).filter(function(f){
     return f.type==='application/pdf' || /\.pdf$/i.test(f.name)
+        || isEpubFile(f)
         || /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name);
   });
-  if(!pdfs.length){ toast('Add a PDF, or an image / screenshot.'); return; }
+  if(!pdfs.length){ toast('Add a PDF, an EPUB, or an image / screenshot.'); return; }
   let last=null;
   for(const f of pdfs){
     try{ last = await ingest(f); }
@@ -1857,6 +2624,15 @@ async function openBook(bk, autoResume){
     const pgs = await loadPages(bk);
     if(!pgs){ toast('That book\u2019s text index is gone — add the file again.'); return; }
   }
+  if(!bk.doc && bk.kind === 'epub'){
+    /* The layout was worked out once, when the book was added, and stored with
+       it. Reopening reuses it verbatim — so nothing is re-typeset, and a
+       highlight made months ago still lands on the same words. */
+    let eimgs=null;
+    try{ eimgs = await store.get('eimg:'+bk.id); }catch(e){}
+    bk.doc = epubDocFromSaved(bk.pages, eimgs || [], { title:bk.title || '' },
+                              function(){ return store.get('bytes:'+bk.id); });
+  }
   if(!bk.doc){
     let img=null;
     try{ img = await store.get('img:'+bk.id); }catch(e){}
@@ -1946,7 +2722,7 @@ async function restoreLibrary(){
       const pos = mirror.get('pos:'+id) || (await store.get('pos:'+id));
       S.library.push({ id:id, name:card.name, title:card.title||'', doc:null, numPages:card.numPages,
                        pages:null, totalWords:card.totalWords, pos:pos||null,
-                       genre:card.genre||'', done:!!card.done });
+                       genre:card.genre||'', done:!!card.done, kind:card.kind||'' });
     }catch(e){}
   }
   if(S.library.length) renderLibrary();
@@ -4603,7 +5379,7 @@ function genTokens(t){
    title is usually in the PDF's metadata, or set in the largest type on the
    cover page. We take whichever we can trust, and fall back to the filename. */
 function looksLikeJunkName(name){
-  var n=(name||'').replace(/\.pdf$/i,'');
+  var n=(name||'').replace(/\.(pdf|epub)$/i,'');
   if(/^\s*$/.test(n)) return true;
   if(/documen[t]?[-_ ]?pub|dokumen|scribd|ebook[-_ ]?download|free[-_ ]?pdf|untitled|scan|doc\d+|^\d+$/i.test(n)) return true;
   var letters=(n.match(/[A-Za-z]/g)||[]).length;
@@ -4652,7 +5428,7 @@ async function realTitleOf(doc, pages, fileName){
     var cover = pages && pages.length ? titleFromCoverWords(pages[0].words) : '';
     if(cover && cover.length>=4) return cover;
   }
-  return (fileName||'').replace(/\.pdf$/i,'');
+  return (fileName||'').replace(/\.(pdf|epub)$/i,'');
 }
 function classifyGenre(title, body){
   var titleToks = genTokens(title);
@@ -4691,7 +5467,7 @@ function classifyGenre(title, body){
    Cover art from page 1, specific genre shelves, a Continue Reading row, and a
    Notes & Highlights view — all reusing the reader's existing machinery.
 ============================================================================ */
-function cleanTitle(name){ return (name||'').replace(/\.pdf$/i,'').replace(/[_]+/g,' ').trim(); }
+function cleanTitle(name){ return (name||'').replace(/\.(pdf|epub)$/i,'').replace(/[_]+/g,' ').trim(); }
 /* what we show, and what we classify on: the book's real title when we found one */
 function bookTitle(bk){ return (bk && bk.title) ? bk.title : cleanTitle(bk ? bk.name : ''); }
 
@@ -4755,6 +5531,16 @@ async function ensureCover(bk){
   try{ var cached=await store.get('cover:'+bk.id); if(cached){ bk.cover=cached; return cached; } }catch(e){}
   var doc=bk.doc, temp=false;
   try{
+    if(!doc && bk.kind === 'epub'){
+      var pg0=null, ei=null;
+      try{ pg0 = await store.get('pg:'+bk.id+':0'); }catch(e){}
+      try{ ei  = await store.get('eimg:'+bk.id); }catch(e){}
+      if(pg0){
+        doc = epubDocFromSaved([pg0], [ (ei && ei[0]) || [] ], {},
+                               function(){ return store.get('bytes:'+bk.id); });
+        temp = true;
+      }
+    }
     if(!doc){
       var bytes=await store.get('bytes:'+bk.id); if(!bytes) return null;
       doc=await pdfjsLib.getDocument({ data:bytes.slice(0) }).promise; temp=true;
@@ -4788,7 +5574,7 @@ async function fillCovers(cards){
 
 /* ---- progress helpers ---- */
 function delBookKeys(bk){
-  ['meta:','card:','bytes:','ink:','pos:','marks:','cover:','img:','readstats:'].forEach(function(pfx){ store.del(pfx+bk.id); });
+  ['meta:','card:','bytes:','ink:','pos:','marks:','cover:','img:','readstats:','eimg:'].forEach(function(pfx){ store.del(pfx+bk.id); });
   mirror.del('pos:'+bk.id);
   for(var i=0;i<(bk.numPages||0);i++) store.del('pg:'+bk.id+':'+i);
 }
@@ -4863,18 +5649,12 @@ function rlIsDone(it){
   var bk = rlFindBook(it);
   return bk ? !!bk.done : false;
 }
+/* One-way, deliberately. A tick here is a tick on the list and nothing more:
+   it never reaches into the library, never marks a book done, and never moves
+   anything off a shelf. The traffic runs the other way only — a book you
+   finish in the library shows up already ticked here. */
 function rlSetDone(it, val){
   var t = rlTicks(); t[it.n] = !!val; rlSaveTicks(t);
-  var bk = rlFindBook(it);
-  if(bk && !!bk.done !== !!val){          // push the change back into the library
-    bk.done = !!val;
-    store.get('card:'+bk.id).then(function(c){
-      c = c || { name:bk.name, numPages:bk.numPages, totalWords:bk.totalWords };
-      c.done = bk.done; c.title = bk.title || c.title; c.genre = bk.genre || c.genre;
-      store.set('card:'+bk.id, c);
-    }).catch(function(){});
-    renderLibrary();
-  }
 }
 function rlDoneCount(){
   var n = 0;
@@ -5035,8 +5815,8 @@ function buildGenreNav(){
   var nav=$('#genreNav'); nav.innerHTML='';
   var present={}, doneCount=0;
   S.library.forEach(function(b){
-    if(b.done){ doneCount++; return; }
-    present[b.genre||'General']=1;
+    if(b.done) doneCount++;
+    present[b.genre||'General']=1;     // finished or not, a book still belongs to its subject
   });
   function link(label, val){
     var b=elx('button','hsublink'+((S.homeNav==='library'&&S.homeGenre===val)?' on':''));
@@ -5366,7 +6146,7 @@ async function renderHome(){
   main.appendChild(head);
   if(!S.library.length){
     var e=elx('div','hempty');
-    e.innerHTML='Your library is empty.<br>Add a PDF from the panel on the left to begin.';
+    e.innerHTML='Your library is empty.<br>Add a PDF or EPUB from the panel on the left to begin.';
     main.appendChild(e);
     return;
   }
@@ -5387,8 +6167,18 @@ async function renderHome(){
     return;
   }
 
+  /* Every book sits on the shelf its subject says it should. Finishing one
+     used to move it to a Done pile, which meant a shelf slowly emptied as you
+     actually read it. Now it stays put, marked, and simply sorts to the back;
+     the Done view is still there as a filter for when you want only those. */
   var byGenre={};
-  active.forEach(function(b){ var g=b.genre||'General'; (byGenre[g]=byGenre[g]||[]).push(b); });
+  S.library.forEach(function(b){ var g=b.genre||'General'; (byGenre[g]=byGenre[g]||[]).push(b); });
+  Object.keys(byGenre).forEach(function(g){
+    byGenre[g].sort(function(a,b){
+      if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+      return 0;
+    });
+  });
 
   var order = genreList();
   var seen={};
@@ -5400,7 +6190,9 @@ async function renderHome(){
     main.appendChild(shelfEl(g, books, cards, false, g));
   });
 
-  if(S.homeGenre==='all' && finished.length) main.appendChild(shelfEl('Done', finished, cards, false));
+  /* No trailing Done pile on the All Titles view: a finished book is already
+     sitting on its own shelf above, and showing it twice was the whole problem.
+     The Done link in the sidebar still gives a finished-only view. */
 
   fillCovers(cards);
 }
