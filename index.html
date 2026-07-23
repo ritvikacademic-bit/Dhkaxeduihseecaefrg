@@ -2662,7 +2662,7 @@ async function openBook(bk, autoResume){
   buildChunks();
   updateTeleStat();
 
-  S.strokes = (await store.get('ink:'+bk.id)) || {};
+  S.strokes = await loadInk(bk);
   S.hl = (await store.get('marks:'+bk.id)) || [];
 
   $('#nowTitle').innerHTML='';
@@ -2798,10 +2798,95 @@ function schedulePos(){
   clearTimeout(posT);
   posT = setTimeout(savePosNow, 1500);
 }
+/* ---------------------------------------------------------------------------
+   INK STORAGE
+
+   One record per page, not one per book. Drawing on page 40 writes page 40 and
+   nothing else, so the cost of saving no longer grows with how much of the book
+   you have annotated.
+
+   Old books wrote a single 'ink:<id>' blob. If one is found it is split into
+   per-page records once, on open, and the blob is dropped.
+------------------------------------------------------------------------- */
+const INK_KEY = function(id, p){ return 'ink:' + id + ':' + p; };
+
+async function loadInk(bk){
+  const out = {};
+  /* a book saved by an older build keeps everything in one record */
+  const legacy = await store.get('ink:' + bk.id);
+  if(legacy && typeof legacy === 'object'){
+    for(const p in legacy) if(legacy[p] && legacy[p].length) out[p] = legacy[p];
+    for(const p in out) store.set(INK_KEY(bk.id, p), out[p]);
+    store.del('ink:' + bk.id);
+    return out;
+  }
+  /* one key listing, then read only the pages that actually have ink on them —
+     a 300-page book with three annotated pages costs three reads, not 300 */
+  const pfx = 'ink:' + bk.id + ':';
+  let keys = [];
+  try{ keys = (await store.keys()) || []; }catch(e){ keys = []; }
+  const mine = [];
+  for(let i = 0; i < keys.length; i++){
+    const k = String(keys[i]);
+    if(k.indexOf(pfx) === 0){
+      const p = parseInt(k.slice(pfx.length), 10);
+      if(p === p) mine.push(p);
+    }
+  }
+  const got = await Promise.all(mine.map(function(p){ return store.get(INK_KEY(bk.id, p)); }));
+  for(let i = 0; i < mine.length; i++) if(got[i] && got[i].length) out[mine[i]] = got[i];
+  return out;
+}
+
+/* a tenth of a pixel is far finer than any nib, and costs half the storage */
+function inkTrim(list){
+  const out = [];
+  for(let k = 0; k < list.length; k++){
+    const st = list[k], pts = st.pts, cut = [];
+    for(let i = 0; i < pts.length; i++){
+      cut.push({ x: Math.round(pts[i].x * 10) / 10,
+                 y: Math.round(pts[i].y * 10) / 10,
+                 p: Math.round(pts[i].p * 100) / 100 });
+    }
+    out.push({ mode: st.mode, pts: cut });
+  }
+  return out;
+}
+
+const inkDirty = {};                       // page number -> needs writing
+let inkIdle = null;
+
+/* Wait for a moment when nothing else is happening. Drawing and scrolling both
+   count as "something happening", so a save can never land in the middle of a
+   gesture — which is what the freeze was. */
+function inkFlushSoon(){
+  if(inkIdle !== null) return;
+  const go = function(){
+    inkIdle = null;
+    if(S.drawing || userScrolling || touchId !== null){ inkFlushSoon(); return; }
+    inkFlushNow();
+  };
+  inkIdle = (window.requestIdleCallback)
+    ? requestIdleCallback(go, { timeout:2000 })
+    : setTimeout(go, 400);
+}
+
+function inkFlushNow(){
+  if(!S.book) return;
+  const id = S.book.id;
+  for(const p in inkDirty){
+    if(!inkDirty[p]) continue;
+    delete inkDirty[p];
+    const list = S.strokes[p];
+    if(list && list.length) store.set(INK_KEY(id, p), inkTrim(list));
+    else store.del(INK_KEY(id, p));
+  }
+}
+
 function scheduleInk(){
   if(!S.book) return;
-  clearTimeout(inkT);
-  inkT = setTimeout(function(){ if(S.book) store.set('ink:'+S.book.id, S.strokes); }, 500);
+  inkDirty[S.page] = true;
+  inkFlushSoon();
 }
 let markT=null;
 function saveMarks(){
@@ -2821,8 +2906,11 @@ function flushAll(){
   if(!S.book) return;
   flushPageTimer();
   savePosNow();
-  clearTimeout(inkT);
-  store.set('ink:'+S.book.id, S.strokes);
+  if(inkIdle !== null){
+    if(window.cancelIdleCallback) cancelIdleCallback(inkIdle); else clearTimeout(inkIdle);
+    inkIdle = null;
+  }
+  inkFlushNow();
   clearTimeout(markT);
   store.set('marks:'+S.book.id, S.hl);
   saveSettings();
@@ -2844,6 +2932,26 @@ try{ ictx = inkCanvas.getContext('2d',{ desynchronized:true }); }catch(e){ ictx 
 
 let renderTask=null, lastHL=null, inkRect=null;
 
+/* run once the browser has actually put the new page on screen */
+function afterPaint(fn){
+  requestAnimationFrame(function(){ setTimeout(fn, 0); });
+}
+
+/* Ask the document for the next page while the reader is still reading this
+   one. pdf.js caches it, so the tap that follows has less to do. Cheap, and
+   it holds no extra canvas memory. */
+let warmedPage = -1;
+function warmNextPage(n){
+  if(!S.book || !S.book.doc || n === warmedPage) return;
+  if(n < 0 || n >= S.book.numPages) return;
+  warmedPage = n;
+  const go = function(){
+    if(!S.book || !S.book.doc) return;
+    try{ const r = S.book.doc.getPage(n+1); if(r && r.catch) r.catch(function(){}); }catch(e){}
+  };
+  if(window.requestIdleCallback) requestIdleCallback(go, { timeout:1200 }); else setTimeout(go, 300);
+}
+
 async function renderPage(pageIdx){
   if(!S.book || !S.book.doc) return;
   pageIdx = clamp(pageIdx, 0, S.book.numPages-1);
@@ -2861,12 +2969,18 @@ async function renderPage(pageIdx){
   const dpr = Math.min(window.devicePixelRatio||1, 2);
   S.dpr = dpr;
 
+  const cw = Math.round(vp.width*dpr), ch = Math.round(vp.height*dpr);
   [pdfCanvas,veilCanvas,markCanvas,hlCanvas,inkCanvas].forEach(function(cv){
-    cv.width  = Math.round(vp.width*dpr);
-    cv.height = Math.round(vp.height*dpr);
-    cv.style.width  = vp.width+'px';
-    cv.style.height = vp.height+'px';
-    cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+    const c2 = cv.getContext('2d');
+    if(cv.width !== cw || cv.height !== ch){
+      cv.width = cw; cv.height = ch;                  // reallocates: only when it must
+      cv.style.width  = vp.width+'px';
+      cv.style.height = vp.height+'px';
+    }else{
+      c2.setTransform(1,0,0,1,0,0);
+      c2.clearRect(0,0,cw,ch);                        // same size: just wipe it
+    }
+    c2.setTransform(dpr,0,0,dpr,0,0);
   });
   ictx.lineCap='round'; ictx.lineJoin='round';
   lastHL = null; inkRect = null;
@@ -2879,8 +2993,14 @@ async function renderPage(pageIdx){
 
   paintBionic();
   redrawInk(); paintVeil(); paintMarks(); paintHighlight();
-  $('#pgNum').textContent = 'Page '+(pageIdx+1)+' / '+S.book.numPages+' · '+Math.round(S.zoom*100)+'%';
-  updateProgress(); schedulePos();
+
+  /* everything below is bookkeeping — let the page show first */
+  afterPaint(function(){
+    if(token !== S.renderToken) return;
+    $('#pgNum').textContent = 'Page '+(pageIdx+1)+' / '+S.book.numPages+' · '+Math.round(S.zoom*100)+'%';
+    updateProgress(); schedulePos();
+    warmNextPage(pageIdx + 1);
+  });
 }
 
 /* ============================================================================
@@ -5096,7 +5216,11 @@ function penMove(e){
   penMoved = Math.max(penMoved, Math.hypot(e.clientX-penDown.x, e.clientY-penDown.y));
   let evs=[e];
   if(e.getCoalescedEvents){ const c=e.getCoalescedEvents(); if(c && c.length) evs=c; }
-  for(let i=0;i<evs.length;i++){ cur.pts.push(canvasPoint(evs[i])); drawTail(cur); }
+  for(let i=0;i<evs.length;i++){
+    const q = canvasPoint(evs[i]);
+    if(!inkFarEnough(cur.pts, q)) continue;
+    cur.pts.push(q); drawTail(cur);
+  }
   e.preventDefault();
 }
 if('onpointerrawupdate' in inkCanvas) inkCanvas.addEventListener('pointerrawupdate', penMove, { passive:false });
@@ -5120,6 +5244,7 @@ inkCanvas.addEventListener('pointercancel', function(e){
 });
 
 let touchId=null, lastY=0, vel=0, tMoved=0, pending=0, rafScroll=null, tStart=0, glideWasRunning=false;
+let lastT=0, vpx=0;
 function flushScroll(){ rafScroll=null; if(pending){ viewer.scrollTop -= pending; pending=0; inkRect=null; } }
 viewer.addEventListener('pointerdown', function(e){
   if(e.pointerType!=='touch' || penId!==null) return;
@@ -5134,12 +5259,18 @@ viewer.addEventListener('pointerdown', function(e){
   glideWasRunning = !!glide;
   if(glide){ cancelAnimationFrame(glide); glide=null; }
   touchId=e.pointerId; lastY=e.clientY; vel=0; tMoved=0; tStart=performance.now();
+  lastT=tStart; vpx=0;
   userScrolling=true;
 });
 viewer.addEventListener('pointermove', function(e){
   if(S.selMode && selId===e.pointerId){ moveSelect(e.clientX, e.clientY); e.preventDefault(); return; }
   if(e.pointerId!==touchId) return;
+  const now = performance.now();
   const dy = e.clientY - lastY; lastY = e.clientY;
+  const dt = Math.max(1, now - lastT); lastT = now;
+  /* speed in pixels per millisecond, smoothed so one stray sample cannot
+     throw the flick off */
+  vpx = vpx*0.7 + (dy/dt)*0.3;
   tMoved += Math.abs(dy); vel = dy; pending += dy;
   if(tMoved>10 && S.follow){ S.follow=false; $('#followBtn').classList.remove('on'); }
   if(!rafScroll) rafScroll = requestAnimationFrame(flushScroll);
@@ -5154,10 +5285,13 @@ viewer.addEventListener('pointerup', function(e){
     tapWord(e.clientX, e.clientY);
     return;
   }
-  if(Math.abs(vel)>1){
-    const step=function(){
-      vel *= 0.94; viewer.scrollTop -= vel; inkRect=null;
-      if(Math.abs(vel)>0.4) glide=requestAnimationFrame(step); else glide=null;
+  if(Math.abs(vpx)>0.05){
+    let v = vpx, prev = performance.now();
+    const step=function(now){
+      const dt = Math.min(48, Math.max(1, now - prev)); prev = now;
+      v *= Math.pow(0.9965, dt);            // same decay per millisecond, any frame rate
+      viewer.scrollTop -= v*dt; inkRect=null;
+      if(Math.abs(v)>0.012) glide=requestAnimationFrame(step); else glide=null;
     };
     glide=requestAnimationFrame(step);
   }
@@ -5172,6 +5306,12 @@ function drawTail(stroke){
   ictx.strokeStyle = THEME.pen;
   ictx.lineWidth = stroke.mode==='erase' ? 20 : (1.4 + b.p*3.2);
   ictx.beginPath(); ictx.moveTo(a.x*s,a.y*s); ictx.lineTo(b.x*s,b.y*s); ictx.stroke();
+}
+/* has the nib moved far enough on screen to be worth another segment? */
+function inkFarEnough(pts, q){
+  if(!pts.length) return true;
+  const last = pts[pts.length-1], s = S.scale || 1;
+  return Math.abs(q.x-last.x)*s + Math.abs(q.y-last.y)*s > 0.34;
 }
 function redrawInk(){
   ictx.save(); ictx.setTransform(1,0,0,1,0,0);
@@ -5754,7 +5894,7 @@ async function fillCovers(cards){
 function delBookKeys(bk){
   ['meta:','card:','bytes:','ink:','pos:','marks:','cover:','img:','readstats:','eimg:'].forEach(function(pfx){ store.del(pfx+bk.id); });
   mirror.del('pos:'+bk.id);
-  for(var i=0;i<(bk.numPages||0);i++) store.del('pg:'+bk.id+':'+i);
+  for(var i=0;i<(bk.numPages||0);i++){ store.del('pg:'+bk.id+':'+i); store.del('ink:'+bk.id+':'+i); }
 }
 function bkPct(bk){ if(bk===S.book) return pctNow(); return (bk.pos && bk.pos.pct) || 0; }
 /* Finished books leave Continue Reading and gather on their own shelf. */
@@ -6476,7 +6616,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
 (function(){
 
   /* keys whose value can be rebuilt from the PDF, so they are optional */
-  var HEAVY = /^(bytes:|pg:|img:|meta:)/;
+  var HEAVY = /^(bytes:|pg:|img:|meta:)/;   // ink: stays in the light backup — it is small and irreplaceable
 
   var bkBusy = false;
 
