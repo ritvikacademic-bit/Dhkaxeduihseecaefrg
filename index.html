@@ -1405,9 +1405,11 @@ var EP_FONTS = [
 ];
 var EP_SERIF = 'Georgia,"Noto Serif","Droid Serif","Times New Roman",serif';
 var EP_MONO  = '"Roboto Mono","Droid Sans Mono",monospace';
-function epFontCss(f){
+function epFontCss(f, sc, bold){
   var d = EP_FONTS[f] || EP_FONTS[0];
-  return (d.i ? 'italic ' : '') + d.w + ' ' + d.s + 'px ' + (d.fam === 'mono' ? EP_MONO : EP_SERIF);
+  var size = d.s * (sc === undefined ? 1 : sc);
+  return (d.i ? 'italic ' : '') + (bold ? '700' : d.w) + ' ' +
+         (Math.round(size * 100) / 100) + 'px ' + (d.fam === 'mono' ? EP_MONO : EP_SERIF);
 }
 
 /* ---- zip ---------------------------------------------------------------- */
@@ -1986,7 +1988,7 @@ function epMakeDoc(pages, meta, imageLoader){
     var i, curF = -1;
     for(i=0;i<pg.words.length;i++){
       var w = pg.words[i];
-      if(w.f !== curF){ ctx2d.font = epFontCss(w.f); curF = w.f; }
+      if(w.f !== curF){ ctx2d.font = epFontCss(w.f, sc); curF = w.f; }
       ctx2d.fillText(w.text, w.x * sc, (w.bl != null ? w.bl : w.y + w.h * 0.8) * sc);
     }
     ctx2d.restore();
@@ -2652,7 +2654,8 @@ async function openBook(bk, autoResume){
     S.byPage[pi]=[];
     pg.words.forEach(function(w){
       S.byPage[pi].push(S.ribbon.length);
-      S.ribbon.push({ text:w.text, say:w.say||w.text, x:w.x, y:w.y, w:w.w, h:w.h, skip:!!w.skip, page:pi, tele:true });
+      S.ribbon.push({ text:w.text, say:w.say||w.text, x:w.x, y:w.y, w:w.w, h:w.h, skip:!!w.skip, page:pi, tele:true,
+                      f:w.f, bl:w.bl });   // EPUB only: which face, and where the baseline sits
     });
   });
   if(S.tele) computeTelegraph();
@@ -2895,20 +2898,22 @@ async function renderPage(pageIdx){
        diagrams and photographs have no word box, so they are never touched.
    Turning it off simply re-renders the page from the PDF: nothing to undo.
 ============================================================================ */
-let bionicSrc=null, bionicSrcCtx=null, bionicGamma=null;
+let bionicSrc=null, bionicSrcCtx=null, bionicGamma=null, bionicRow=null;
 
 /* ---- tuning knobs -------------------------------------------------------
-   BIONIC_WEIGHT  how many device pixels of ink to add on each side of a stem.
-                  0.5 = whisper, 1 = normal bold, 1.6 = heavy. Scales itself
-                  with type size, so headings and body text stay in balance.
-   BIONIC_CRISP   pulls the soft grey edges of a letter back toward solid
-                  black. 1 = leave alone, 1.5 = noticeably sharper.
-   BIONIC_FADE    how much the UNbolded tail of each word is lightened, which
-                  is what makes the bold half actually pop. 1 = no fade.
+   BIONIC_WEIGHT  how much ink to add on each side of a stem, as a fraction of
+                  the text height. This is now a REAL number, not rounded to
+                  whole pixels, so the weight stays proportional at every zoom
+                  level instead of jumping between "nothing" and "far too much".
+   BIONIC_CRISP   a gentle darkening of the grey edge pixels. Kept mild: it is
+                  a polish step, not the thing doing the bolding.
+   BIONIC_FADE    how much the UNbolded tail of each word is lightened. Close
+                  to 1 on purpose — fading most of the text was itself making
+                  the page look washed out and soft.
 ------------------------------------------------------------------------- */
-const BIONIC_WEIGHT = 1.0;
-const BIONIC_CRISP  = 1.35;
-const BIONIC_FADE   = 0.80;
+const BIONIC_WEIGHT = 0.028;
+const BIONIC_CRISP  = 1.12;
+const BIONIC_FADE   = 0.90;
 
 /* how much of a word gets the weight — the usual bionic ramp, ~40% */
 function bionicCut(n){
@@ -2919,74 +2924,237 @@ function bionicCut(n){
   return Math.round(n * 0.4);
 }
 
-/* Bold, done the way a font designer would: grow the black, don't smear it.
-   For every pixel we take the DARKEST value found within r pixels left and
-   right. A letter stem one pixel wide becomes 1+2r pixels wide; the paper
-   around it, having no dark neighbour, stays perfectly white. Because r is a
-   whole number of pixels there is no resampling, so nothing goes soft.
-   Vertical strokes are what the eye reads as weight, so we only grow
-   sideways — growing downward is what made the first attempt look smudged. */
-function bionicPass(data, W, x0, y0, x1, y1, r, lut){
-  const wRect = x1 - x0;
-  if(wRect < 1 || y1 <= y0) return;
-  const row = new Uint8ClampedArray(wRect * 4);
-  for(let y = y0; y < y1; y++){
-    const base = y * W * 4;
-    // snapshot this row's slice before we overwrite any of it
-    for(let i = 0; i < wRect * 4; i++) row[i] = data[base + x0 * 4 + i];
-    for(let x = 0; x < wRect; x++){
-      let mr = 255, mg = 255, mb = 255;
-      const lo = Math.max(0, x - r), hi = Math.min(wRect - 1, x + r);
-      for(let k = lo; k <= hi; k++){
-        const q = k * 4;
-        if(row[q]   < mr) mr = row[q];
-        if(row[q+1] < mg) mg = row[q+1];
-        if(row[q+2] < mb) mb = row[q+2];
-      }
-      const o = base + (x0 + x) * 4;
-      data[o]   = lut[mr];
-      data[o+1] = lut[mg];
-      data[o+2] = lut[mb];
-    }
-  }
-}
-
-/* the opposite move, for the tail of the word: lift the ink toward the paper */
-function bionicFade(data, W, x0, y0, x1, y1, lut){
-  for(let y = y0; y < y1; y++){
-    const base = y * W * 4;
-    for(let x = x0; x < x1; x++){
-      const o = base + x * 4;
-      data[o]   = lut[data[o]];
-      data[o+1] = lut[data[o+1]];
-      data[o+2] = lut[data[o+2]];
-    }
-  }
-}
-
 function bionicLUTs(){
   if(bionicGamma) return bionicGamma;
   const crisp = new Uint8ClampedArray(256), fade = new Uint8ClampedArray(256);
   for(let v = 0; v < 256; v++){
-    crisp[v] = Math.round(255 * Math.pow(v / 255, BIONIC_CRISP));   // greys -> blacker
-    fade[v]  = Math.round(255 - (255 - v) * BIONIC_FADE);           // ink -> paler
+    crisp[v] = Math.round(255 * Math.pow(v / 255, BIONIC_CRISP));
+    fade[v]  = Math.round(255 - (255 - v) * BIONIC_FADE);
   }
   bionicGamma = { crisp:crisp, fade:fade };
   return bionicGamma;
 }
 
+/* ============================================================================
+   FAUX BOLD, FOR A PAGE THAT IS ONLY A PICTURE (PDFs and scans)
+
+   A PDF page is a photograph by the time we see it, so there is no text to set
+   in bold — we can only thicken the ink already there. The previous version
+   grew every stem by a WHOLE device pixel on each side. At normal reading size
+   the hole inside an 'e' is only about two pixels across, so growing one pixel
+   inwards from both sides closed it: letters filled in and welded to their
+   neighbours. That is what looked blurry. It was not anti-aliasing, and no
+   amount of font or CSS tuning could have touched it, because none of this is
+   text as far as the browser is concerned.
+
+   So the growth is now FRACTIONAL. Adding 0.6 of a pixel of ink is what a
+   genuinely slightly-wider stem looks like, and it leaves the counters open.
+   Ink is also spread as colour rather than per channel, so a stem keeps its
+   own hue instead of picking up a fringe.
+============================================================================ */
+
+/* One spread pass at strength t (0..1) across a horizontal strip.
+   t = 1 grows a full pixel; t = 0.6 grows six tenths of one. A pixel whose
+   neighbours are clean paper is left exactly as it was, so the text never
+   bleeds outwards into the page. */
+function bionicSpread(data, W, x0, y0, x1, y1, t){
+  const wRect = x1 - x0;
+  if(wRect < 1 || y1 <= y0 || t <= 0.001) return;
+  if(!bionicRow || bionicRow.length < (wRect + 2) * 4) bionicRow = new Uint8ClampedArray((wRect + 2) * 4);
+  const row = bionicRow;
+
+  for(let y = y0; y < y1; y++){
+    const base = y * W * 4;
+    /* copy the strip, padded one pixel each side with paper, so the ends of
+       the strip behave the same as the middle */
+    row[0] = row[1] = row[2] = 255; row[3] = 255;
+    for(let i = 0; i < wRect * 4; i++) row[4 + i] = data[base + x0 * 4 + i];
+    const tail = (wRect + 1) * 4;
+    row[tail] = row[tail+1] = row[tail+2] = 255; row[tail+3] = 255;
+
+    for(let x = 0; x < wRect; x++){
+      const c = (x + 1) * 4, l = x * 4, rr = (x + 2) * 4;
+
+      const r0 = row[c],   g0 = row[c+1], b0 = row[c+2];
+      const rL = row[l],   gL = row[l+1], bL = row[l+2];
+      const rR = row[rr],  gR = row[rr+1], bR = row[rr+2];
+
+      /* how much ink each neighbour is carrying, judged on its darkest
+         channel so coloured text counts as ink too */
+      const covL = (255 - (rL < gL ? (rL < bL ? rL : bL) : (gL < bL ? gL : bL))) / 255;
+      const covR = (255 - (rR < gR ? (rR < bR ? rR : bR) : (gR < bR ? gR : bR))) / 255;
+
+      let r = r0, g = g0, b = b0;
+      if(covL > 0){
+        const a = t * covL;
+        const nr = r0 + (rL - r0) * a, ng = g0 + (gL - g0) * a, nb = b0 + (bL - b0) * a;
+        if(nr + ng + nb < r + g + b){ r = nr; g = ng; b = nb; }
+      }
+      if(covR > 0){
+        const a = t * covR;
+        const nr = r0 + (rR - r0) * a, ng = g0 + (gR - g0) * a, nb = b0 + (bR - b0) * a;
+        if(nr + ng + nb < r + g + b){ r = nr; g = ng; b = nb; }
+      }
+      const o = base + (x0 + x) * 4;
+      data[o] = r; data[o+1] = g; data[o+2] = b;
+    }
+  }
+}
+
+/* grow by any real number of pixels: whole pixels first, then the remainder */
+function bionicGrow(data, W, x0, y0, x1, y1, grow){
+  let whole = Math.floor(grow);
+  if(whole > 3) whole = 3;                       // a sanity cap, never reached in practice
+  for(let i = 0; i < whole; i++) bionicSpread(data, W, x0, y0, x1, y1, 1);
+  bionicSpread(data, W, x0, y0, x1, y1, grow - Math.floor(grow));
+}
+
+function bionicTone(data, W, x0, y0, x1, y1, lut){
+  if(x1 <= x0 || y1 <= y0) return;
+  for(let y = y0; y < y1; y++){
+    const base = y * W * 4;
+    for(let x = x0; x < x1; x++){
+      const o = base + x * 4;
+      data[o] = lut[data[o]]; data[o+1] = lut[data[o+1]]; data[o+2] = lut[data[o+2]];
+    }
+  }
+}
+
+/* Where to stop bolding. Splitting a word by character count alone lands the
+   boundary in the middle of a letter, so half a glyph ends up bold and half
+   faded — a seam straight down the character. Instead we look at the ink and
+   slide the boundary to the emptiest column nearby, which is the gap between
+   two letters. */
+function bionicSnap(data, W, guess, lo, hi, y0, y1){
+  if(hi <= lo || y1 <= y0) return guess;
+  let bestX = guess, bestInk = Infinity;
+  for(let x = lo; x <= hi; x++){
+    let ink = 0;
+    for(let y = y0; y < y1; y++){
+      const o = y * W * 4 + x * 4;
+      const m = data[o] < data[o+1] ? (data[o] < data[o+2] ? data[o] : data[o+2])
+                                    : (data[o+1] < data[o+2] ? data[o+1] : data[o+2]);
+      ink += 255 - m;
+    }
+    /* ties go to the column nearest the original guess */
+    const score = ink * 1000 + Math.abs(x - guess);
+    if(score < bestInk){ bestInk = score; bestX = x; }
+  }
+  return bestX;
+}
+
+/* ============================================================================
+   TRUE BOLD, FOR A PAGE WE SET OURSELVES (EPUBs)
+
+   An EPUB was typeset by this app, so we know every word, its face, its size
+   and its baseline. That means we do not have to fake anything: we can wipe
+   the word and set it again with the font's REAL bold. The result is proper
+   vector text at whatever zoom you are on — no pixels are read, thickened or
+   written, so there is nothing that could soften.
+
+   The bold prefix is very slightly narrower-set so the word keeps its original
+   width. Without that the line would creep rightwards and collide with the
+   next word.
+============================================================================ */
+function paintBionicTrue(){
+  if(typeof EP_FONTS === 'undefined') return false;
+  const list = S.byPage[S.page];
+  if(!list || !list.length) return false;
+
+  /* only for books we typeset — a PDF word has no face or baseline recorded */
+  const probe = S.ribbon[list[0]];
+  if(!probe || probe.f === undefined || probe.f === null || probe.bl === undefined || probe.bl === null) return false;
+
+  const sc = S.scale;                 // pctx already carries the device-pixel transform
+  const LETTER = /[\p{L}\p{N}]/u;
+
+  pctx.save();
+  pctx.textBaseline = 'alphabetic';
+  pctx.textAlign = 'left';
+
+  for(let i = 0; i < list.length; i++){
+    const w = S.ribbon[list[i]];
+    if(!w || !w.text || w.f === undefined || w.bl === undefined) continue;
+
+    if(!EP_FONTS[w.f]) continue;
+
+    const t = w.text;
+    let a = 0, b = t.length;
+    while(a < b && !LETTER.test(t[a])) a++;
+    while(b > a && !LETTER.test(t[b-1])) b--;
+    const coreLen = b - a;
+
+    const cut  = coreLen > 0 ? a + Math.min(coreLen, bionicCut(coreLen)) : 0;
+    const head = t.slice(0, cut);
+    const tail = t.slice(cut);
+
+    const px   = w.x * sc, py = w.y * sc, pw = w.w * sc, ph = w.h * sc;
+    const base = w.bl * sc;
+
+    /* wipe the word back to paper, then set it again */
+    pctx.fillStyle = '#ffffff';
+    pctx.fillRect(px - 0.5, py, pw + 1, ph);
+
+    if(head){
+      /* measure both faces at the size actually on screen */
+      pctx.font = epFontAt(w.f, false, sc);
+      const wReg = pctx.measureText(head).width;
+      pctx.font = epFontAt(w.f, true, sc);
+      const wBold = pctx.measureText(head).width;
+
+      pctx.fillStyle = '#12100e';
+      if(wBold > wReg && wReg > 0){
+        const squeeze = wReg / wBold;               // keep the original advance
+        pctx.save();
+        pctx.translate(px, base);
+        pctx.scale(squeeze, 1);
+        pctx.fillText(head, 0, 0);
+        pctx.restore();
+      }else{
+        pctx.fillText(head, px, base);
+      }
+
+      if(tail){
+        pctx.font = epFontAt(w.f, false, sc);
+        pctx.fillStyle = bionicTailInk();
+        pctx.fillText(tail, px + wReg, base);
+      }
+    }else{
+      pctx.font = epFontAt(w.f, false, sc);
+      pctx.fillStyle = bionicTailInk();
+      pctx.fillText(t, px, base);
+    }
+  }
+  pctx.restore();
+  return true;
+}
+
+/* the page ink, lifted toward the paper by the same amount the PDF path uses */
+function bionicTailInk(){
+  const k = BIONIC_FADE;
+  const r = Math.round(255 - (255 - 0x12) * k);
+  const g = Math.round(255 - (255 - 0x10) * k);
+  const b = Math.round(255 - (255 - 0x0e) * k);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+function epFontAt(f, bold, sc){ return epFontCss(f, sc, bold); }
+
 function paintBionic(){
   if(!S.bionic || !S.book) return;
+
+  /* books we typeset get real bold; everything else gets thickened ink */
+  if(paintBionicTrue()) return;
+
   const list = S.byPage[S.page];
   if(!list || !list.length) return;
 
   const CW = pdfCanvas.width, CH = pdfCanvas.height;
   if(!CW || !CH) return;
-  const s = S.scale * (S.dpr || 1);               // pdf units -> device pixels
+  const s = S.scale * (S.dpr || 1);
   const LETTER = /[\p{L}\p{N}]/u;
 
-  /* --- pass 1: work out every rectangle, and the one box that holds them all
-     so we only have to touch that slice of the page instead of all of it --- */
+  /* --- pass 1: the box each word sits in, and the box holding all of them --- */
   const jobs = [];
   let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
 
@@ -2995,7 +3163,6 @@ function paintBionic(){
     if(!w || !w.text) continue;
     const t = w.text;
 
-    // the letters inside the token, ignoring quotes / brackets / commas
     let a = 0, b = t.length;
     while(a < b && !LETTER.test(t[a])) a++;
     while(b > a && !LETTER.test(t[b-1])) b--;
@@ -3003,27 +3170,28 @@ function paintBionic(){
     if(coreLen < 1) continue;
 
     const cut   = Math.min(coreLen, bionicCut(coreLen));
-    const charW = w.w / t.length;                 // even spread across the box
+    const charW = w.w / t.length;
     const yTop  = w.y * s, yBot = (w.y + w.h) * s;
     const ph    = yBot - yTop;
     if(ph < 2) continue;
 
-    // whole pixels only — a half-pixel rectangle is what causes fringing
-    const x0 = Math.max(0, Math.round((w.x + a * charW) * s));
-    const x1 = Math.min(CW, Math.round((w.x + (a + cut) * charW) * s));
+    const wx0 = Math.max(0, Math.round((w.x + a * charW) * s));
+    const guess = Math.round((w.x + (a + cut) * charW) * s);
+    const wEnd  = Math.min(CW, Math.round((w.x + w.w) * s));
     const y0 = Math.max(0, Math.floor(yTop));
     const y1 = Math.min(CH, Math.ceil(yBot));
-    if(x1 - x0 < 1 || y1 - y0 < 1) continue;
+    if(wEnd - wx0 < 1 || y1 - y0 < 1) continue;
 
-    const fx0 = Math.max(0, x1);
-    const fx1 = Math.min(CW, Math.round((w.x + w.w) * s));
+    /* how far the boundary may slide to find the gap between two letters */
+    const slack = Math.max(1, Math.round(charW * s * 0.45));
 
-    jobs.push({ x0:x0, x1:x1, y0:y0, y1:y1, fx0:fx0, fx1:fx1,
-                r: Math.max(1, Math.round(ph * 0.028 * BIONIC_WEIGHT)) });
+    jobs.push({ x0:wx0, guess:Math.min(Math.max(guess, wx0+1), wEnd),
+                wEnd:wEnd, y0:y0, y1:y1, slack:slack,
+                grow: ph * BIONIC_WEIGHT });
 
-    if(x0 < bx0) bx0 = x0;
+    if(wx0 < bx0) bx0 = wx0;
     if(y0 < by0) by0 = y0;
-    if(Math.max(x1,fx1) > bx1) bx1 = Math.max(x1,fx1);
+    if(wEnd > bx1) bx1 = wEnd;
     if(y1 > by1) by1 = y1;
   }
   if(!jobs.length) return;
@@ -3033,9 +3201,7 @@ function paintBionic(){
   const BW = bx1 - bx0, BH = by1 - by0;
   if(BW < 1 || BH < 1) return;
 
-  /* --- pass 2: pull that slice down, rework it, put it back -------------
-     A CPU-backed scratch canvas is used on purpose: reading pixels straight
-     off the live page canvas stalls the GPU on every single render. --- */
+  /* --- pass 2: pull that slice down, rework it, put it back --- */
   if(!bionicSrc){
     bionicSrc = document.createElement('canvas');
     try{ bionicSrcCtx = bionicSrc.getContext('2d', { willReadFrequently:true }); }
@@ -3048,20 +3214,32 @@ function paintBionic(){
 
   let img;
   try{ img = bionicSrcCtx.getImageData(0,0,BW,BH); }
-  catch(e){ return; }                              // no pixel access, no bionic
+  catch(e){ return; }
   const data = img.data, L = bionicLUTs();
 
   for(let j=0;j<jobs.length;j++){
     const k = jobs[j];
-    bionicPass(data, BW, k.x0-bx0, k.y0-by0, k.x1-bx0, k.y1-by0, k.r, L.crisp);
-    if(BIONIC_FADE < 1 && k.fx1 - k.fx0 >= 1)
-      bionicFade(data, BW, k.fx0-bx0, k.y0-by0, k.fx1-bx0, k.y1-by0, L.fade);
+    const y0 = k.y0-by0, y1 = k.y1-by0;
+    const x0 = k.x0-bx0, gEnd = k.wEnd-bx0;
+
+    const lo = Math.max(x0 + 1, k.guess - bx0 - k.slack);
+    const hi = Math.min(gEnd,   k.guess - bx0 + k.slack);
+    const cutX = bionicSnap(data, BW, k.guess - bx0, lo, hi, y0, y1);
+
+    if(cutX > x0){
+      bionicGrow(data, BW, x0, y0, cutX, y1, k.grow);
+      bionicTone(data, BW, x0, y0, cutX, y1, L.crisp);
+    }
+    if(BIONIC_FADE < 1 && gEnd > cutX) bionicTone(data, BW, cutX, y0, gEnd, y1, L.fade);
   }
 
   bionicSrcCtx.putImageData(img, 0, 0);
   pctx.save();
   pctx.setTransform(1,0,0,1,0,0);
-  pctx.globalCompositeOperation = 'copy';
+  /* the default composite on purpose: 'copy' is defined to clear the whole
+     destination, not just the rectangle drawn, which would take the margins
+     and any figure outside the text block with it */
+  pctx.globalCompositeOperation = 'source-over';
   pctx.drawImage(bionicSrc, bx0, by0);
   pctx.restore();
 }
