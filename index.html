@@ -392,6 +392,27 @@
   body.dark.graphite .sheet .box{ background:#181818; }
 
   /* bionic reading — a very small switch under the shade picker */
+  /* the continuous-scroll switch, under the bionic one on the focus rail */
+  .infbtn{ position:fixed; top:200px; left:10px; z-index:44; width:32px; height:32px;
+           border-radius:9px; border:1px solid var(--line-2); background:rgba(255,255,255,.92);
+           color:var(--ink-soft); display:none; place-items:center; cursor:pointer;
+           font-size:17px; line-height:1; padding:0; backdrop-filter:blur(6px); }
+  body.focusread .infbtn{ display:grid; }
+  body.infscroll .viewer{ overflow-x:auto; }
+  #home.show ~ .infbtn{ display:none !important; }
+  .infbtn.on{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  body.dark .infbtn{ background:rgba(28,28,28,.92); }
+  body.dark.graphite .infbtn{ background:rgba(26,26,26,.94); }
+  body.dark .infbtn.on{ background:var(--ink); color:#141414; }
+  body.dark.graphite .infbtn.on{ background:var(--ink); color:#121212; }
+
+  /* the continuous strip: one tall box, with only a handful of real pages in it */
+  .scrollstrip{ display:none; position:relative; flex:0 0 auto; align-self:flex-start; }
+  body.infscroll .scrollstrip{ display:block; }
+  body.infscroll #pageframe{ display:none !important; }
+  .scrollstrip .pageframe{ position:absolute; top:0; left:0; margin:0; will-change:transform; }
+  .pageframe canvas.ov{ pointer-events:none; }
+
   .bionicbtn{ position:fixed; top:160px; left:10px; z-index:44; width:32px; height:32px;
               border:1px solid var(--line-2); border-radius:9px; background:rgba(255,255,255,.95);
               color:var(--ink); cursor:pointer; display:none; place-items:center; padding:0;
@@ -754,6 +775,7 @@
 
     <div id="stage" class="stage" style="display:none">
       <div class="viewer" id="viewer">
+        <div class="scrollstrip" id="scrollStrip"></div>
         <div class="pageframe" id="pageframe">
           <canvas class="base" id="pdfCanvas"></canvas>
           <canvas class="veil" id="veilCanvas"></canvas>
@@ -827,6 +849,7 @@
 <button id="peekBtn" class="peek" aria-label="Show controls">controls ⌄</button>
 <button id="focusBtn" class="focusbtn" aria-pressed="false" title="Hide everything but the page">Focused Reading</button>
 <button id="bionicBtn" class="bionicbtn" aria-pressed="false" title="Bionic reading"><span><b>B</b><i>b</i></span></button>
+<button id="infBtn" class="infbtn" aria-pressed="false" title="Infinite scroll">∞</button>
 <button id="darkVarBtn" class="darkvarbtn" aria-label="Choose dark shade" aria-haspopup="true" aria-expanded="false" title="Dark shade">◑</button>
 <div id="darkVarMenu" class="darkvarmenu" role="menu" aria-label="Dark shade">
   <div class="hint">Dark shade</div>
@@ -1078,6 +1101,18 @@ const mirror = {
 /* ============================================================================
    STATE
 ============================================================================ */
+const IS = {
+  on:false, bound:null, slots:[], live:{}, cur:0,
+  gap:14, pageW:0, pageH:0, slotH:0, total:0, inset:0,
+  scale:1, dpr:2, aspect:1.294, baseW:612, poolN:3,
+  strip:null, book:null, syncRaf:null, hlPage:-1, queue:[], busy:false
+};
+
+/* Device pixels per canvas layer, capped. Beyond this a tablet starts
+   swapping, and a page that has to be re-decoded is a page that stutters. */
+const IS_PX_BUDGET  = 4.2e6;
+const IS_MEM_BUDGET = 190 * 1048576;
+
 const S = {
   library:[], book:null, page:0, zoom:1, scale:1,
   ribbon:[], byPage:[], chunks:[], wordIdx:-1,
@@ -1099,7 +1134,7 @@ const S = {
   pendingPage:-1,
   renderToken:0,
   selMode:false, hl:[], hlTab:'lib', hlView:'book',
-  focusRead:false, stats:null, dark:false, darkVar:'midnight', bionic:false, dpr:1,
+  focusRead:false, stats:null, dark:false, darkVar:'midnight', bionic:false, inf:false, dpr:1,
   homeNav:'library', homeGenre:'all',
   themes:null,
   edit:false, genreNames:null, customGenres:null
@@ -2898,7 +2933,7 @@ function saveMarks(){
 }
 function saveSettings(){
   const s = { rate:S.rate, hlStyle:S.hlStyle, follow:S.follow, tele:S.tele, teleLvl:S.teleLvl, sr:S.sr, wpm:S.wpm, srBreak:S.srBreak,
-              engine:S.engine, npVoice:S.npVoice, svUrl:S.svUrl, svMode:S.svMode, svVoice:S.svVoice, dark:S.dark, darkVar:S.darkVar, bionic:S.bionic,
+              engine:S.engine, npVoice:S.npVoice, svUrl:S.svUrl, svMode:S.svMode, svVoice:S.svVoice, dark:S.dark, darkVar:S.darkVar, bionic:S.bionic, inf:S.inf,
               narVoice: S.narVoice?S.narVoice.name:'', dlgVoice: S.dlgVoice?S.dlgVoice.name:'' };
   mirror.set('settings', s); store.set('settings', s);
 }
@@ -2922,11 +2957,14 @@ document.addEventListener('visibilitychange', function(){ if(document.hidden) fl
 /* ============================================================================
    RENDER
 ============================================================================ */
-const pdfCanvas=$('#pdfCanvas'), veilCanvas=$('#veilCanvas'), markCanvas=$('#markCanvas'), hlCanvas=$('#hlCanvas'), inkCanvas=$('#inkCanvas');
-const pctx=pdfCanvas.getContext('2d');
-const vctx=veilCanvas.getContext('2d');
-const mctx=markCanvas.getContext('2d');
-const hctx=hlCanvas.getContext('2d');
+/* These are `let`, not `const`, because continuous-scroll mode points them at
+   whichever stacked page it is currently painting. Every painting routine in
+   the app then works on that page without knowing anything about scrolling. */
+let pdfCanvas=$('#pdfCanvas'), veilCanvas=$('#veilCanvas'), markCanvas=$('#markCanvas'), hlCanvas=$('#hlCanvas'), inkCanvas=$('#inkCanvas');
+let pctx=pdfCanvas.getContext('2d');
+let vctx=veilCanvas.getContext('2d');
+let mctx=markCanvas.getContext('2d');
+let hctx=hlCanvas.getContext('2d');
 let ictx;
 try{ ictx = inkCanvas.getContext('2d',{ desynchronized:true }); }catch(e){ ictx = inkCanvas.getContext('2d'); }
 
@@ -2955,6 +2993,8 @@ function warmNextPage(n){
 async function renderPage(pageIdx){
   if(!S.book || !S.book.doc) return;
   pageIdx = clamp(pageIdx, 0, S.book.numPages-1);
+  /* in continuous mode there is no page to swap in — just travel to it */
+  if(IS.on){ isGoToPage(pageIdx); return; }
   const token = ++S.renderToken;
   S.page = pageIdx;
 
@@ -3375,17 +3415,21 @@ function setBionic(on){
   S.bionic = !!on;
   syncBionicBtn();
   saveSettings();
-  if(S.book) renderPage(S.page);                 // on: stamp it. off: clean page back.
+  if(IS.on) isRerenderAll();
+  else if(S.book) renderPage(S.page);            // on: stamp it. off: clean page back.
   toast(S.bionic ? 'Bionic reading on.' : 'Bionic reading off.');
 }
 $('#bionicBtn').onclick = function(){ setBionic(!S.bionic); };
 
 /* the veil: in telegraph mode the words we skip fade into the paper */
-function paintVeil(){
-  vctx.save(); vctx.setTransform(1,0,0,1,0,0);
-  vctx.clearRect(0,0,veilCanvas.width,veilCanvas.height);
-  vctx.restore();
-  veilCanvas.classList.toggle('on', S.tele);
+function paintVeil(noClear){
+  if(IS.on && !IS.bound){ isPaintAll(); return; }
+  if(!noClear){
+    vctx.save(); vctx.setTransform(1,0,0,1,0,0);
+    vctx.clearRect(0,0,veilCanvas.width,veilCanvas.height);
+    vctx.restore();
+    veilCanvas.classList.toggle('on', S.tele);
+  }
   if(!S.tele || !S.book) return;
   const s=S.scale, list=S.byPage[S.page]||[];
   /* the veil fades skipped words into the paper — so it has to be the colour of
@@ -3398,8 +3442,9 @@ function paintVeil(){
   }
 }
 
-function paintHighlight(){
-  if(lastHL){ hctx.clearRect(lastHL.x-3, lastHL.y-3, lastHL.w+6, lastHL.h+6); lastHL=null; }
+function paintHighlight(noClear){
+  if(IS.on && !IS.bound){ isPaintHL(); return; }
+  if(!noClear && lastHL){ hctx.clearRect(lastHL.x-3, lastHL.y-3, lastHL.w+6, lastHL.h+6); lastHL=null; }
   const w = S.ribbon[S.wordIdx];
   if(!w || w.page!==S.page) return;
   const s=S.scale;
@@ -3434,10 +3479,19 @@ function smoothScrollTo(target){
 function followHighlight(){
   if(!S.follow || S.drawing || userScrolling || glide) return;
   const w=S.ribbon[S.wordIdx];
-  if(!w || w.page!==S.page) return;
-  const viewer=$('#viewer'), frame=$('#pageframe');
-  const top = frame.offsetTop + w.y*S.scale;
-  const bot = top + w.h*S.scale;
+  if(!w) return;
+  const viewer=$('#viewer');
+  let top, bot;
+  if(IS.on){
+    if(!IS.slotH) return;
+    top = IS.gap + w.page*IS.slotH + IS.inset + w.y*IS.scale;
+    bot = top + w.h*IS.scale;
+  }else{
+    if(w.page!==S.page) return;
+    const frame=$('#pageframe');
+    top = frame.offsetTop + w.y*S.scale;
+    bot = top + w.h*S.scale;
+  }
   if(top < viewer.scrollTop + 80) smoothScrollTo(top - 150);
   else if(bot > viewer.scrollTop + viewer.clientHeight - 90) smoothScrollTo(bot - viewer.clientHeight + 160);
 }
@@ -3446,7 +3500,7 @@ function setActive(g){
   if(g===S.wordIdx) return;
   S.wordIdx = g;
   const w = S.ribbon[g];
-  if(w && w.page!==S.page){
+  if(w && w.page!==S.page && !IS.on){
     if(S.drawing){ S.pendingPage = w.page; return; }
     renderPage(w.page);
     updateProgress(); schedulePos();
@@ -3784,7 +3838,9 @@ function setFocusRead(on){
     focusClockShow(true);
     startPageTimer();
     toast('Focused reading on — tap-to-narrate is paused.');
+    if(S.inf && S.book) setInfinite(true, true);  // put it back the way you left it
   }else{
+    if(IS.on) setInfinite(false, true);          // the switch lives in focused reading
     document.body.classList.remove('focusread');
     if(typeof darkVarMenu === 'function') darkVarMenu(false);
     stopPageClock();
@@ -4414,6 +4470,7 @@ $('#voiceDlg').addEventListener('change', function(e){ S.dlgVoice = VOICES[+e.ta
 /* Turning the page should land you on the first line of it, not halfway down
    wherever your last scroll happened to leave you. */
 function scrollToPageTop(){
+  if(IS.on) return;                        // isGoToPage already put us there
   const viewer=$('#viewer'), frame=$('#pageframe');
   cancelFollow();
   if(glide){ cancelAnimationFrame(glide); glide=null; }
@@ -4434,8 +4491,8 @@ function scrollToPageTop(){
 
 $('#pgPrev').onclick   = function(){ statsBeforeTurn(); renderPage(S.page-1).then(statsAfterTurn); };
 $('#pgNext').onclick   = function(){ statsBeforeTurn(); renderPage(S.page+1).then(function(){ scrollToPageTop(); statsAfterTurn(); }); };
-$('#zoomIn').onclick   = function(){ S.zoom=Math.min(2.5,S.zoom+0.15); renderPage(S.page); };
-$('#zoomOut').onclick  = function(){ S.zoom=Math.max(0.6,S.zoom-0.15); renderPage(S.page); };
+$('#zoomIn').onclick   = function(){ S.zoom=Math.min(2.5,S.zoom+0.15); if(IS.on) isLayout(true); else renderPage(S.page); };
+$('#zoomOut').onclick  = function(){ S.zoom=Math.max(0.6,S.zoom-0.15); if(IS.on) isLayout(true); else renderPage(S.page); };
 $('#followBtn').onclick= function(){ S.follow=!S.follow; $('#followBtn').classList.toggle('on',S.follow); saveSettings(); if(S.follow) followHighlight(); };
 $('#hlStyleBtn').onclick=function(){
   S.hlStyle = S.hlStyle==='block' ? 'underline' : 'block';
@@ -4507,7 +4564,23 @@ $('#srBreak').addEventListener('change', function(e){
 });
 
 let rt=null;
-window.addEventListener('resize', function(){ clearTimeout(rt); rt=setTimeout(function(){ if(S.book) renderPage(S.page); },220); });
+/* Rotating the tablet changes the page width, so every offset in the strip
+   moves. The reading position is captured as "page N, this far into it" and
+   put back afterwards, so the words under your eyes stay under your eyes. */
+window.addEventListener('resize', function(){
+  clearTimeout(rt);
+  rt=setTimeout(function(){
+    if(!S.book) return;
+    if(IS.on) isLayout(true); else renderPage(S.page);
+  },220);
+});
+window.addEventListener('orientationchange', function(){
+  clearTimeout(rt);
+  rt=setTimeout(function(){
+    if(!S.book) return;
+    if(IS.on) isLayout(true); else renderPage(S.page);
+  },260);
+});
 
 const rail=document.querySelector('.rail'), backdrop=$('#backdrop');
 function openDrawer(){ rail.classList.add('open'); backdrop.classList.add('show'); }
@@ -5189,6 +5262,401 @@ function pulseMark(m){
 }
 
 /* ============================================================================
+   INFINITE SCROLL
+
+   One long strip with every page of the book laid out in it, but only a
+   handful of pages actually drawn — the ones you can see, plus a neighbour
+   either side. A page that scrolls away hands its canvases to a page coming
+   into view, so the memory used stays flat whether the book is 12 pages or
+   1,200.
+
+   Two things decide how many pages can be live at once, and both are measured
+   rather than guessed:
+
+     - A page at 900pt wide on a 2x screen is about 16MB per canvas layer. Five
+       layers per page, four pages live, would be 320MB — more than an Android
+       tablet will part with. So continuous mode uses three layers instead of
+       five: the page itself, ONE overlay carrying the telegraph veil, the
+       saved highlights and the spoken-word marker, and the ink you draw.
+
+     - Zooming multiplies canvas area by the square of the zoom, so at 2.5x a
+       single page would want 500MB. Instead the pixel density is dialled back
+       as you zoom in, keeping each canvas under a fixed budget. You are
+       magnifying the page anyway, so the detail you actually see is unchanged.
+
+   Everything else — narration, bionic, telegraph, highlights, ink, dark mode —
+   is the code that was already there. Before painting a page, the app points
+   its canvas variables at that page's canvases; the painting routines never
+   learn that anything changed.
+============================================================================ */
+function isDprFor(w, h){
+  let d = Math.min(window.devicePixelRatio || 1, 2);
+  while(d > 1 && (w*d)*(h*d) > IS_PX_BUDGET) d -= 0.05;
+  return Math.max(1, Math.round(d*20)/20);
+}
+function isPoolFor(w, h, d){
+  const bytes = Math.max(1, Math.round(w*d) * Math.round(h*d) * 4 * 3);
+  return clamp(Math.floor(IS_MEM_BUDGET / bytes), 2, 6);
+}
+
+function isMakeSlot(){
+  const el = document.createElement('div');
+  el.className = 'pageframe';
+  el.style.display = 'none';
+  const base = document.createElement('canvas'); base.className = 'base';
+  const ov   = document.createElement('canvas'); ov.className   = 'ov';
+  const ink  = document.createElement('canvas'); ink.className  = 'ink';
+  el.appendChild(base); el.appendChild(ov); el.appendChild(ink);
+  IS.strip.appendChild(el);
+
+  let ic;
+  try{ ic = ink.getContext('2d', { desynchronized:true }); }catch(e){ ic = ink.getContext('2d'); }
+  const sl = { el:el, base:base, ov:ov, ink:ink,
+               bctx:base.getContext('2d'), octx:ov.getContext('2d'), ictx:ic,
+               page:-1, gen:0, scale:1, dpr:2, task:null, ready:false, w:0, h:0 };
+
+  /* the pen writes on whichever page it lands on */
+  ink.addEventListener('pointerdown', function(e){
+    if(e.pointerType==='touch') return;
+    if(IS.bound) isUnbind();
+    isBind(sl);
+    penBegin(e);
+  }, { passive:false });
+  const move = function(e){ penMove(e); };
+  if('onpointerrawupdate' in ink) ink.addEventListener('pointerrawupdate', move, { passive:false });
+  else ink.addEventListener('pointermove', move, { passive:false });
+  ink.addEventListener('pointerup', function(e){ endPen(e); if(IS.bound) isUnbind(); });
+  ink.addEventListener('pointercancel', function(e){ penCancel(e); if(IS.bound) isUnbind(); });
+
+  IS.slots.push(sl);
+  return sl;
+}
+
+function isBind(sl){
+  if(IS.bound) return;
+  IS.bound = { pdfCanvas:pdfCanvas, veilCanvas:veilCanvas, markCanvas:markCanvas,
+               hlCanvas:hlCanvas, inkCanvas:inkCanvas,
+               pctx:pctx, vctx:vctx, mctx:mctx, hctx:hctx, ictx:ictx,
+               page:S.page, scale:S.scale, dpr:S.dpr, inkRect:inkRect, lastHL:lastHL };
+  pdfCanvas = sl.base;
+  veilCanvas = markCanvas = hlCanvas = sl.ov;
+  inkCanvas = sl.ink;
+  pctx = sl.bctx;
+  vctx = mctx = hctx = sl.octx;
+  ictx = sl.ictx;
+  S.page = sl.page; S.scale = sl.scale; S.dpr = sl.dpr;
+  inkRect = null; lastHL = null;
+}
+function isUnbind(){
+  const b = IS.bound; if(!b) return;
+  IS.bound = null;
+  pdfCanvas=b.pdfCanvas; veilCanvas=b.veilCanvas; markCanvas=b.markCanvas;
+  hlCanvas=b.hlCanvas; inkCanvas=b.inkCanvas;
+  pctx=b.pctx; vctx=b.vctx; mctx=b.mctx; hctx=b.hctx; ictx=b.ictx;
+  S.page=b.page; S.scale=b.scale; S.dpr=b.dpr; inkRect=b.inkRect; lastHL=b.lastHL;
+}
+
+/* one overlay carries veil + saved highlights + the spoken word */
+function isPaintSlotOverlay(sl){
+  if(sl.page < 0 || !sl.ready) return;
+  isBind(sl);
+  sl.octx.save(); sl.octx.setTransform(1,0,0,1,0,0);
+  sl.octx.clearRect(0,0,sl.ov.width,sl.ov.height);
+  sl.octx.restore();
+  paintVeil(true); paintMarks(null, true); paintHighlight(true);
+  isUnbind();
+}
+function isPaintAll(preview){
+  for(let i=0;i<IS.slots.length;i++){
+    const sl = IS.slots[i];
+    if(sl.page < 0 || !sl.ready) continue;
+    isBind(sl);
+    sl.octx.save(); sl.octx.setTransform(1,0,0,1,0,0);
+    sl.octx.clearRect(0,0,sl.ov.width,sl.ov.height);
+    sl.octx.restore();
+    paintVeil(true); paintMarks(preview || null, true); paintHighlight(true);
+    isUnbind();
+  }
+}
+/* the spoken word moves often, so only the page it left and the page it
+   arrived on are repainted */
+function isPaintHL(){
+  const w = S.ribbon[S.wordIdx];
+  const p = w ? w.page : -1;
+  if(IS.hlPage >= 0 && IS.hlPage !== p) isPaintPage(IS.hlPage);
+  IS.hlPage = p;
+  if(p >= 0) isPaintPage(p);
+}
+function isPaintPage(p){
+  const sl = IS.live[p];
+  if(sl && sl.page === p) isPaintSlotOverlay(sl);
+}
+function isRedrawInk(p){
+  const sl = IS.live[p];
+  if(!sl || sl.page !== p || !sl.ready) return;
+  isBind(sl); redrawInk(); isUnbind();
+}
+function isSlotAt(x, y){
+  for(let i=0;i<IS.slots.length;i++){
+    const sl = IS.slots[i];
+    if(sl.page < 0 || sl.el.style.display === 'none') continue;
+    const r = sl.ink.getBoundingClientRect();
+    if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return sl;
+  }
+  return null;
+}
+
+function isRelease(sl){
+  if(sl.page >= 0 && IS.live[sl.page] === sl) delete IS.live[sl.page];
+  if(sl.task){ try{ sl.task.cancel(); }catch(e){} sl.task = null; }
+  sl.gen++; sl.page = -1; sl.ready = false;
+  sl.el.style.display = 'none';
+}
+function isReleaseAll(){ for(let i=0;i<IS.slots.length;i++) isRelease(IS.slots[i]); IS.live = {}; }
+
+/* render jobs run one at a time: two pdf.js renders at once on a tablet just
+   means both are late */
+function isPump(){
+  if(IS.busy || !IS.queue.length) return;
+  const job = IS.queue.shift();
+  if(job.slot.page !== job.page){ isPump(); return; }
+  IS.busy = true;
+  isRenderSlot(job.slot, job.page).catch(function(){}).then(function(){
+    IS.busy = false; isPump();
+  });
+}
+
+async function isRenderSlot(sl, pageIdx){
+  if(!S.book || !S.book.doc || !IS.on) return;
+  const gen = sl.gen;
+  const page = await S.book.doc.getPage(pageIdx+1);
+  if(gen !== sl.gen || !IS.on) return;
+
+  const base = page.getViewport({ scale:1 });
+  /* fit inside the box both ways, so an odd-sized page can never overlap its
+     neighbour and the strip never has to shift under your thumb */
+  const sc = Math.min(IS.pageW / base.width, IS.pageH / base.height);
+  const vp = page.getViewport({ scale:sc });
+  const dpr = IS.dpr;
+  const cw = Math.max(1, Math.round(vp.width*dpr)), ch = Math.max(1, Math.round(vp.height*dpr));
+
+  [sl.base, sl.ov, sl.ink].forEach(function(cv){
+    const c2 = cv.getContext('2d');
+    if(cv.width !== cw || cv.height !== ch){
+      cv.width = cw; cv.height = ch;
+      cv.style.width = vp.width+'px';
+      cv.style.height = vp.height+'px';
+    }else{
+      c2.setTransform(1,0,0,1,0,0);
+      c2.clearRect(0,0,cw,ch);
+    }
+    c2.setTransform(dpr,0,0,dpr,0,0);
+  });
+  sl.ictx.lineCap='round'; sl.ictx.lineJoin='round';
+  sl.scale = sc; sl.dpr = dpr; sl.w = vp.width; sl.h = vp.height;
+
+  /* centre a page that does not fill its box */
+  const dy = IS.gap + pageIdx*IS.slotH + (IS.pageH - vp.height)/2;
+  const dx = (IS.pageW - vp.width)/2;
+  sl.el.style.transform = 'translate('+Math.round(dx)+'px,'+Math.round(dy)+'px)';
+  sl.el.style.display = '';
+
+  sl.task = page.render({ canvasContext: sl.bctx, viewport: vp });
+  try{ await sl.task.promise; }
+  catch(e){ if(e && e.name === 'RenderingCancelledException') return; }
+  sl.task = null;
+  if(gen !== sl.gen || !IS.on) return;
+
+  sl.ready = true;
+  isBind(sl);
+  paintBionic();
+  redrawInk();
+  sl.octx.save(); sl.octx.setTransform(1,0,0,1,0,0);
+  sl.octx.clearRect(0,0,sl.ov.width,sl.ov.height);
+  sl.octx.restore();
+  paintVeil(true); paintMarks(null, true); paintHighlight(true);
+  isUnbind();
+}
+
+function isLayout(preserve){
+  if(!S.book || !IS.strip) return;
+  const viewer = $('#viewer');
+  const n = S.book.numPages;
+
+  let anchor = IS.cur, frac = 0;
+  if(preserve && IS.slotH > 0){
+    const t = viewer.scrollTop - IS.gap;
+    anchor = clamp(Math.floor(t / IS.slotH), 0, n-1);
+    frac = clamp((t - anchor*IS.slotH) / IS.slotH, 0, 1);
+  }
+
+  IS.pageW = Math.max(80, Math.min(viewer.clientWidth - 40, 900) * S.zoom);
+  IS.pageH = IS.pageW * IS.aspect;
+  IS.slotH = IS.pageH + IS.gap;
+  IS.total = n * IS.slotH + IS.gap;
+  IS.dpr   = isDprFor(IS.pageW, IS.pageH);
+  IS.scale = IS.pageW / IS.baseW;
+  IS.inset = 0;
+  IS.poolN = isPoolFor(IS.pageW, IS.pageH, IS.dpr);
+
+  IS.strip.style.width  = Math.round(IS.pageW)+'px';
+  IS.strip.style.height = Math.round(IS.total)+'px';
+
+  while(IS.slots.length < IS.poolN) isMakeSlot();
+  while(IS.slots.length > IS.poolN){
+    const sl = IS.slots.pop();
+    isRelease(sl);
+    if(sl.el.parentNode) sl.el.parentNode.removeChild(sl.el);
+  }
+  isReleaseAll();                                   // every page is the wrong size now
+  viewer.scrollTop = IS.gap + anchor*IS.slotH + frac*IS.slotH;
+  isSync(true);
+}
+
+function isVisible(){
+  const viewer = $('#viewer');
+  const n = S.book.numPages;
+  const top = viewer.scrollTop, h = viewer.clientHeight;
+  const a = clamp(Math.floor((top - IS.gap) / IS.slotH), 0, n-1);
+  const b = clamp(Math.floor((top + h - IS.gap) / IS.slotH), 0, n-1);
+  return { a:a, b:b };
+}
+
+function isSync(force){
+  if(!IS.on || !S.book || IS.bound) return;
+  const viewer = $('#viewer');
+  const n = S.book.numPages;
+  const vis = isVisible();
+
+  const centre = viewer.scrollTop + viewer.clientHeight/2;
+  const cur = clamp(Math.floor((centre - IS.gap) / IS.slotH), 0, n-1);
+  if(cur !== IS.cur || force){
+    IS.cur = cur;
+    if(!IS.bound) S.page = cur;
+    $('#pgNum').textContent = 'Page '+(cur+1)+' / '+n+' · '+Math.round(S.zoom*100)+'%';
+    updateProgress(); schedulePos();
+  }
+
+  /* the pages we would like drawn, nearest the middle of the screen first */
+  const want = [];
+  for(let p = vis.a - 1; p <= vis.b + 1; p++){
+    if(p < 0 || p >= n) continue;
+    want.push(p);
+  }
+  want.sort(function(x, y){ return Math.abs(x-cur) - Math.abs(y-cur); });
+  const keep = want.slice(0, IS.poolN);
+
+  for(let i=0;i<IS.slots.length;i++){
+    const sl = IS.slots[i];
+    if(sl.page >= 0 && keep.indexOf(sl.page) < 0) isRelease(sl);
+  }
+  IS.queue.length = 0;
+  for(let i=0;i<keep.length;i++){
+    const p = keep[i];
+    if(IS.live[p]) continue;
+    let free = null;
+    for(let k=0;k<IS.slots.length;k++) if(IS.slots[k].page < 0){ free = IS.slots[k]; break; }
+    if(!free) break;
+    free.gen++; free.page = p; free.ready = false;
+    IS.live[p] = free;
+    /* park it in the right place immediately so nothing flashes in the wrong
+       spot while the render is still coming */
+    free.el.style.transform = 'translate(0px,'+Math.round(IS.gap + p*IS.slotH)+'px)';
+    IS.queue.push({ slot:free, page:p });
+  }
+  isPump();
+}
+
+function isScheduleSync(){
+  if(IS.syncRaf) return;
+  IS.syncRaf = requestAnimationFrame(function(){ IS.syncRaf = null; isSync(); });
+}
+
+function isGoToPage(p){
+  if(!IS.on || !S.book) return;
+  const viewer = $('#viewer');
+  p = clamp(p, 0, S.book.numPages-1);
+  cancelFollow();
+  if(glide){ cancelAnimationFrame(glide); glide=null; }
+  viewer.scrollTop = IS.gap + p*IS.slotH;
+  inkRect = null;
+  isSync(true);
+}
+
+function isRerenderAll(){
+  const live = [];
+  for(let i=0;i<IS.slots.length;i++) if(IS.slots[i].page >= 0) live.push(IS.slots[i].page);
+  isReleaseAll();
+  isSync(true);
+}
+
+async function isBuild(){
+  const viewer = $('#viewer');
+  IS.strip = $('#scrollStrip');
+  IS.book = S.book;
+  /* one page decides the shape of the whole strip, so the layout is fixed
+     before anything scrolls and can never jump afterwards */
+  let asp = 1.294, bw = 612;
+  try{
+    const p0 = await S.book.doc.getPage(1);
+    const v0 = p0.getViewport({ scale:1 });
+    if(v0.width > 0 && v0.height > 0){ asp = v0.height / v0.width; bw = v0.width; }
+  }catch(e){}
+  IS.aspect = asp; IS.baseW = bw;
+  IS.hlPage = -1;
+  isLayout(false);
+}
+function isTeardown(){
+  isReleaseAll();
+  IS.queue.length = 0;
+  for(let i=0;i<IS.slots.length;i++){
+    const sl = IS.slots[i];
+    /* hand the memory back rather than waiting for a collection */
+    sl.base.width = sl.base.height = 1;
+    sl.ov.width   = sl.ov.height   = 1;
+    sl.ink.width  = sl.ink.height  = 1;
+    if(sl.el.parentNode) sl.el.parentNode.removeChild(sl.el);
+  }
+  IS.slots.length = 0;
+  IS.live = {}; IS.slotH = 0; IS.book = null;
+}
+
+function syncInfBtn(){
+  const b = $('#infBtn'); if(!b) return;
+  b.classList.toggle('on', IS.on);
+  b.setAttribute('aria-pressed', IS.on ? 'true' : 'false');
+  b.title = IS.on ? 'Infinite scroll — on' : 'Infinite scroll';
+}
+
+async function setInfinite(on, quiet){
+  on = !!on;
+  if(on === IS.on) return;
+  if(on && (!S.book || !S.book.doc)){ toast('Open a book first.'); return; }
+  if(on){
+    IS.on = true;
+    IS.cur = S.page;
+    document.body.classList.add('infscroll');
+    await isBuild();
+    isGoToPage(S.page);
+    if(!quiet) toast('Infinite scroll on.');
+  }else{
+    const back = IS.cur;
+    IS.on = false;
+    document.body.classList.remove('infscroll');
+    isTeardown();
+    S.page = back;
+    await renderPage(back);
+    scrollToPageTop();
+    if(!quiet) toast('Infinite scroll off.');
+  }
+  /* a quiet toggle is the app tidying up (leaving focused reading), not you
+     changing your mind — so it must not overwrite what you chose */
+  if(!quiet){ S.inf = IS.on; saveSettings(); }
+  syncInfBtn();
+}
+$('#infBtn').onclick = function(){ setInfinite(!IS.on); };
+
+/* ============================================================================
    STYLUS + FINGER
 ============================================================================ */
 const viewer = $('#viewer');
@@ -5200,7 +5668,7 @@ function canvasPoint(e){
 function strokesHere(){ if(!S.strokes[S.page]) S.strokes[S.page]=[]; return S.strokes[S.page]; }
 
 let cur=null, penId=null, penDown=null, penMoved=0;
-inkCanvas.addEventListener('pointerdown', function(e){
+function penBegin(e){
   if(e.pointerType==='touch') return;
   cancelFollow();
   if(glide){ cancelAnimationFrame(glide); glide=null; }
@@ -5209,7 +5677,8 @@ inkCanvas.addEventListener('pointerdown', function(e){
   try{ inkCanvas.setPointerCapture(e.pointerId); }catch(err){}
   cur = { mode:S.penMode, pts:[canvasPoint(e)] };
   e.preventDefault();
-}, { passive:false });
+}
+inkCanvas.addEventListener("pointerdown", penBegin, { passive:false });
 
 function penMove(e){
   if(e.pointerId!==penId || !cur) return;
@@ -5236,16 +5705,24 @@ function endPen(e){
   if(wasTap) tapWord(e.clientX, e.clientY);
 }
 inkCanvas.addEventListener('pointerup', endPen);
-inkCanvas.addEventListener('pointercancel', function(e){
+function penCancel(e){
   if(e.pointerId!==penId) return;
   if(cur){ strokesHere().push(cur); scheduleInk(); }
   cur=null; penId=null; S.drawing=false;
   if(S.pendingPage>=0){ const p=S.pendingPage; S.pendingPage=-1; renderPage(p); }
-});
+}
+inkCanvas.addEventListener('pointercancel', penCancel);
 
 let touchId=null, lastY=0, vel=0, tMoved=0, pending=0, rafScroll=null, tStart=0, glideWasRunning=false;
-let lastT=0, vpx=0;
-function flushScroll(){ rafScroll=null; if(pending){ viewer.scrollTop -= pending; pending=0; inkRect=null; } }
+let lastT=0, vpx=0, lastX=0, pendingX=0;
+function flushScroll(){
+  rafScroll=null;
+  if(pending){ viewer.scrollTop -= pending; pending=0; inkRect=null; }
+  if(pendingX){
+    if(IS.on && viewer.scrollWidth > viewer.clientWidth + 1){ viewer.scrollLeft -= pendingX; inkRect=null; }
+    pendingX=0;
+  }
+}
 viewer.addEventListener('pointerdown', function(e){
   if(e.pointerType!=='touch' || penId!==null) return;
   if(S.selMode){                                   // finger paints a highlight instead of scrolling
@@ -5259,13 +5736,15 @@ viewer.addEventListener('pointerdown', function(e){
   glideWasRunning = !!glide;
   if(glide){ cancelAnimationFrame(glide); glide=null; }
   touchId=e.pointerId; lastY=e.clientY; vel=0; tMoved=0; tStart=performance.now();
-  lastT=tStart; vpx=0;
+  lastT=tStart; vpx=0; lastX=e.clientX; pendingX=0;
   userScrolling=true;
 });
 viewer.addEventListener('pointermove', function(e){
   if(S.selMode && selId===e.pointerId){ moveSelect(e.clientX, e.clientY); e.preventDefault(); return; }
   if(e.pointerId!==touchId) return;
   const now = performance.now();
+  const dx = e.clientX - lastX; lastX = e.clientX;
+  pendingX += dx;
   const dy = e.clientY - lastY; lastY = e.clientY;
   const dt = Math.max(1, now - lastT); lastT = now;
   /* speed in pixels per millisecond, smoothed so one stray sample cannot
@@ -5297,7 +5776,7 @@ viewer.addEventListener('pointerup', function(e){
   }
 });
 viewer.addEventListener('pointercancel', function(e){ if(S.selMode && selId===e.pointerId){ endSelect(); return; } touchId=null; userScrolling=false; });
-viewer.addEventListener('scroll', function(){ inkRect=null; }, { passive:true });
+viewer.addEventListener('scroll', function(){ inkRect=null; isScheduleSync(); }, { passive:true });
 
 function drawTail(stroke){
   const n=stroke.pts.length; if(n<2) return;
@@ -5314,6 +5793,7 @@ function inkFarEnough(pts, q){
   return Math.abs(q.x-last.x)*s + Math.abs(q.y-last.y)*s > 0.34;
 }
 function redrawInk(){
+  if(IS.on && !IS.bound){ isRedrawInk(S.page); return; }
   ictx.save(); ictx.setTransform(1,0,0,1,0,0);
   ictx.clearRect(0,0,inkCanvas.width,inkCanvas.height); ictx.restore();
   const s=S.scale, list=S.strokes[S.page]||[];
@@ -5334,6 +5814,15 @@ function redrawInk(){
    and finger selection. reach is how far off a word we still accept (PDF units). */
 function wordAt(clientX, clientY, reach, includeSkip){
   if(!S.book) return -1;
+  /* stacked pages: work out which one was touched, then answer for that page */
+  if(IS.on && !IS.bound){
+    const sl = isSlotAt(clientX, clientY);
+    if(!sl) return -1;
+    isBind(sl);
+    const g = wordAt(clientX, clientY, reach, includeSkip);
+    isUnbind();
+    return g;
+  }
   const r = inkCanvas.getBoundingClientRect();
   const x = (clientX-r.left)/S.scale, y = (clientY-r.top)/S.scale;
   const list = S.byPage[S.page] || [];
@@ -5364,9 +5853,12 @@ function tapWord(clientX, clientY){
    collected into the Highlights tab.
 ============================================================================ */
 function markRuns(){ return S.hl || []; }
-function paintMarks(preview){
-  mctx.save(); mctx.setTransform(1,0,0,1,0,0);
-  mctx.clearRect(0,0,markCanvas.width,markCanvas.height); mctx.restore();
+function paintMarks(preview, noClear){
+  if(IS.on && !IS.bound){ isPaintAll(preview); return; }
+  if(!noClear){
+    mctx.save(); mctx.setTransform(1,0,0,1,0,0);
+    mctx.clearRect(0,0,markCanvas.width,markCanvas.height); mctx.restore();
+  }
   if(!S.book) return;
   const s=S.scale;
   const draw=function(a,b,strong){
@@ -5416,6 +5908,9 @@ function endSelect(){
 $('#eraseBtn').onclick = function(){ S.penMode = (S.penMode==='erase')?'pen':'erase'; $('#eraseBtn').classList.toggle('on', S.penMode==='erase'); };
 $('#undoBtn').onclick  = function(){ (S.strokes[S.page]||[]).pop(); redrawInk(); scheduleInk(); };
 $('#clearBtn').onclick = function(){ S.strokes[S.page]=[]; redrawInk(); scheduleInk(); };
+document.addEventListener('keydown', function(e){
+  if(e.key === 'i' && (e.ctrlKey || e.metaKey) && S.focusRead){ e.preventDefault(); setInfinite(!IS.on); }
+});
 
 document.addEventListener('keydown', function(e){
   const tn = e.target.tagName;
@@ -6566,7 +7061,9 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
     S.dark = !!s.dark;
     S.darkVar = (s.darkVar === 'graphite') ? 'graphite' : 'midnight';
     S.bionic = !!s.bionic;
+    S.inf = !!s.inf;
     syncBionicBtn();
+    syncInfBtn();
     applyTheme();
     S.hlStyle = s.hlStyle || 'block';
     S.follow = s.follow !== false;
