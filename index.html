@@ -17,14 +17,22 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="color-scheme" content="light dark" />
-<meta name="theme-color" content="#ffffff" />
-<title>Lumen — read &amp; listen</title>
+<meta name="theme-color" content="#FBFBFB" />
+<title>NeoBook — read &amp; listen</title>
+
+<!-- Geist if the network is there; a clean system sans if it is not. The app
+     stays fully usable offline either way. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
 <style>
   :root{
-    --paper:#ffffff; --wash:#f7f7f6;
+    --paper:#FBFBFB; --wash:#f4f4f5;
+    --brand:#000E30;                 /* NeoBook navy */
     --line:#e7e6e3; --line-2:#d9d8d4;
     --ink:#1b1b1a; --ink-soft:#6d6c68; --ink-faint:#a5a49f;
     --mark:#ffe08a;  --mark-edge:#f4c64a;
@@ -32,7 +40,7 @@
     --bolt:#5b4bd6;
     --ok:#1f7a4c;
     --radius:14px;
-    --sans: ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --sans: "Geist","Geist Sans",ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *{ box-sizing:border-box; }
   html,body{ height:100%; }
@@ -46,7 +54,9 @@
   .rail{ border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:var(--paper); }
   .brand{ padding:22px 20px 16px; display:flex; align-items:baseline; gap:10px; border-bottom:1px solid var(--line); }
   .brand h1{ margin:0; font-size:19px; letter-spacing:-.02em; font-weight:600; }
-  .brand .dot{ width:7px; height:7px; border-radius:50%; background:var(--mark-edge); display:inline-block; }
+  .logo{ width:22px; height:auto; display:block; color:var(--brand); flex:0 0 auto; }
+  .brand .logo{ align-self:center; }
+  .hbrand .logo{ width:24px; align-self:center; }
   .brand small{ color:var(--ink-faint); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; }
   .drop{ margin:16px; padding:22px 16px; border:1.5px dashed var(--line-2); border-radius:var(--radius);
          text-align:center; color:var(--ink-soft); cursor:pointer; }
@@ -346,6 +356,7 @@
     --paper:#141414; --wash:#0b0b0b;
     --line:#2b2b29; --line-2:#3b3b38;
     --ink:#f1f0ed; --ink-soft:#b3b1ab; --ink-faint:#807e78;
+    --brand:#e6e9f2;                 /* the mark, inverted for a dark page */
     --bolt:#9d90ff;
     --ok:#4cc38a;
     color-scheme:dark;
@@ -399,6 +410,31 @@
            font-size:17px; line-height:1; padding:0; backdrop-filter:blur(6px); }
   body.focusread .infbtn{ display:grid; }
   body.infscroll .viewer{ overflow-x:auto; }
+
+  .funnelbtn{ position:fixed; top:240px; left:10px; z-index:44; width:32px; height:32px;
+              border-radius:9px; border:1px solid var(--line-2); background:rgba(255,255,255,.92);
+              color:var(--ink-soft); display:none; place-items:center; cursor:pointer;
+              padding:0; backdrop-filter:blur(6px); }
+  body.focusread .funnelbtn{ display:grid; }
+  .funnelbtn svg{ width:17px; height:17px; display:block; }
+  .funnelbtn.on{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  body.dark .funnelbtn{ background:rgba(28,28,28,.92); }
+  body.dark.graphite .funnelbtn{ background:rgba(26,26,26,.94); }
+  body.dark .funnelbtn.on{ background:var(--ink); color:#141414; }
+  body.dark.graphite .funnelbtn.on{ background:var(--ink); color:#121212; }
+
+  /* Progress while reading: a hairline at the foot of the screen and a small
+     count beside it. Both sit at low contrast so they read as furniture, not
+     as something asking to be looked at. */
+  .focusprog{ position:fixed; left:0; right:0; bottom:0; height:2px; z-index:46; display:none; }
+  .focusprog i{ display:block; height:100%; width:0; background:var(--ink-soft);
+                opacity:.30; transition:width .22s linear; }
+  .focuspgn{ position:fixed; right:11px; bottom:9px; z-index:46; display:none;
+             font-size:10.5px; line-height:1; color:var(--ink-soft); opacity:.32;
+             font-variant-numeric:tabular-nums; letter-spacing:.03em; pointer-events:none;
+             user-select:none; }
+  body.focusread .focusprog, body.focusread .focuspgn{ display:block; }
+  body.dark .focusprog i, body.dark .focuspgn{ opacity:.34; }
   #home.show ~ .infbtn{ display:none !important; }
   .infbtn.on{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
   body.dark .infbtn{ background:rgba(28,28,28,.92); }
@@ -492,7 +528,7 @@
   .homerail{ background:var(--paper); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
   .hbrand{ padding:22px 22px 18px; display:flex; align-items:baseline; gap:9px; }
   .hbrand h1{ margin:0; font-size:20px; font-weight:600; letter-spacing:-.02em; }
-  .hbrand .dot{ width:7px; height:7px; border-radius:50%; background:var(--mark-edge); }
+
   .hnav{ padding:6px 12px; display:flex; flex-direction:column; gap:2px; }
   .hnavitem{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none;
              padding:11px 13px; border-radius:10px; font-size:14px; color:var(--ink-soft); cursor:pointer; font-weight:500; }
@@ -691,7 +727,7 @@
 <!-- ===================== HOME · reading library ===================== -->
 <div id="home" class="show">
   <aside class="homerail">
-    <div class="hbrand"><span class="dot"></span><h1>Lumen</h1></div>
+    <div class="hbrand"><svg class="logo" viewBox="0 0 104 92" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M28 6h38v22h-38a11 11 0 0 1 0-22z"/><path d="M66 7l34 3.5-34 5.5z"/><path d="M66 18l27 3.5-27 6z"/><path d="M20 34h38v22h-38a11 11 0 0 1 0-22z"/><path d="M58 35l34 3.5-34 5.5z"/><path d="M58 46l27 3.5-27 6z"/><path d="M12 62h38v22h-38a11 11 0 0 1 0-22z"/><path d="M50 63l34 3.5-34 5.5z"/><path d="M50 74l27 3.5-27 6z"/></g></svg><h1>NeoBook</h1></div>
     <div class="hnav">
       <button id="navLibrary" class="hnavitem on"><span class="ic">▤</span> Library</button>
       <div id="genreNav" class="hsublist"></div>
@@ -716,7 +752,7 @@
 
 <div class="app">
   <aside class="rail">
-    <div class="brand"><span class="dot"></span><h1>Lumen</h1><small>read &amp; listen</small></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 104 92" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M28 6h38v22h-38a11 11 0 0 1 0-22z"/><path d="M66 7l34 3.5-34 5.5z"/><path d="M66 18l27 3.5-27 6z"/><path d="M20 34h38v22h-38a11 11 0 0 1 0-22z"/><path d="M58 35l34 3.5-34 5.5z"/><path d="M58 46l27 3.5-27 6z"/><path d="M12 62h38v22h-38a11 11 0 0 1 0-22z"/><path d="M50 63l34 3.5-34 5.5z"/><path d="M50 74l27 3.5-27 6z"/></g></svg><h1>NeoBook</h1><small>read &amp; listen</small></div>
     <div class="railhome"><button id="railHomeBtn">← Library</button></div>
     <div id="drop" class="drop">
       <b>Drop books here</b><span>PDF or EPUB · add as many as you like</span>
@@ -789,7 +825,7 @@
     <div id="empty" class="empty">
       <div class="card">
         <h3>Open a book to begin</h3>
-        <p>Lumen narrates your PDF and lights up each word on the page — read, listen and annotate at once.</p>
+        <p>NeoBook narrates your PDF and lights up each word on the page — read, listen and annotate at once.</p>
         <p class="hint">Tap a word to read from there. <span class="r">Pen draws</span> · finger scrolls · turn on <b>Select</b> to highlight with your finger.</p>
         <p><button id="emptyAdd" class="pill" style="margin-top:6px">Add a PDF</button></p>
       </div>
@@ -850,6 +886,11 @@
 <button id="focusBtn" class="focusbtn" aria-pressed="false" title="Hide everything but the page">Focused Reading</button>
 <button id="bionicBtn" class="bionicbtn" aria-pressed="false" title="Bionic reading"><span><b>B</b><i>b</i></span></button>
 <button id="infBtn" class="infbtn" aria-pressed="false" title="Infinite scroll">∞</button>
+<button id="funnelBtn" class="funnelbtn" aria-pressed="false" title="Visual Funnel (Bionic Margin Tuning)">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.6 4.2A1 1 0 0 1 3.5 3.6h17a1 1 0 0 1 .78 1.63l-6.53 8.06v5.3a1 1 0 0 1-.55.9l-3.2 1.6A1 1 0 0 1 9.55 20v-6.7L2.9 5.24a1 1 0 0 1-.3-1.04Z"/></svg>
+</button>
+<div class="focusprog" id="focusProg"><i id="focusProgBar"></i></div>
+<div class="focuspgn" id="focusPgn"></div>
 <button id="darkVarBtn" class="darkvarbtn" aria-label="Choose dark shade" aria-haspopup="true" aria-expanded="false" title="Dark shade">◑</button>
 <div id="darkVarMenu" class="darkvarmenu" role="menu" aria-label="Dark shade">
   <div class="hint">Dark shade</div>
@@ -920,7 +961,7 @@
   <div class="box">
     <h3>Backup &amp; Restore</h3>
     <p>Move everything — highlights, notes, ink, reading position, stats, reading list, genres, themes and
-       settings — from one copy of Lumen to another. Works between the file you open from WhatsApp and the
+       settings — from one copy of NeoBook to another. Works between the file you open from WhatsApp and the
        one you host online, in either direction.</p>
 
     <div class="bkrow">
@@ -964,7 +1005,7 @@
         <b>Make these sound much better</b> — on the tablet open
         <i>Settings → Accessibility → Text-to-speech output</i>, set the engine to
         <b>Google Text-to-speech</b>, then <i>Install voice data → English (United States)</i> and download
-        the voices marked as high quality. Reopen Lumen afterwards.
+        the voices marked as high quality. Reopen NeoBook afterwards.
       </div>
       <div class="row">
         <button id="devUse" class="primary">Use device voices</button>
@@ -1013,7 +1054,7 @@
       </div>
       <p id="svStatus" class="kv"></p>
       <p class="kv">If this page is on <code>https://</code>, Chrome will block a plain
-         <code>http://</code> server. Serve Lumen from the same machine over http and the problem disappears.</p>
+         <code>http://</code> server. Serve NeoBook from the same machine over http and the problem disappears.</p>
     </div>
   </div>
 </div>
@@ -1099,6 +1140,322 @@ const mirror = {
 };
 
 /* ============================================================================
+   VISUAL FUNNEL  (Bionic Margin Tuning)
+
+   Ordinary book columns are 65-75 characters wide. Your eye cannot take that
+   in at once: sharp vision comes from the fovea, a patch about two degrees
+   across, which at reading distance covers only a handful of characters. So a
+   wide line has to be crossed in a series of jerks — saccades — and each jerk
+   costs a fixation, a re-focus and a moment of blindness while the eye is
+   moving.
+
+   The funnel narrows the column until a whole line falls inside, or nearly
+   inside, that sharp patch, and centres it so the line always begins near
+   where the last one ended. The eye drops down the page instead of sweeping
+   across it. Lines are set at one and a half times the type size so the
+   return sweep cannot land on the wrong one.
+
+   Headings keep their own size and their own wider measure: they are
+   signposts, not something you read word by word.
+
+   Nothing is re-authored. Every word keeps its identity — the same word that
+   narration speaks, that a highlight covers, that bionic thickens. Only its
+   position on the page changes, so every other feature in the app keeps
+   working by asking for the word's box rather than assuming where it is.
+============================================================================ */
+const FN = {
+  on:false,
+  chars:32,                    /* target line length, in characters          */
+  colW:0, spaceW:5, avgCharW:9, baseSize:19.5,
+  padT:64, padB:80, pageW:820,
+  heights:null,                /* funnelled height of every page, in page units */
+  cache:Object.create(null), order:[], max:10,
+  scratch:null, sctx:null,
+  anchor:-1
+};
+
+/* Which style band a word belongs to. EPUB records the real font, so headings
+   are known exactly; a PDF only gives us glyph heights, so anything markedly
+   taller than the body is treated as a heading. */
+function fnStyleOf(w, med){
+  if(w.f !== undefined && w.f !== null){
+    if(w.f >= 4 && w.f <= 6) return 'head';
+    if(w.f === 8) return 'code';
+    if(w.f === 7) return 'quote';
+    if(w.f === 9) return 'small';
+    return 'body';
+  }
+  if(med > 0 && w.h > med * 1.28) return 'head';
+  return 'body';
+}
+function fnSizeOf(w){
+  if(w.f !== undefined && w.f !== null && EP_FONTS[w.f]) return EP_FONTS[w.f].s;
+  return w.h;                              /* a PDF word's height is its type size */
+}
+
+/* One measurement for the whole book, so the column does not change width
+   from page to page. */
+function fnCalibrate(){
+  let chars = 0, wide = 0, n = 0, hs = [], sz = [];
+  const total = S.book ? S.book.numPages : 0;
+  const step = Math.max(1, Math.floor(total / 12));
+  for(let p = 0; p < total; p += step){
+    const list = S.byPage[p] || [];
+    for(let i = 0; i < list.length; i++){
+      const w = S.ribbon[list[i]];
+      if(!w || !w.text) continue;
+      if(w.f !== undefined && w.f !== null && !(w.f >= 0 && w.f <= 3)) continue;
+      chars += w.text.length; wide += w.w; hs.push(w.h); sz.push(fnSizeOf(w)); n++;
+      if(n > 4000) break;
+    }
+    if(n > 4000) break;
+  }
+  hs.sort(function(a,b){ return a-b; });
+  sz.sort(function(a,b){ return a-b; });
+  const med = hs.length ? hs[hs.length >> 1] : 24;
+  FN.avgCharW = chars > 0 ? (wide / chars) : 9;
+  /* the body type size as the book actually sets it, not as its glyph boxes
+     happen to measure — line spacing is quoted against real type size */
+  FN.baseSize = sz.length ? sz[sz.length >> 1] : med;
+  FN.medH = med;
+  FN.spaceW = FN.avgCharW * 0.55;
+  FN.colW = clamp(FN.chars * FN.avgCharW, FN.pageW * 0.26, FN.pageW * 0.62);
+  return med;
+}
+
+/* Break one page into a centred column. Returns its height, and — when asked —
+   the position of every word so the rest of the app can find them again. */
+function fnLayout(p, wantBoxes){
+  const list = S.byPage[p] || [];
+  const pageW = FN.pageW, colW = FN.colW;
+  const cx = pageW / 2;
+  const out = { h: FN.padT + FN.padB, items: wantBoxes ? [] : null,
+                box: wantBoxes ? Object.create(null) : null, imgs: [] };
+
+  /* pictures on this page, in flow order */
+  let pics = [];
+  if(S.book && S.book.doc && S.book.doc.__epubPages){
+    const pg = S.book.doc.__epubPages[p];
+    if(pg && pg.imgs) pics = pg.imgs.slice();
+  }
+
+  if(!list.length && !pics.length){ out.h = Math.max(out.h, FN.padT + FN.padB + 40); return out; }
+
+  /* --- original lines ------------------------------------------------- */
+  const lines = [];
+  let cur = null;
+  for(let i = 0; i < list.length; i++){
+    const g = list[i], w = S.ribbon[g];
+    if(!w || !w.text) continue;
+    if(!cur || Math.abs(w.y - cur.y) > Math.max(4, cur.h * 0.55)){
+      cur = { y:w.y, yb:w.y + w.h, h:w.h, ws:[g], sty:fnStyleOf(w, FN.medH), sz:fnSizeOf(w) };
+      lines.push(cur);
+    }else{
+      cur.ws.push(g);
+      if(w.h > cur.h) cur.h = w.h;
+      if(w.y + w.h > cur.yb) cur.yb = w.y + w.h;
+    }
+  }
+
+  /* --- lines into paragraphs ------------------------------------------- */
+  const blocks = [];
+  for(let i = 0; i < lines.length; i++){
+    const ln = lines[i], prev = lines[i-1];
+    const gap = prev ? (ln.y - prev.yb) : 0;
+    const brk = !prev || ln.sty !== prev.sty || gap > ln.h * 0.85;
+    if(brk) blocks.push({ sty:ln.sty, sz:ln.sz, ws:[], y:ln.y });
+    const b = blocks[blocks.length-1];
+    for(let k = 0; k < ln.ws.length; k++) b.ws.push(ln.ws[k]);
+    if(ln.sz > b.sz) b.sz = ln.sz;
+  }
+
+  /* --- set them ---------------------------------------------------------- */
+  let y = FN.padT;
+  const push = function(g, x, top, wdt, sz){
+    if(!wantBoxes) return;
+    const r = S.ribbon[g];
+    /* keep the word's own proportions: the same ink, moved */
+    const asc = (r.bl !== undefined && r.bl !== null) ? (r.bl - r.y) : sz * 0.82;
+    const b = { text:r.text, say:r.say, page:r.page, skip:r.skip, tele:r.tele,
+                f:r.f, g:g,
+                x:x, y:top, w:wdt, h:r.h, bl:top + asc,
+                ox:r.x, oy:r.y, ow:r.w, oh:r.h };
+    out.items.push(b); out.box[g] = b;
+  };
+
+  let bi = 0, pi = 0;
+  while(bi < blocks.length || pi < pics.length){
+    /* a picture that belongs before the next paragraph goes in first */
+    const nextY = bi < blocks.length ? blocks[bi].y : Infinity;
+    if(pi < pics.length && pics[pi].y <= nextY){
+      const im = pics[pi++];
+      const maxW = im.cover ? pageW * 0.62 : Math.min(pageW * 0.72, colW * 1.7);
+      const k = Math.min(1, maxW / Math.max(1, im.w));
+      const dw = im.w * k, dh = im.h * k;
+      out.imgs.push({ src:im.src, x:cx - dw/2, y:y, w:dw, h:dh });
+      y += dh + FN.baseSize * 1.2;
+      continue;
+    }
+    if(bi >= blocks.length) break;
+
+    const b = blocks[bi++];
+    const isHead = (b.sty === 'head');
+    const measure = isHead ? Math.min(pageW * 0.74, colW * 1.7) : colW;
+    const lh = b.sz * (isHead ? 1.34 : 1.5);
+    const sp = FN.spaceW * (b.sz / Math.max(1, FN.baseSize));
+
+    /* greedy line breaking inside the measure */
+    let row = [], rowW = 0;
+    const flush = function(){
+      if(!row.length) return;
+      let x = cx - rowW / 2;
+      for(let k = 0; k < row.length; k++){
+        const it = row[k];
+        push(it.g, x, y, it.w, b.sz);
+        x += it.w + sp;
+      }
+      y += lh;
+      row = []; rowW = 0;
+    };
+    for(let k = 0; k < b.ws.length; k++){
+      const g = b.ws[k], w = S.ribbon[g];
+      if(!w) continue;
+      const ww = w.w;
+      const add = row.length ? sp + ww : ww;
+      if(row.length && rowW + add > measure){ flush(); }
+      row.push({ g:g, w:ww });
+      rowW += row.length === 1 ? ww : (sp + ww);
+    }
+    flush();
+    y += lh * (isHead ? 0.55 : 0.42);            /* space between paragraphs */
+  }
+  while(pi < pics.length){
+    const im = pics[pi++];
+    const maxW = Math.min(pageW * 0.72, colW * 1.7);
+    const k = Math.min(1, maxW / Math.max(1, im.w));
+    const dw = im.w * k, dh = im.h * k;
+    out.imgs.push({ src:im.src, x:cx - dw/2, y:y, w:dw, h:dh });
+    y += dh + FN.baseSize * 1.2;
+  }
+
+  out.h = Math.max(FN.padT + FN.padB + 40, y + FN.padB);
+  return out;
+}
+
+/* laid-out pages are kept for a short while, then let go */
+function fnGet(p){
+  let lay = FN.cache[p];
+  if(lay) return lay;
+  lay = fnLayout(p, true);
+  FN.cache[p] = lay; FN.order.push(p);
+  while(FN.order.length > FN.max){
+    const old = FN.order.shift();
+    if(old !== p) delete FN.cache[old];
+  }
+  return lay;
+}
+function fnForget(){ FN.cache = Object.create(null); FN.order.length = 0; }
+function fnHeight(p){
+  if(!FN.on) return 0;
+  if(FN.heights && FN.heights[p] > 0) return FN.heights[p];
+  const h = fnLayout(p, false).h;
+  if(FN.heights) FN.heights[p] = h;
+  return h;
+}
+function fnMeasureAll(){
+  const n = S.book ? S.book.numPages : 0;
+  FN.heights = new Float64Array(n);
+  for(let p = 0; p < n; p++) FN.heights[p] = fnLayout(p, false).h;
+}
+
+/* Where a word sits right now. Everything that draws on, or points at, a word
+   goes through here, so the funnel never has to be special-cased twice. */
+function wbox(g){
+  const r = S.ribbon[g];
+  if(!FN.on || !r) return r;
+  const lay = FN.cache[r.page];
+  return (lay && lay.box[g]) || r;
+}
+
+/* Draw a funnelled page. An EPUB is re-set with its real fonts, so it stays
+   sharp at any zoom and bionic can still thicken it. A PDF has no fonts we can
+   read, only a picture — so each word is lifted from a scratch render of the
+   original page and set down in its new place, which keeps the book's own
+   typeface instead of substituting one. */
+async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
+  const lay = fnGet(p);
+  const doc = S.book && S.book.doc;
+  ctx2d.save();
+  ctx2d.fillStyle = '#ffffff';
+  ctx2d.fillRect(0, 0, vpW, vpH);
+  if(!doc){ ctx2d.restore(); return; }
+
+  if(doc.__epub){
+    if(lay.imgs.length && doc.__imgReady){ try{ await doc.__imgReady(p); }catch(e){} }
+    for(let i = 0; i < lay.imgs.length; i++){
+      const im = lay.imgs[i];
+      const bm = doc.__imgOf ? doc.__imgOf(im.src) : null;
+      if(!bm) continue;
+      const iw = bm.naturalWidth || bm.width, ih = bm.naturalHeight || bm.height;
+      if(!iw || !ih) continue;
+      const k = Math.min(im.w/iw, im.h/ih);
+      const dw = iw*k, dh = ih*k;
+      try{ ctx2d.drawImage(bm, (im.x + (im.w-dw)/2)*sc, (im.y + (im.h-dh)/2)*sc, dw*sc, dh*sc); }catch(e){}
+    }
+    ctx2d.textBaseline = 'alphabetic';
+    ctx2d.textAlign = 'left';
+    ctx2d.fillStyle = '#12100e';
+    let curF = -1;
+    for(let i = 0; i < lay.items.length; i++){
+      const it = lay.items[i];
+      if(it.f !== curF){ ctx2d.font = epFontCss(it.f, sc); curF = it.f; }
+      ctx2d.fillText(it.text, it.x*sc, it.bl*sc);
+    }
+    ctx2d.restore();
+    return;
+  }
+
+  /* --- PDF: cut the words out of the real page and re-set them ---------- */
+  const dpr = S.dpr || 1;
+  let src = null;
+  try{
+    const page = await doc.getPage(p+1);
+    const vp0 = page.getViewport({ scale: sc });
+    const w0 = Math.max(1, Math.round(vp0.width*dpr)), h0 = Math.max(1, Math.round(vp0.height*dpr));
+    if(!FN.scratch){
+      FN.scratch = document.createElement('canvas');
+      FN.sctx = FN.scratch.getContext('2d');
+    }
+    if(FN.scratch.width !== w0 || FN.scratch.height !== h0){
+      FN.scratch.width = w0; FN.scratch.height = h0;
+    }
+    FN.sctx.setTransform(1,0,0,1,0,0);
+    FN.sctx.fillStyle = '#ffffff'; FN.sctx.fillRect(0,0,w0,h0);
+    FN.sctx.setTransform(dpr,0,0,dpr,0,0);
+    const t = page.render({ canvasContext: FN.sctx, viewport: vp0 });
+    await t.promise;
+    src = FN.scratch;
+  }catch(e){ src = null; }
+
+  if(!src){ ctx2d.restore(); return; }
+  for(let i = 0; i < lay.items.length; i++){
+    const it = lay.items[i];
+    const sx = it.ox*sc*dpr, sy = it.oy*sc*dpr;
+    const sw = Math.max(1, it.ow*sc*dpr), sh = Math.max(1, it.oh*sc*dpr);
+    try{ ctx2d.drawImage(src, sx, sy, sw, sh, it.x*sc, it.y*sc, it.ow*sc, it.oh*sc); }catch(e){}
+  }
+  ctx2d.restore();
+}
+
+/* the funnelled height of a page, in the same units the rest of the app uses */
+function fnViewport(page, p, scale){
+  const base = page.getViewport({ scale:1 });
+  if(!FN.on) return page.getViewport({ scale:scale });
+  FN.pageW = base.width;
+  return { width: base.width*scale, height: fnHeight(p)*scale, scale:scale };
+}
+
+/* ============================================================================
    STATE
 ============================================================================ */
 const IS = {
@@ -1134,7 +1491,7 @@ const S = {
   pendingPage:-1,
   renderToken:0,
   selMode:false, hl:[], hlTab:'lib', hlView:'book',
-  focusRead:false, stats:null, dark:false, darkVar:'midnight', bionic:false, inf:false, dpr:1,
+  focusRead:false, stats:null, dark:false, darkVar:'midnight', bionic:false, inf:false, funnel:false, dpr:1,
   homeNav:'library', homeGenre:'all',
   themes:null,
   edit:false, genreNames:null, customGenres:null
@@ -1412,7 +1769,7 @@ function yieldToUI(){ return new Promise(function(r){ setTimeout(r, 0); }); }
    An EPUB is a zip of XHTML. It has no pages — the reader makes them. That is
    exactly why it beats a PDF on a tablet: the type is set for this screen
    instead of being a photograph of A4. Everything below turns a .epub into the
-   same shape the rest of Lumen already speaks: a pdf.js-looking document whose
+   same shape the rest of NeoBook already speaks: a pdf.js-looking document whose
    pages hand back word boxes and paint themselves onto a canvas.
 
    The layout is computed once, when the book is added, and then stored with the
@@ -1977,7 +2334,7 @@ function epOrder(words, H){
 }
 
 /* ---- the document adapter ---------------------------------------------- */
-/* Looks and behaves like a pdf.js document, so every other part of Lumen —
+/* Looks and behaves like a pdf.js document, so every other part of NeoBook —
    narration, highlights, ink, Bionic, stats — works without knowing about it. */
 function epMakeDoc(pages, meta, imageLoader){
   var cache = Object.create(null);
@@ -2046,6 +2403,8 @@ function epMakeDoc(pages, meta, imageLoader){
     numPages: pages.length,
     __epub: true,
     __epubPages: pages,
+    __imgReady: ready,                 /* wait for a page's pictures to decode */
+    __imgOf: function(src){ return cache[src] || null; },
     getPage: function(n){
       var pi = (n | 0) - 1;
       return Promise.resolve({
@@ -2933,7 +3292,7 @@ function saveMarks(){
 }
 function saveSettings(){
   const s = { rate:S.rate, hlStyle:S.hlStyle, follow:S.follow, tele:S.tele, teleLvl:S.teleLvl, sr:S.sr, wpm:S.wpm, srBreak:S.srBreak,
-              engine:S.engine, npVoice:S.npVoice, svUrl:S.svUrl, svMode:S.svMode, svVoice:S.svVoice, dark:S.dark, darkVar:S.darkVar, bionic:S.bionic, inf:S.inf,
+              engine:S.engine, npVoice:S.npVoice, svUrl:S.svUrl, svMode:S.svMode, svVoice:S.svVoice, dark:S.dark, darkVar:S.darkVar, bionic:S.bionic, inf:S.inf, funnel:S.funnel,
               narVoice: S.narVoice?S.narVoice.name:'', dlgVoice: S.dlgVoice?S.dlgVoice.name:'' };
   mirror.set('settings', s); store.set('settings', s);
 }
@@ -3005,7 +3364,7 @@ async function renderPage(pageIdx){
   const fit    = Math.min(viewer.clientWidth-40, 900);
   const base   = page.getViewport({ scale:1 });
   S.scale = (fit/base.width) * S.zoom;
-  const vp  = page.getViewport({ scale:S.scale });
+  const vp  = fnViewport(page, pageIdx, S.scale);
   const dpr = Math.min(window.devicePixelRatio||1, 2);
   S.dpr = dpr;
 
@@ -3026,9 +3385,14 @@ async function renderPage(pageIdx){
   lastHL = null; inkRect = null;
 
   if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
-  renderTask = page.render({ canvasContext:pctx, viewport:vp });
-  try{ await renderTask.promise; }
-  catch(e){ if(e && e.name==='RenderingCancelledException') return; }
+  if(FN.on){
+    renderTask = null;
+    try{ await fnDrawPage(pctx, pageIdx, S.scale, vp.width, vp.height); }catch(e){}
+  }else{
+    renderTask = page.render({ canvasContext:pctx, viewport:vp });
+    try{ await renderTask.promise; }
+    catch(e){ if(e && e.name==='RenderingCancelledException') return; }
+  }
   if(token !== S.renderToken) return;
 
   paintBionic();
@@ -3222,7 +3586,7 @@ function paintBionicTrue(){
   if(!list || !list.length) return false;
 
   /* only for books we typeset — a PDF word has no face or baseline recorded */
-  const probe = S.ribbon[list[0]];
+  const probe = wbox(list[0]);
   if(!probe || probe.f === undefined || probe.f === null || probe.bl === undefined || probe.bl === null) return false;
 
   const sc = S.scale;                 // pctx already carries the device-pixel transform
@@ -3233,7 +3597,7 @@ function paintBionicTrue(){
   pctx.textAlign = 'left';
 
   for(let i = 0; i < list.length; i++){
-    const w = S.ribbon[list[i]];
+    const w = wbox(list[i]);
     if(!w || !w.text || w.f === undefined || w.bl === undefined) continue;
 
     if(!EP_FONTS[w.f]) continue;
@@ -3319,7 +3683,7 @@ function paintBionic(){
   let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
 
   for(let i=0;i<list.length;i++){
-    const w = S.ribbon[list[i]];
+    const w = wbox(list[i]);
     if(!w || !w.text) continue;
     const t = w.text;
 
@@ -3417,6 +3781,7 @@ function setBionic(on){
   saveSettings();
   if(IS.on) isRerenderAll();
   else if(S.book) renderPage(S.page);            // on: stamp it. off: clean page back.
+  if(!IS.on && S.book) updateProgress();
   toast(S.bionic ? 'Bionic reading on.' : 'Bionic reading off.');
 }
 $('#bionicBtn').onclick = function(){ setBionic(!S.bionic); };
@@ -3436,8 +3801,8 @@ function paintVeil(noClear){
      the paper. On a dark page that's black, not white. */
   vctx.fillStyle = S.dark ? 'rgba(0,0,0,0.62)' : 'rgba(255,255,255,0.62)';
   for(let i=0;i<list.length;i++){
-    const g=list[i], w=S.ribbon[g];
-    if(speakable(g)) continue;
+    const g=list[i], w=wbox(g);
+    if(!w || speakable(g)) continue;
     vctx.fillRect(w.x*s-0.5, w.y*s-0.5, w.w*s+1, w.h*s+1);
   }
 }
@@ -3445,7 +3810,7 @@ function paintVeil(noClear){
 function paintHighlight(noClear){
   if(IS.on && !IS.bound){ isPaintHL(); return; }
   if(!noClear && lastHL){ hctx.clearRect(lastHL.x-3, lastHL.y-3, lastHL.w+6, lastHL.h+6); lastHL=null; }
-  const w = S.ribbon[S.wordIdx];
+  const w = wbox(S.wordIdx);
   if(!w || w.page!==S.page) return;
   const s=S.scale;
   const x=w.x*s, y=w.y*s, ww=w.w*s, hh=w.h*s;
@@ -3478,13 +3843,13 @@ function smoothScrollTo(target){
 }
 function followHighlight(){
   if(!S.follow || S.drawing || userScrolling || glide) return;
-  const w=S.ribbon[S.wordIdx];
+  const w=wbox(S.wordIdx);
   if(!w) return;
   const viewer=$('#viewer');
   let top, bot;
   if(IS.on){
-    if(!IS.slotH) return;
-    top = IS.gap + w.page*IS.slotH + IS.inset + w.y*IS.scale;
+    if(!IS.tops) return;
+    top = IS.tops[w.page] + w.y*IS.scale;
     bot = top + w.h*IS.scale;
   }else{
     if(w.page!==S.page) return;
@@ -3509,7 +3874,12 @@ function setActive(g){
   paintHighlight(); followHighlight(); updateProgress(); schedulePos();
 }
 function updateProgress(){
-  $('#progressBar').style.width = (pctNow()*100)+'%';
+  const pct = pctNow();
+  $('#progressBar').style.width = (pct*100)+'%';
+  const fb = $('#focusProgBar');
+  if(fb) fb.style.width = (pct*100)+'%';
+  const fp = $('#focusPgn');
+  if(fp) fp.textContent = S.book ? ((S.page+1)+' / '+S.book.numPages) : '';
 }
 
 /* ============================================================================
@@ -3839,8 +4209,15 @@ function setFocusRead(on){
     startPageTimer();
     toast('Focused reading on — tap-to-narrate is paused.');
     if(S.inf && S.book) setInfinite(true, true);  // put it back the way you left it
+    if(S.funnel && S.book) setFunnel(true, true);
   }else{
+    /* Leaving focused reading: hold on to the word you were reading, take the
+       funnel and the strip down, then put you back on that same word. No
+       hunting for your place. */
+    const keepG = (FN.on || IS.on) ? readingAnchor() : -1;
+    if(FN.on) setFunnel(false, true);
     if(IS.on) setInfinite(false, true);          // the switch lives in focused reading
+    if(keepG >= 0) setTimeout(function(){ goToWord(keepG); }, 0);
     document.body.classList.remove('focusread');
     if(typeof darkVarMenu === 'function') darkVarMenu(false);
     stopPageClock();
@@ -4439,7 +4816,7 @@ function releaseWakeLock(){ try{ if(wakeLock){ wakeLock.release(); wakeLock=null
 function setMediaMeta(){
   if(!('mediaSession' in navigator) || !S.book) return;
   try{
-    navigator.mediaSession.metadata = new MediaMetadata({ title:bookTitle(S.book), artist:'Lumen' });
+    navigator.mediaSession.metadata = new MediaMetadata({ title:bookTitle(S.book), artist:'NeoBook' });
     navigator.mediaSession.setActionHandler('play',  function(){ if(!S.playing) play(); });
     navigator.mediaSession.setActionHandler('pause', function(){ if(S.playing) pause(); });
   }catch(e){}
@@ -4480,7 +4857,7 @@ function scrollToPageTop(){
   if(list.length){
     let minY = Infinity;
     for(let i=0;i<list.length;i++){
-      const w = S.ribbon[list[i]];
+      const w = wbox(list[i]);
       if(w && w.y < minY) minY = w.y;
     }
     if(minY < Infinity) top = frame.offsetTop + minY*S.scale - 24;
@@ -5435,8 +5812,10 @@ async function isRenderSlot(sl, pageIdx){
   const base = page.getViewport({ scale:1 });
   /* fit inside the box both ways, so an odd-sized page can never overlap its
      neighbour and the strip never has to shift under your thumb */
-  const sc = Math.min(IS.pageW / base.width, IS.pageH / base.height);
-  const vp = page.getViewport({ scale:sc });
+  const boxH = IS.hts[pageIdx] || IS.pageH;
+  const sc = FN.on ? (IS.pageW / base.width)
+                   : Math.min(IS.pageW / base.width, boxH / base.height);
+  const vp = fnViewport(page, pageIdx, sc);
   const dpr = IS.dpr;
   const cw = Math.max(1, Math.round(vp.width*dpr)), ch = Math.max(1, Math.round(vp.height*dpr));
 
@@ -5456,15 +5835,21 @@ async function isRenderSlot(sl, pageIdx){
   sl.scale = sc; sl.dpr = dpr; sl.w = vp.width; sl.h = vp.height;
 
   /* centre a page that does not fill its box */
-  const dy = IS.gap + pageIdx*IS.slotH + (IS.pageH - vp.height)/2;
+  const dy = IS.tops[pageIdx] + Math.max(0, (boxH - vp.height)/2);
   const dx = (IS.pageW - vp.width)/2;
   sl.el.style.transform = 'translate('+Math.round(dx)+'px,'+Math.round(dy)+'px)';
   sl.el.style.display = '';
 
-  sl.task = page.render({ canvasContext: sl.bctx, viewport: vp });
-  try{ await sl.task.promise; }
-  catch(e){ if(e && e.name === 'RenderingCancelledException') return; }
-  sl.task = null;
+  if(FN.on){
+    const keepDpr = S.dpr; S.dpr = dpr;
+    try{ await fnDrawPage(sl.bctx, pageIdx, sc, vp.width, vp.height); }catch(e){}
+    S.dpr = keepDpr;
+  }else{
+    sl.task = page.render({ canvasContext: sl.bctx, viewport: vp });
+    try{ await sl.task.promise; }
+    catch(e){ if(e && e.name === 'RenderingCancelledException') return; }
+    sl.task = null;
+  }
   if(gen !== sl.gen || !IS.on) return;
 
   sl.ready = true;
@@ -5484,20 +5869,33 @@ function isLayout(preserve){
   const n = S.book.numPages;
 
   let anchor = IS.cur, frac = 0;
-  if(preserve && IS.slotH > 0){
-    const t = viewer.scrollTop - IS.gap;
-    anchor = clamp(Math.floor(t / IS.slotH), 0, n-1);
-    frac = clamp((t - anchor*IS.slotH) / IS.slotH, 0, 1);
+  if(preserve && IS.tops){
+    anchor = isPageAt(viewer.scrollTop);
+    frac = clamp((viewer.scrollTop - IS.tops[anchor]) / Math.max(1, IS.hts[anchor]), 0, 1);
   }
 
   IS.pageW = Math.max(80, Math.min(viewer.clientWidth - 40, 900) * S.zoom);
   IS.pageH = IS.pageW * IS.aspect;
   IS.slotH = IS.pageH + IS.gap;
-  IS.total = n * IS.slotH + IS.gap;
-  IS.dpr   = isDprFor(IS.pageW, IS.pageH);
   IS.scale = IS.pageW / IS.baseW;
   IS.inset = 0;
-  IS.poolN = isPoolFor(IS.pageW, IS.pageH, IS.dpr);
+
+  /* Every page gets its own height, because a funnelled page is as long as its
+     text needs. They are all measured before anything scrolls, so the strip is
+     correct from the first frame and can never resize under your thumb. */
+  IS.tops = new Float64Array(n+1);
+  IS.hts  = new Float64Array(n);
+  let acc = IS.gap, tallest = IS.pageH;
+  for(let p = 0; p < n; p++){
+    const h = FN.on ? fnHeight(p) * IS.scale : IS.pageH;
+    IS.hts[p] = h; IS.tops[p] = acc;
+    acc += h + IS.gap;
+    if(h > tallest) tallest = h;
+  }
+  IS.tops[n] = acc;
+  IS.total = acc;
+  IS.dpr   = isDprFor(IS.pageW, tallest);
+  IS.poolN = isPoolFor(IS.pageW, tallest, IS.dpr);
 
   IS.strip.style.width  = Math.round(IS.pageW)+'px';
   IS.strip.style.height = Math.round(IS.total)+'px';
@@ -5509,17 +5907,26 @@ function isLayout(preserve){
     if(sl.el.parentNode) sl.el.parentNode.removeChild(sl.el);
   }
   isReleaseAll();                                   // every page is the wrong size now
-  viewer.scrollTop = IS.gap + anchor*IS.slotH + frac*IS.slotH;
+  viewer.scrollTop = IS.tops[anchor] + frac*IS.hts[anchor];
   isSync(true);
 }
 
+/* which page covers this offset — pages are no longer all the same height */
+function isPageAt(y){
+  const n = S.book.numPages;
+  if(!IS.tops) return 0;
+  let lo = 0, hi = n-1;
+  while(lo < hi){
+    const mid = (lo + hi + 1) >> 1;
+    if(IS.tops[mid] <= y) lo = mid; else hi = mid - 1;
+  }
+  return clamp(lo, 0, n-1);
+}
 function isVisible(){
   const viewer = $('#viewer');
   const n = S.book.numPages;
   const top = viewer.scrollTop, h = viewer.clientHeight;
-  const a = clamp(Math.floor((top - IS.gap) / IS.slotH), 0, n-1);
-  const b = clamp(Math.floor((top + h - IS.gap) / IS.slotH), 0, n-1);
-  return { a:a, b:b };
+  return { a: isPageAt(top), b: isPageAt(top + h) };
 }
 
 function isSync(force){
@@ -5528,8 +5935,7 @@ function isSync(force){
   const n = S.book.numPages;
   const vis = isVisible();
 
-  const centre = viewer.scrollTop + viewer.clientHeight/2;
-  const cur = clamp(Math.floor((centre - IS.gap) / IS.slotH), 0, n-1);
+  const cur = isPageAt(viewer.scrollTop + viewer.clientHeight/2);
   if(cur !== IS.cur || force){
     IS.cur = cur;
     if(!IS.bound) S.page = cur;
@@ -5561,7 +5967,7 @@ function isSync(force){
     IS.live[p] = free;
     /* park it in the right place immediately so nothing flashes in the wrong
        spot while the render is still coming */
-    free.el.style.transform = 'translate(0px,'+Math.round(IS.gap + p*IS.slotH)+'px)';
+    free.el.style.transform = 'translate(0px,'+Math.round(IS.tops[p])+'px)';
     IS.queue.push({ slot:free, page:p });
   }
   isPump();
@@ -5578,7 +5984,7 @@ function isGoToPage(p){
   p = clamp(p, 0, S.book.numPages-1);
   cancelFollow();
   if(glide){ cancelAnimationFrame(glide); glide=null; }
-  viewer.scrollTop = IS.gap + p*IS.slotH;
+  viewer.scrollTop = IS.tops ? IS.tops[p] : 0;
   inkRect = null;
   isSync(true);
 }
@@ -5656,6 +6062,101 @@ async function setInfinite(on, quiet){
 }
 $('#infBtn').onclick = function(){ setInfinite(!IS.on); };
 
+/* ---------------------------------------------------------------------------
+   WHERE YOU WERE
+
+   Layouts change — the funnel rewraps every line, the strip re-measures on
+   rotation, leaving focused reading swaps the whole view. What does not change
+   is which word you had your eyes on. So a position is remembered as a word,
+   not as a pixel offset, and put back by finding that same word wherever it
+   has ended up.
+------------------------------------------------------------------------- */
+function nearestWordOn(p, yUnits){
+  const list = S.byPage[p] || [];
+  let best = -1, bd = Infinity;
+  for(let i=0;i<list.length;i++){
+    const g = list[i], w = wbox(g);
+    if(!w || w.skip) continue;
+    const d = Math.abs(w.y - yUnits);
+    if(d < bd){ bd = d; best = g; }
+  }
+  if(best < 0 && list.length) best = list[0];
+  return best;
+}
+function readingAnchor(){
+  if(!S.book) return -1;
+  const viewer = $('#viewer');
+  const probe = viewer.scrollTop + 48;
+  if(IS.on && IS.tops){
+    const p = isPageAt(probe);
+    if(FN.on) fnGet(p);
+    return nearestWordOn(p, (probe - IS.tops[p]) / Math.max(0.0001, IS.scale));
+  }
+  const frame = $('#pageframe');
+  return nearestWordOn(S.page, (probe - frame.offsetTop) / Math.max(0.0001, S.scale));
+}
+async function goToWord(g){
+  const r = S.ribbon[g];
+  if(!r) return;
+  const viewer = $('#viewer');
+  if(FN.on) fnGet(r.page);
+  if(IS.on){
+    isGoToPage(r.page);
+    const b = wbox(g);
+    if(b && IS.tops) viewer.scrollTop = Math.max(0, IS.tops[r.page] + b.y*IS.scale - 60);
+    isSync(true);
+  }else{
+    await renderPage(r.page);
+    const b = wbox(g);
+    const frame = $('#pageframe');
+    if(b) viewer.scrollTop = Math.max(0, frame.offsetTop + b.y*S.scale - 60);
+  }
+  inkRect = null;
+}
+
+/* ---------------------------------------------------------------------------
+   VISUAL FUNNEL — the switch
+------------------------------------------------------------------------- */
+function syncFunnelBtn(){
+  const b = $('#funnelBtn'); if(!b) return;
+  b.classList.toggle('on', FN.on);
+  b.setAttribute('aria-pressed', FN.on ? 'true' : 'false');
+  b.title = FN.on ? 'Visual Funnel — on' : 'Visual Funnel (Bionic Margin Tuning)';
+}
+async function setFunnel(on, quiet){
+  on = !!on;
+  if(on === FN.on) return;
+  if(on && (!S.book || !S.book.doc)){ toast('Open a book first.'); return; }
+
+  const keep = readingAnchor();
+  if(on){
+    FN.pageW = 820;
+    try{
+      const p0 = await S.book.doc.getPage(1);
+      const v0 = p0.getViewport({ scale:1 });
+      if(v0.width > 0) FN.pageW = v0.width;
+    }catch(e){}
+    fnCalibrate();
+    FN.on = true;
+    fnForget();
+    fnMeasureAll();
+  }else{
+    FN.on = false;
+    fnForget();
+    FN.heights = null;
+    if(FN.scratch){ FN.scratch.width = FN.scratch.height = 1; }
+  }
+  document.body.classList.toggle('funnel', FN.on);
+  if(IS.on) isLayout(false);
+  if(keep >= 0) await goToWord(keep);
+  else await renderPage(S.page);
+  updateProgress();
+
+  if(!quiet){ S.funnel = FN.on; saveSettings(); toast(FN.on ? 'Visual Funnel on.' : 'Visual Funnel off.'); }
+  syncFunnelBtn();
+}
+$('#funnelBtn').onclick = function(){ setFunnel(!FN.on); };
+
 /* ============================================================================
    STYLUS + FINGER
 ============================================================================ */
@@ -5670,6 +6171,7 @@ function strokesHere(){ if(!S.strokes[S.page]) S.strokes[S.page]=[]; return S.st
 let cur=null, penId=null, penDown=null, penMoved=0;
 function penBegin(e){
   if(e.pointerType==='touch') return;
+  if(FN.on){ toast('Turn the funnel off to annotate.'); return; }
   cancelFollow();
   if(glide){ cancelAnimationFrame(glide); glide=null; }
   penId=e.pointerId; penDown={x:e.clientX,y:e.clientY}; penMoved=0; S.drawing=true;
@@ -5796,6 +6298,10 @@ function redrawInk(){
   if(IS.on && !IS.bound){ isRedrawInk(S.page); return; }
   ictx.save(); ictx.setTransform(1,0,0,1,0,0);
   ictx.clearRect(0,0,inkCanvas.width,inkCanvas.height); ictx.restore();
+  /* Ink is anchored to where the words used to be, so it cannot follow them
+     into the funnel. It is hidden rather than moved, and comes back untouched
+     the moment the funnel is off. */
+  if(FN.on) return;
   const s=S.scale, list=S.strokes[S.page]||[];
   for(let k=0;k<list.length;k++){
     const st=list[k];
@@ -5829,8 +6335,8 @@ function wordAt(clientX, clientY, reach, includeSkip){
   let hit=-1, best=Infinity;
   const R = (reach||50); const R2=R*R;
   for(let i=0;i<list.length;i++){
-    const g=list[i], w=S.ribbon[g];
-    if(w.skip && !includeSkip) continue;
+    const g=list[i], w=wbox(g);
+    if(!w || (w.skip && !includeSkip)) continue;
     if(x>=w.x && x<=w.x+w.w && y>=w.y && y<=w.y+w.h) return g;
     const cx = clamp(x, w.x, w.x+w.w), cy = clamp(y, w.y, w.y+w.h);
     const dx = x-cx, dy = (y-cy)*2.2;         // aim is worse vertically than horizontally
@@ -5866,7 +6372,7 @@ function paintMarks(preview, noClear){
     mctx.fillStyle = THEME.mark;
     mctx.globalAlpha = strong ? 0.55 : 0.42;
     for(let g=lo; g<=hi; g++){
-      const w=S.ribbon[g];
+      const w=wbox(g);
       if(!w || w.page!==S.page) continue;
       mctx.fillRect(w.x*s-1, w.y*s-0.5, w.w*s+2, w.h*s+1);
     }
@@ -6043,7 +6549,7 @@ $$('.tabs button').forEach(function(b){
   };
 });
 
-function previewText(){ return 'Lumen reads your books aloud, one word at a time.'; }
+function previewText(){ return 'NeoBook reads your books aloud, one word at a time.'; }
 let previewUrl=null;
 function previewWith(fn){
   unlockAudio();
@@ -7062,8 +7568,10 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
     S.darkVar = (s.darkVar === 'graphite') ? 'graphite' : 'midnight';
     S.bionic = !!s.bionic;
     S.inf = !!s.inf;
+    S.funnel = !!s.funnel;
     syncBionicBtn();
     syncInfBtn();
+    syncFunnelBtn();
     applyTheme();
     S.hlStyle = s.hlStyle || 'block';
     S.follow = s.follow !== false;
@@ -7103,7 +7611,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
 
 /* ============================================================================
    BACKUP & RESTORE
-   Everything Lumen owns lives in exactly two places: the IndexedDB store 'kv',
+   Everything NeoBook owns lives in exactly two places: the IndexedDB store 'kv',
    and the localStorage keys prefixed 'lumen:'. This walks both, writes one JSON
    file, and can read that file back. Written for a 4 GB tablet: the export is
    streamed into Blob pieces instead of one giant string, big binaries are
@@ -7228,7 +7736,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
 
       var stamp = new Date();
       var pad = function(n){ return (n<10?'0':'') + n; };
-      var name = 'lumen_backup_' + stamp.getFullYear() + pad(stamp.getMonth()+1) + pad(stamp.getDate())
+      var name = 'neobook_backup_' + stamp.getFullYear() + pad(stamp.getMonth()+1) + pad(stamp.getDate())
                + '_' + pad(stamp.getHours()) + pad(stamp.getMinutes()) + '.json';
 
       var url = URL.createObjectURL(blob);
@@ -7279,7 +7787,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
       text = null;
     }catch(err){
       bkLock(false);
-      bkStatus('That file could not be read as a Lumen backup. It may be damaged, or too large for this tablet to open in one go.');
+      bkStatus('That file could not be read as a NeoBook backup. It may be damaged, or too large for this tablet to open in one go.');
       return;
     }
 
@@ -7288,7 +7796,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
        typeof data.idb !== 'object' || data.idb === null ||
        typeof data.local !== 'object' || data.local === null){
       bkLock(false);
-      bkStatus('This does not look like a Lumen backup file. Pick the <b>lumen_backup\u2026.json</b> file you exported.');
+      bkStatus('This does not look like a NeoBook backup file. Pick the <b>neobook_backup\u2026.json</b> file you exported (older <b>lumen_backup\u2026.json</b> files still work).');
       return;
     }
 
@@ -7301,7 +7809,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
       'Made on: ' + when + '\n' +
       'Records: ' + idbKeys.length + ' stored + ' + locKeys.length + ' quick-save\n' +
       'Includes PDF files: ' + (data.includesBooks ? 'yes' : 'no') + '\n\n' +
-      'Anything already here under the same name will be overwritten. Lumen will reload when it finishes.'
+      'Anything already here under the same name will be overwritten. NeoBook will reload when it finishes.'
     );
     if(!ok){ bkLock(false); bkStatus('Restore cancelled. Nothing was changed.'); return; }
 
@@ -7334,7 +7842,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
     data = null;
     bkStatus('Restored <b>' + wrote + '</b> record(s)'
              + (failed ? ', ' + failed + ' could not be written' : '')
-             + '. Reloading Lumen so everything shows up\u2026');
+             + '. Reloading NeoBook so everything shows up\u2026');
     toast('Backup restored \u2014 reloading.');
 
     /* A reload is the honest way to bring the whole UI back in step: the library,
