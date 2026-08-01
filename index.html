@@ -411,6 +411,17 @@
   body.focusread .infbtn{ display:grid; }
   body.infscroll .viewer{ overflow-x:auto; }
 
+  .hlbtn{ position:fixed; top:280px; left:10px; z-index:44; width:32px; height:32px;
+          border-radius:9px; border:1px solid var(--line-2); background:rgba(255,255,255,.92);
+          color:var(--ink-soft); display:none; place-items:center; cursor:pointer;
+          padding:0; backdrop-filter:blur(6px); }
+  body.focusread .hlbtn{ display:grid; }
+  .hlbtn svg{ width:17px; height:17px; display:block; }
+  .hlbtn.on{ background:var(--mark-edge); color:#3a2f05; border-color:var(--mark-edge); }
+  body.dark .hlbtn{ background:rgba(28,28,28,.92); }
+  body.dark.graphite .hlbtn{ background:rgba(26,26,26,.94); }
+  body.dark .hlbtn.on{ background:var(--mark-edge); color:#2a2205; border-color:var(--mark-edge); }
+
   .funnelbtn{ position:fixed; top:240px; left:10px; z-index:44; width:32px; height:32px;
               border-radius:9px; border:1px solid var(--line-2); background:rgba(255,255,255,.92);
               color:var(--ink-soft); display:none; place-items:center; cursor:pointer;
@@ -888,6 +899,9 @@
 <button id="infBtn" class="infbtn" aria-pressed="false" title="Infinite scroll">∞</button>
 <button id="funnelBtn" class="funnelbtn" aria-pressed="false" title="Visual Funnel (Bionic Margin Tuning)">
   <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.6 4.2A1 1 0 0 1 3.5 3.6h17a1 1 0 0 1 .78 1.63l-6.53 8.06v5.3a1 1 0 0 1-.55.9l-3.2 1.6A1 1 0 0 1 9.55 20v-6.7L2.9 5.24a1 1 0 0 1-.3-1.04Z"/></svg>
+</button>
+<button id="focusHlBtn" class="hlbtn" aria-pressed="false" title="Highlight with your finger">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><path d="M15.6 2.9a2.1 2.1 0 0 1 3 0l2.5 2.5a2.1 2.1 0 0 1 0 3l-7.7 7.7-5.5-5.5 7.7-7.7Z"/><path d="M6.6 11.5l5.9 5.9-1.8 1.8H8.4l-.9.9H4.1l-.7-.7 1.4-1.4v-2.5l1.8-4Z"/><path d="M2.6 21.2h18.8v2H2.6z" opacity=".55"/></g></svg>
 </button>
 <div class="focusprog" id="focusProg"><i id="focusProgBar"></i></div>
 <div class="focuspgn" id="focusPgn"></div>
@@ -1368,6 +1382,50 @@ function fnMeasureAll(){
   for(let p = 0; p < n; p++) FN.heights[p] = fnLayout(p, false).h;
 }
 
+/* Measure in slices, handing the screen back between each one, so the tablet
+   never locks up. Same numbers as fnMeasureAll, just spread out. */
+function fnMeasureChunked(onDone){
+  const n = S.book ? S.book.numPages : 0;
+  FN.heights = new Float64Array(n);
+  let p = 0;
+  FN.sliceWorst = 0; FN.slices = []; FN.slicePages = [];
+  const slice = function(){
+    /* Two limits, not one. Browsers deliberately blur performance.now() to
+       protect against timing attacks, and a clock that does not appear to move
+       would let a time-only budget run the whole book in a single slice. The
+       page count is the backstop. */
+    const t0 = performance.now(), until = t0 + 6, cap = p + 24;
+    const from = p;
+    while(p < n && p < cap && performance.now() < until) FN.heights[p] = fnLayout(p++, false).h;
+    FN.slicePages.push(p - from);
+    const took = performance.now() - t0;
+    if(took > FN.sliceWorst) FN.sliceWorst = took;
+    FN.slices.push(took);
+    if(p < n){ requestAnimationFrame(slice); return; }
+    onDone();
+  };
+  slice();
+}
+
+/* The shape of a funnelled page depends only on the book and the column, so
+   the measurements are worth keeping between sessions. */
+function fnSig(){
+  return [S.book ? S.book.numPages : 0, Math.round(FN.pageW), Math.round(FN.colW*100),
+          Math.round(FN.baseSize*100), FN.chars].join('|');
+}
+async function fnLoadHeights(){
+  if(!S.book) return false;
+  let rec = null;
+  try{ rec = await store.get('fnh:'+S.book.id); }catch(e){}
+  if(!rec || rec.sig !== fnSig() || !rec.h || rec.h.length !== S.book.numPages) return false;
+  FN.heights = (rec.h instanceof Float64Array) ? rec.h : Float64Array.from(rec.h);
+  return true;
+}
+function fnSaveHeights(){
+  if(!S.book || !FN.heights) return;
+  try{ store.set('fnh:'+S.book.id, { sig:fnSig(), h:FN.heights }); }catch(e){}
+}
+
 /* Where a word sits right now. Everything that draws on, or points at, a word
    goes through here, so the funnel never has to be special-cased twice. */
 function wbox(g){
@@ -1462,7 +1520,8 @@ const IS = {
   on:false, bound:null, slots:[], live:{}, cur:0,
   gap:14, pageW:0, pageH:0, slotH:0, total:0, inset:0,
   scale:1, dpr:2, aspect:1.294, baseW:612, poolN:3,
-  strip:null, book:null, syncRaf:null, hlPage:-1, queue:[], busy:false
+  strip:null, book:null, syncRaf:null, hlPage:-1, queue:[], busy:false, pumpT:null,
+  tops:null, hts:null
 };
 
 /* Device pixels per canvas layer, capped. Beyond this a tablet starts
@@ -3074,6 +3133,12 @@ async function openBook(bk, autoResume){
   let target = -1;
   if(autoResume && saved && saved.wordIdx>=0 && saved.wordIdx<S.ribbon.length) target = saved.wordIdx;
 
+  /* the line you were actually looking at, which focused reading leaves behind
+     even when narration never ran */
+  let anchor = -1;
+  if(autoResume && saved && typeof saved.anchor === 'number' &&
+     saved.anchor >= 0 && saved.anchor < S.ribbon.length) anchor = saved.anchor;
+
   /* Where to land. If narration left a word marker we honour it; otherwise we fall
      back to the plain page number, which is what Focused Reading leaves behind
      (it never touches the word index). This is why returning from Focused Reading
@@ -3085,14 +3150,29 @@ async function openBook(bk, autoResume){
       resumePage = clamp(saved.page, 0, S.book.numPages-1);
   }
 
+  if(autoResume && saved && saved.anchor >= 0 && S.ribbon[saved.anchor])
+    resumePage = S.ribbon[saved.anchor].page;
+
   await renderPage(resumePage);
+
+  /* put the reading view back the way you left it, then land on the line */
+  if(autoResume && saved && S.focusRead){
+    if(saved.funnel && !FN.on) await setFunnel(true, true);
+    if(saved.inf && !IS.on)    await setInfinite(true, true);
+  }
+  if(anchor >= 0){
+    lastAnchor = anchor;
+    await goToWord(anchor);
+    if(target < 0) toast('Picked up where you left off.');
+  }
+
   if(target>=0){
     S.wordIdx = -1;
     setActive(nextSpeakable(target));
     S.follow = true; $('#followBtn').classList.add('on');
     followHighlight();
-    toast('Picked up where you left off.');
-  }else if(autoResume && resumePage>0){
+    if(anchor < 0) toast('Picked up where you left off.');
+  }else if(autoResume && resumePage>0 && anchor<0){
     toast('Picked up on page '+(resumePage+1)+'.');
   }
   updateProgress();
@@ -3174,7 +3254,15 @@ function pageProgress(){
 }
 function pctNow(){ return pageProgress(); }
 function posRecord(){
-  return { wordIdx:S.wordIdx, page:S.page, zoom:S.zoom, at:Date.now(), pct:pctNow() };
+  return { wordIdx:S.wordIdx, page:S.page, zoom:S.zoom, at:Date.now(), pct:pctNow(),
+           anchor: lastAnchor, inf: !!IS.on, funnel: !!FN.on, focus: !!S.focusRead };
+}
+/* Recomputed as you scroll rather than at save time, so writing a position
+   never has to go looking for it. */
+let lastAnchor = -1;
+function noteAnchor(){
+  if(!S.book) return;
+  try{ const g = readingAnchor(); if(g >= 0) lastAnchor = g; }catch(e){}
 }
 function savePosNow(){
   if(!S.book) return;
@@ -4967,16 +5055,21 @@ backdrop.onclick = closeDrawer;
 $('#emptyAdd').onclick = function(){ $('#file').click(); };
 
 /* ---------- Select mode (finger highlighting) ---------- */
-function setSelectMode(on){
+function setSelectMode(on, quiet){
   S.selMode = on;
   $('#selectBtn').classList.toggle('on', on);
+  const fb = $('#focusHlBtn');
+  if(fb){ fb.classList.toggle('on', on); fb.setAttribute('aria-pressed', on?'true':'false'); }
   $('#viewer').classList.toggle('selecting', on);
   if(on){
     if(S.follow){ S.follow=false; $('#followBtn').classList.remove('on'); }   // don't fight the finger
-    toast('Select on — drag your finger across text to highlight.');
+    if(!quiet) toast('Highlighter on \u2014 drag your finger across the words.');
+  }else if(!quiet){
+    toast('Highlighter off.');
   }
 }
 $('#selectBtn').onclick = function(){ setSelectMode(!S.selMode); };
+$('#focusHlBtn').onclick = function(){ setSelectMode(!S.selMode); };
 
 /* ---------- Library / Highlights tabs ---------- */
 function setRailTab(which){
@@ -5793,8 +5886,21 @@ function isReleaseAll(){ for(let i=0;i<IS.slots.length;i++) isRelease(IS.slots[i
 
 /* render jobs run one at a time: two pdf.js renders at once on a tablet just
    means both are late */
+/* Speed, not contact. Dragging slowly through a book should still fill the
+   pages in as they arrive; it is only a fast fling, where the screen is moving
+   faster than you could read it anyway, that is worth staying out of. */
+function isFlinging(){
+  return Math.abs(scrollSpeed) > 0.9;          /* pixels per millisecond */
+}
+function isPumpSoon(){
+  if(IS.pumpT) return;
+  IS.pumpT = setTimeout(function(){ IS.pumpT = null; isPump(); }, 90);
+}
 function isPump(){
   if(IS.busy || !IS.queue.length) return;
+  /* drawing a page costs several milliseconds; spending them while the finger
+     is still travelling is exactly what makes a scroll feel gritty */
+  if(isFlinging()){ isPumpSoon(); return; }
   const job = IS.queue.shift();
   if(job.slot.page !== job.page){ isPump(); return; }
   IS.busy = true;
@@ -5936,6 +6042,7 @@ function isSync(force){
   const vis = isVisible();
 
   const cur = isPageAt(viewer.scrollTop + viewer.clientHeight/2);
+  isAnchorSoon();
   if(cur !== IS.cur || force){
     IS.cur = cur;
     if(!IS.bound) S.page = cur;
@@ -5971,8 +6078,31 @@ function isSync(force){
     IS.queue.push({ slot:free, page:p });
   }
   isPump();
+  isWarmLayout(keep);
 }
 
+/* lay out the next pages during a quiet moment, never during a fling */
+let fnWarmT = null;
+function isWarmLayout(keep){
+  if(!FN.on || fnWarmT !== null) return;
+  const go = function(){
+    fnWarmT = null;
+    if(isFlinging()) return;
+    for(let i = 0; i < keep.length; i++){
+      if(!FN.cache[keep[i]]){ fnGet(keep[i]); return; }
+    }
+  };
+  fnWarmT = (window.requestIdleCallback)
+    ? requestIdleCallback(function(){ fnWarmT = null; go(); }, { timeout:900 })
+    : setTimeout(function(){ fnWarmT = null; go(); }, 220);
+}
+
+/* the anchor is only needed when things have settled, so it waits for a gap */
+let isAnchorT = null;
+function isAnchorSoon(){
+  clearTimeout(isAnchorT);
+  isAnchorT = setTimeout(noteAnchor, 260);
+}
 function isScheduleSync(){
   if(IS.syncRaf) return;
   IS.syncRaf = requestAnimationFrame(function(){ IS.syncRaf = null; isSync(); });
@@ -6139,7 +6269,10 @@ async function setFunnel(on, quiet){
     fnCalibrate();
     FN.on = true;
     fnForget();
-    fnMeasureAll();
+    if(!(await fnLoadHeights())){
+      await new Promise(function(res){ fnMeasureChunked(res); });
+      fnSaveHeights();
+    }
   }else{
     FN.on = false;
     fnForget();
@@ -6217,6 +6350,7 @@ inkCanvas.addEventListener('pointercancel', penCancel);
 
 let touchId=null, lastY=0, vel=0, tMoved=0, pending=0, rafScroll=null, tStart=0, glideWasRunning=false;
 let lastT=0, vpx=0, lastX=0, pendingX=0;
+let scrollSpeed = 0;                 /* how fast the page is moving, px per ms */
 function flushScroll(){
   rafScroll=null;
   if(pending){ viewer.scrollTop -= pending; pending=0; inkRect=null; }
@@ -6252,14 +6386,16 @@ viewer.addEventListener('pointermove', function(e){
   /* speed in pixels per millisecond, smoothed so one stray sample cannot
      throw the flick off */
   vpx = vpx*0.7 + (dy/dt)*0.3;
+  scrollSpeed = vpx;
   tMoved += Math.abs(dy); vel = dy; pending += dy;
   if(tMoved>10 && S.follow){ S.follow=false; $('#followBtn').classList.remove('on'); }
   if(!rafScroll) rafScroll = requestAnimationFrame(flushScroll);
 });
 viewer.addEventListener('pointerup', function(e){
-  if(S.selMode && selId===e.pointerId){ endSelect(); e.preventDefault(); return; }
+  if(S.selMode && selId===e.pointerId){ endSelect(); e.preventDefault(); userScrolling=false; return; }
+  if(e.pointerId===touchId && IS.on) setTimeout(function(){ if(!isFlinging()) isPump(); }, 0);
   if(e.pointerId!==touchId) return;
-  touchId=null; userScrolling=false; inkRect=null;
+  touchId=null; userScrolling=false; scrollSpeed=0; inkRect=null;
   const dt = performance.now() - tStart;
   if(tMoved<10 && dt<400){
     if(glideWasRunning) return;
@@ -6272,7 +6408,9 @@ viewer.addEventListener('pointerup', function(e){
       const dt = Math.min(48, Math.max(1, now - prev)); prev = now;
       v *= Math.pow(0.9965, dt);            // same decay per millisecond, any frame rate
       viewer.scrollTop -= v*dt; inkRect=null;
-      if(Math.abs(v)>0.012) glide=requestAnimationFrame(step); else glide=null;
+      scrollSpeed = v;
+      if(Math.abs(v)>0.012){ glide=requestAnimationFrame(step); }
+      else { glide=null; scrollSpeed=0; if(IS.on) isPump(); }
     };
     glide=requestAnimationFrame(step);
   }
@@ -6895,6 +7033,7 @@ async function fillCovers(cards){
 function delBookKeys(bk){
   ['meta:','card:','bytes:','ink:','pos:','marks:','cover:','img:','readstats:','eimg:'].forEach(function(pfx){ store.del(pfx+bk.id); });
   mirror.del('pos:'+bk.id);
+  store.del('fnh:'+bk.id);
   for(var i=0;i<(bk.numPages||0);i++){ store.del('pg:'+bk.id+':'+i); store.del('ink:'+bk.id+':'+i); }
 }
 function bkPct(bk){ if(bk===S.book) return pctNow(); return (bk.pos && bk.pos.pct) || 0; }
@@ -6912,7 +7051,7 @@ function setDone(bk, done){
 function bkPage(bk){ if(bk===S.book) return S.page; return (bk.pos && bk.pos.page) || 0; }
 
 /* ---- navigation ---- */
-function showHome(){ stopPageClock(); focusClockShow(false); $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
+function showHome(){ if(S.book){ noteAnchor(); savePosNow(); } stopPageClock(); focusClockShow(false); $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
 function showReader(){ $('#home').classList.remove('show'); }
 async function openFromHome(bk){ showReader(); await openBook(bk); }
 function removeBook(bk){
@@ -7621,7 +7760,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
 (function(){
 
   /* keys whose value can be rebuilt from the PDF, so they are optional */
-  var HEAVY = /^(bytes:|pg:|img:|meta:)/;   // ink: stays in the light backup — it is small and irreplaceable
+  var HEAVY = /^(bytes:|pg:|img:|meta:|fnh:)/;   /* fnh: is only a cache — it rebuilds itself */   // ink: stays in the light backup — it is small and irreplaceable
 
   var bkBusy = false;
 
