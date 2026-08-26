@@ -17,7 +17,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="color-scheme" content="light dark" />
-<meta name="theme-color" content="#FBFBFB" />
+<meta name="theme-color" content="#F0EEE9" />
 <title>NeoBook — read &amp; listen</title>
 
 <!-- Geist if the network is there; a clean system sans if it is not. The app
@@ -162,9 +162,17 @@
   .badge.neural{ border-color:#bfe0cd; background:#f2fbf6; color:var(--ok); }
 
   .stage{ flex:1; display:flex; min-height:0; }
-  .viewer{ flex:1; overflow-y:auto; overflow-x:hidden; background:var(--wash); display:flex; justify-content:center;
-           touch-action:none; overscroll-behavior:contain; }
-  .pageframe{ position:relative; margin:22px 0 90px; align-self:flex-start; border-radius:6px; overflow:hidden;
+  /* justify-content:center pushes overflow out of BOTH sides of a scroll box,
+     and scrollLeft cannot go negative — so a zoomed page loses its left edge for
+     good. Auto margins on the child centre exactly the same way but collapse to
+     zero the moment space runs out, which keeps every edge reachable. */
+  .viewer{ flex:1; overflow-y:auto; overflow-x:hidden; background:var(--wash); display:flex;
+           justify-content:flex-start; touch-action:none; overscroll-behavior:contain; }
+  /* A flex item shrinks to fit its container unless told not to. The frame was
+     being squeezed back to the width of the glass at every zoom level, and
+     because it also clips its own overflow, the right-hand side of the page was
+     simply cut off — the exact symptom, and it predates the pinch entirely. */
+  .pageframe{ position:relative; flex:0 0 auto; margin:22px auto 90px; align-self:flex-start; border-radius:6px; overflow:hidden;
               box-shadow:0 1px 0 var(--line-2), 0 16px 36px rgba(0,0,0,.07); background:#fff; }
   .pageframe canvas{ position:absolute; top:0; left:0; display:block; }
   .pageframe canvas.base{ position:relative; }
@@ -733,6 +741,321 @@
     .rlbanner{ padding:16px 16px; }
   }
 
+
+  /* ==========================================================================
+     ══ READING · v5 ══  performance pass
+     Three things were costing frames on a Mali-T830 MP2 and all three are gone:
+
+     1. backdrop-filter on chrome that sits over the page. A blurred surface must
+        re-read and re-blur its backdrop on every frame the content beneath it
+        changes — and the ink canvas changes on every stylus sample. Four such
+        surfaces meant four full-screen re-blurs per stroke sample. Chrome that
+        lives over live content is now SOLID; blur is kept only for the menu,
+        which appears over a page that is standing still.
+     2. Pinching scaled the whole page frame: five stacked canvases at 2x device
+        pixels, about 21 million pixels of texture resampled every frame. It now
+        scales one flat 1x snapshot instead — the same thing iOS does.
+     3. justify-content:center on a scroll container. When the page grows wider
+        than the glass, centring pushes the overflow out BOTH sides, and the left
+        half becomes unreachable because scrollLeft cannot go negative. That is
+        the page "cutting out". Auto margins do the same centring but collapse to
+        zero when space runs out, so every edge stays reachable.
+  ========================================================================== */
+  :root{
+    --paper-rd:#F0EEE9;
+    --desk:#E7E4DD;
+    --hair:rgba(27,27,26,.10);
+    --hair-2:rgba(27,27,26,.18);
+    --chip:#FCFBF9;                     /* solid, not frosted — see note 1 */
+    --shadow-s:0 1px 2px rgba(27,27,26,.08), 0 4px 12px -8px rgba(27,27,26,.40);
+    --shadow-m:0 1px 2px rgba(27,27,26,.06), 0 14px 34px -18px rgba(27,27,26,.40);
+    --ease-io:cubic-bezier(.32,.72,0,1);
+    --danger:#C0392B;
+    --pen-c:#E02424;                    /* live tool colours, written from JS */
+    --hl-c:#FFE08A;
+    --er-c:#B9B5AC;
+  }
+  body.dark{
+    --paper-rd:#141414; --desk:#0b0b0b;
+    --hair:rgba(255,255,255,.12); --hair-2:rgba(255,255,255,.20);
+    --chip:#1E1E1E;
+  }
+  body.dark.graphite{ --paper-rd:#121212; --desk:#0a0a0a; }
+
+  .app > .rail,
+  .topbar, .progress, .statsstrip, .pagebar, .peek,
+  .focusbtn, .floatpg, .bionicbtn, .infbtn, .funnelbtn, .hlbtn,
+  .darkvarbtn, .darkvarmenu, .themebtn{ display:none !important; }
+  .app{ grid-template-columns:1fr !important; }
+  #home:not(.show) ~ .homeburger,
+  #home:not(.show) ~ .homeback{ display:none !important; }
+  #home.show ~ .rd, #home.show ~ .rd-menu, #home.show ~ .rd-scrim,
+  #home.show ~ .toolbar, #home.show ~ .rd-zoom, #home.show ~ .hl-pop,
+  #home.show ~ .rd-ring, #home.show ~ .zoomsnap{ display:none !important; }
+
+  /* ── the sheet and the desk ───────────────────────────────────────────────
+     auto margins, not justify-content — the whole point of note 3 above */
+  .viewer{ background:var(--desk); justify-content:flex-start; }
+  .pageframe{ margin:26px auto 68px; border-radius:10px; background:var(--paper-rd);
+              box-shadow:0 1px 2px rgba(27,27,26,.06), 0 18px 44px -26px rgba(27,27,26,.30); }
+  .scrollstrip{ margin-left:auto; margin-right:auto; }
+  body.dark .pageframe{ background:#000; }
+  body.zoomed .viewer{ overflow-x:auto; }
+  body.pinching .pageframe, body.pinching .scrollstrip{ visibility:hidden; }
+  body.pinching{ overscroll-behavior:none; }
+
+  /* the flat stand-in: scaled during a pinch, held still during a stroke */
+  .zoomsnap{ position:fixed; z-index:20; display:none; pointer-events:none;
+             transform-origin:0 0; image-rendering:auto; }
+  .zoomsnap.show{ display:block; }
+  body.pinching .zoomsnap{ will-change:transform; }
+  body.turboflat .pageframe{ visibility:hidden; }
+
+  /* The live writing surfaces. Nothing is allowed on them: no filter, no
+     shadow, no blend mode, no border radius, no transition. Every one of those
+     would put a second pass between the ink and the glass. */
+  .penlayer{ position:fixed; left:0; top:0; z-index:21; display:none;
+             pointer-events:none; touch-action:none; background:transparent; }
+  #penPred{ z-index:22; }
+  body.drawing .penlayer{ display:block; }
+
+  /* While the pen is down the chrome must not react to anything, and nothing
+     may animate: a transition running beside a stroke is a second animation
+     competing for the same compositor. */
+  body.drawing .rd, body.drawing .rd-zoom, body.drawing .rd-ctl{ pointer-events:none !important; }
+  body.drawing *{ transition:none !important; animation:none !important; }
+
+  .pendiag{ position:fixed; left:8px; top:8px; z-index:70; display:none; margin:0;
+            padding:7px 9px; border-radius:9px; background:rgba(12,12,12,.86); color:#DFF5C8;
+            font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre;
+            pointer-events:none; letter-spacing:.01em; }
+  .pendiag.show{ display:block; }
+
+  /* ══ standing furniture ══════════════════════════════════════════════════ */
+  .rd{ position:fixed; inset:0; z-index:30; pointer-events:none; }
+  .rd > *{ pointer-events:auto; }
+  body.drawing .rd, body.drawing .rd-zoom{ pointer-events:none !important; }
+
+  /* Small on the glass, big to the thumb: the visible chip stays tiny while an
+     invisible cuff around it carries the touch target out to ~44 px. */
+  .hit{ position:relative; }
+  .hit::after{ content:''; position:absolute; inset:-8px; }
+
+  .chip{ border:1px solid var(--hair-2); background:var(--chip); color:var(--ink);
+         box-shadow:var(--shadow-s); cursor:pointer; padding:0;
+         display:grid; place-items:center;
+         transition:transform .1s ease-out, background .14s ease, box-shadow .14s ease; }
+  .chip:active{ transform:scale(.9); }
+
+  .rd-burger{ position:fixed; top:12px; left:12px; width:30px; height:30px;
+              border-radius:9px; z-index:34; }
+  .rd-burger i{ display:block; width:13px; height:1.5px; border-radius:2px; background:currentColor;
+                box-shadow:0 4px 0 currentColor, 0 -4px 0 currentColor; }
+
+  /* pen · highlighter · eraser, top to bottom, each carrying its own colour */
+  .rd-tools{ position:fixed; right:11px; top:50%; transform:translateY(-50%); z-index:34;
+             display:flex; flex-direction:column; gap:7px; }
+  .rd-tool{ width:30px; height:30px; border-radius:9px; }
+  .rd-tool svg{ width:17px; height:17px; display:block; }
+  .rd-tool .tint{ fill:var(--tint); }
+  .rd-tool.on{ box-shadow:0 0 0 1.5px var(--tint), var(--shadow-s); border-color:transparent; }
+  .rd-tool.on .glyph{ opacity:1; }
+  #rdPenBtn{ --tint:var(--pen-c); }
+  #rdHlBtn { --tint:var(--hl-c); }
+  #rdErBtn { --tint:var(--er-c); }
+
+  .focusprog{ display:block !important; height:2px; }
+  .focusprog i{ background:var(--ink-soft); opacity:.22; }
+  .focuspgn{ display:block !important; right:14px; bottom:11px; font-size:10.5px;
+             opacity:.42; letter-spacing:.02em; }
+
+  /* ══ controls layer ══════════════════════════════════════════════════════ */
+  .rd-ctl{ position:fixed; inset:0; z-index:32; pointer-events:none;
+           opacity:0; transition:opacity .2s var(--ease-io); }
+  .rd-ctl > *{ pointer-events:none; }
+  body.chrome-on .rd-ctl{ opacity:1; }
+  body.chrome-on .rd-ctl > *{ pointer-events:auto; }
+
+  .rd-edge{ position:fixed; top:50%; width:26px; height:42px; border-radius:9px;
+            font-size:14px; color:var(--ink-soft); line-height:1;
+            transform:translateY(-50%); }
+  .rd-edge.l{ left:12px; }
+  .rd-edge.r{ right:50px; }
+
+  /* the transport: no container, just three small chips that float */
+  .rd-transport{ position:fixed; left:50%; bottom:16px; transform:translateX(-50%);
+                 display:flex; align-items:center; gap:7px; }
+  body.chrome-on .rd-transport{ animation:rdUp .3s var(--ease-io) both; }
+  @keyframes rdUp{ from{ opacity:0; transform:translateX(-50%) translateY(10px);} to{ opacity:1; transform:translateX(-50%) translateY(0);} }
+  .rd-transport .sm{ width:28px; height:28px; border-radius:999px; font-size:12px; color:var(--ink-soft); }
+  .rd-transport .sm:disabled{ opacity:.35; }
+  .rd-transport .rate{ width:auto; height:28px; border-radius:999px; padding:0 10px;
+                       font-size:11px; font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+
+  /* the play pill — black mark and black word on a white tablet */
+  .play-pill{ display:inline-flex; align-items:center; gap:6px; height:28px;
+              padding:0 12px 0 11px; border-radius:999px;
+              border:1px solid var(--hair-2); background:#FFFFFF; color:#000000;
+              font:inherit; font-size:11.5px; font-weight:500; letter-spacing:-.005em;
+              cursor:pointer; box-shadow:var(--shadow-s); white-space:nowrap;
+              transition:transform .1s ease-out; }
+  .play-pill:active{ transform:scale(.94); }
+  .play-pill svg{ width:9px; height:10px; fill:currentColor; display:block; }
+  .play-pill.off{ color:#5B5B58; }
+  body.dark .play-pill{ background:#FFFFFF; color:#000000; }
+
+  .focusclock{ display:none !important; }
+  body.chrome-on .focusclock.on{ display:flex !important; top:12px; right:52px;
+      background:var(--chip); border-color:var(--hair-2); box-shadow:var(--shadow-s);
+      font-size:10.5px; padding:4px 8px 4px 6px; opacity:.9;
+      -webkit-backdrop-filter:none; backdrop-filter:none; }
+  .focusclock button{ font-size:7px !important; letter-spacing:-1px; opacity:.6; }
+
+  /* ══ zoom — the whole control is a readout and a padlock ═════════════════ */
+  .rd-zoom{ position:fixed; left:12px; bottom:10px; z-index:37;
+            display:inline-flex; align-items:center; gap:2px; height:24px;
+            padding:0 2px 0 8px; border-radius:999px;
+            border:1px solid var(--hair-2); background:var(--chip);
+            box-shadow:var(--shadow-s); opacity:0; pointer-events:none;
+            transition:opacity .18s var(--ease-io); }
+  .rd-zoom.show, body.chrome-on .rd-zoom{ opacity:1; pointer-events:auto; }
+  .rd-zoom .pct{ font-size:10.5px; font-variant-numeric:tabular-nums; color:var(--ink);
+                 letter-spacing:.01em; border:0; background:none; padding:0 3px 0 0;
+                 cursor:pointer; font-family:inherit; line-height:1; }
+  .rd-zoom .lk{ width:20px; height:20px; border-radius:999px; border:0; background:none;
+                display:grid; place-items:center; cursor:pointer; padding:0; color:var(--ink-soft); }
+  .rd-zoom .lk svg{ width:11px; height:11px; display:block; }
+  .rd-zoom .lk.on{ background:var(--ink); color:var(--paper-rd); }
+
+  /* ══ menu ════════════════════════════════════════════════════════════════ */
+  .rd-scrim{ position:fixed; inset:0; z-index:55; background:rgba(20,20,19,.26);
+             opacity:0; pointer-events:none; transition:opacity .26s var(--ease-io); }
+  .rd-scrim.show{ opacity:1; pointer-events:auto; }
+  .rd-menu{ position:fixed; top:0; left:0; bottom:0; z-index:56; width:min(300px,84vw);
+            background:rgba(252,251,249,.97); border-right:1px solid var(--hair);
+            box-shadow:26px 0 60px -30px rgba(27,27,26,.5);
+            -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px);
+            transform:translateX(-101%); transition:transform .32s var(--ease-io);
+            display:flex; flex-direction:column; padding:10px 10px 14px; }
+  body.dark .rd-menu{ background:rgba(30,30,30,.97); }
+  .rd-menu.show{ transform:translateX(0); }
+  .rd-menu .scroll{ overflow-y:auto; overscroll-behavior:contain; flex:1; min-height:0;
+                    -webkit-overflow-scrolling:touch; padding:2px;
+                    -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 18px),transparent);
+                    mask-image:linear-gradient(180deg,#000 calc(100% - 18px),transparent); }
+  .rd-menu .foot{ flex:0 0 auto; padding-top:6px; border-top:1px solid var(--hair); margin-top:4px; }
+
+  .mrow{ display:flex; align-items:center; gap:13px; width:100%; text-align:left;
+         border:0; background:none; color:var(--ink); cursor:pointer; font:inherit;
+         font-size:14px; letter-spacing:-.006em; padding:9px 12px; border-radius:11px;
+         transition:background .14s ease; }
+  .mrow:active{ background:rgba(27,27,26,.07); }
+  .mrow .ico{ width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center;
+              color:var(--ink-soft); font-size:16px; line-height:1; }
+  .mrow .ico svg{ width:18px; height:18px; display:block; }
+  .mrow .lab{ flex:1; min-width:0; }
+  .mrow .lab b{ font-weight:500; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mrow .lab span{ display:block; font-size:11px; color:var(--ink-faint); margin-top:0;
+                   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mrow .dot{ width:7px; height:7px; border-radius:50%; background:transparent; flex:0 0 auto;
+              transition:background .18s ease, box-shadow .18s ease; }
+  .mrow.on .ico{ color:var(--ink); }
+  .mrow.on .dot{ background:var(--ink); box-shadow:0 0 0 3px rgba(27,27,26,.10); }
+  body.dark .mrow.on .dot{ box-shadow:0 0 0 3px rgba(255,255,255,.12); }
+  .mrow.exit{ color:var(--danger); }
+  .mrow.exit .ico{ color:var(--danger); }
+  .mrow.exit:active{ background:rgba(192,57,43,.09); }
+  .mrule{ height:1px; background:var(--hair); margin:8px 14px; }
+
+  .msub{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .28s var(--ease-io); }
+  .msub > div{ overflow:hidden; min-height:0; }
+  .msub.open{ grid-template-rows:1fr; }
+  .msub .pad{ padding:2px 12px 12px 47px; display:flex; flex-direction:column; gap:9px; }
+  .mseg{ display:flex; border:1px solid var(--hair-2); border-radius:10px; overflow:hidden; }
+  .mseg button{ flex:1; border:0; background:none; color:var(--ink-soft); font:inherit; font-size:12px;
+                padding:8px 4px; cursor:pointer; white-space:nowrap; }
+  .mseg button + button{ border-left:1px solid var(--hair-2); }
+  .mseg button.on{ background:var(--ink); color:var(--paper-rd); }
+  .mfield{ display:flex; align-items:center; gap:9px; font-size:11.5px; color:var(--ink-faint); }
+  .mfield input[type=range]{ flex:1; accent-color:var(--ink); height:26px; }
+  .mfield .v{ font-variant-numeric:tabular-nums; min-width:56px; text-align:right; color:var(--ink-soft); }
+  .msub select{ width:100%; max-width:none; font-size:12.5px; padding:8px 10px;
+                background:var(--paper-rd); border-color:var(--hair-2); }
+  .mghost{ border:1px solid var(--hair-2); background:none; color:var(--ink-soft); font:inherit;
+           font-size:12px; padding:8px 10px; border-radius:10px; cursor:pointer; }
+  .mghost:active{ background:rgba(27,27,26,.06); }
+
+  /* ══ tool bars — solid, because they are open while the pen is moving ════ */
+  .toolbar{ position:fixed; right:50px; top:50%; transform:translateY(-50%) translateX(6px) scale(.98);
+            z-index:36; display:none; flex-direction:column; gap:9px; padding:9px;
+            border:1px solid var(--hair-2); border-radius:14px; background:var(--chip);
+            box-shadow:var(--shadow-m); transform-origin:right center;
+            opacity:0; transition:opacity .18s var(--ease-io), transform .22s var(--ease-io); }
+  .toolbar.show{ display:flex; opacity:1; transform:translateY(-50%) translateX(0) scale(1); }
+  .trow{ display:flex; align-items:center; gap:6px; }
+  .trule{ height:1px; background:var(--hair); margin:0 -2px; }
+  .sw{ width:24px; height:24px; border-radius:50%; border:1px solid var(--hair-2); cursor:pointer;
+       padding:0; position:relative; transition:transform .12s ease-out; }
+  .sw:active{ transform:scale(.9); }
+  .sw.on{ box-shadow:0 0 0 2px var(--chip), 0 0 0 3.5px var(--ink); }
+  .nib{ width:24px; height:24px; border-radius:8px; border:1px solid transparent; background:none;
+        cursor:pointer; display:grid; place-items:center; padding:0; }
+  .nib i{ display:block; border-radius:50%; background:var(--ink-soft); }
+  .nib.on{ background:rgba(27,27,26,.09); }
+  .nib.on i{ background:var(--ink); }
+  .tbtn{ border:1px solid var(--hair-2); background:none; color:var(--ink-soft); cursor:pointer;
+         border-radius:9px; height:29px; padding:0 10px; font:inherit; font-size:11.5px;
+         display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+         transition:transform .1s ease-out, background .14s ease; }
+  .tbtn:active{ transform:scale(.95); background:rgba(27,27,26,.07); }
+  .tbtn.on{ background:var(--ink); color:var(--paper-rd); border-color:var(--ink); }
+  .tbtn svg{ width:14px; height:14px; display:block; }
+  .tbtn.wide{ width:100%; justify-content:center; }
+  .tnote{ font-size:10px; color:var(--ink-faint); letter-spacing:.02em; padding:0 2px; }
+
+  .sizepop{ position:fixed; z-index:38; display:none; flex-direction:column; gap:7px;
+            padding:10px 12px; min-width:196px; border:1px solid var(--hair-2); border-radius:13px;
+            background:var(--chip); box-shadow:var(--shadow-m); }
+  .sizepop.show{ display:flex; }
+  .sizepop .hd{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-soft); }
+  .sizepop .hd b{ font-weight:500; }
+  .sizepop .hd .v{ font-variant-numeric:tabular-nums; color:var(--ink); }
+  .sizepop input[type=range]{ width:100%; accent-color:var(--ink); height:26px; }
+  .sizepop .hex{ display:flex; align-items:center; gap:7px; }
+  .sizepop .hex input[type=text]{ flex:1; padding:7px 9px; border:1px solid var(--hair-2);
+        border-radius:9px; font:inherit; font-size:12px; text-transform:uppercase;
+        background:var(--paper-rd); color:var(--ink); }
+  .sizepop .hue{ width:100%; height:20px; border-radius:8px; border:1px solid var(--hair-2);
+        appearance:none; -webkit-appearance:none; cursor:pointer;
+        background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+
+  .rd-ring{ position:fixed; z-index:37; left:0; top:0; border-radius:50%; pointer-events:none;
+            display:none; border:1.5px solid rgba(27,27,26,.55); background:rgba(27,27,26,.05);
+            will-change:transform; }
+  .rd-ring.show{ display:block; }
+  body.dark .rd-ring{ border-color:rgba(255,255,255,.6); background:rgba(255,255,255,.08); }
+
+  .hl-pop{ position:fixed; z-index:58; display:none; align-items:center; gap:3px; padding:3px;
+           border:1px solid var(--hair-2); border-radius:11px; background:var(--chip);
+           box-shadow:var(--shadow-m); transform-origin:50% 100%; }
+  .hl-pop.show{ display:flex; animation:popIn .2s var(--ease-io) both; }
+  @keyframes popIn{ from{ opacity:0; transform:scale(.92) translateY(4px);} to{ opacity:1; transform:scale(1) translateY(0);} }
+  .hl-pop button{ border:0; background:none; color:var(--ink); cursor:pointer; font:inherit;
+                  font-size:12.5px; padding:8px 13px; border-radius:8px; display:flex;
+                  align-items:center; gap:6px; }
+  .hl-pop button:active{ background:rgba(27,27,26,.08); }
+  .hl-pop button.danger{ color:var(--danger); }
+  .hl-pop button[disabled]{ color:var(--ink-faint); }
+  .hl-pop .sep{ width:1px; height:18px; background:var(--hair); }
+
+  @media (prefers-reduced-transparency:reduce){
+    .rd-menu{ background:var(--paper-rd); -webkit-backdrop-filter:none; backdrop-filter:none; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .rd-menu{ transition:opacity .18s ease; }
+    body.chrome-on .rd-transport, .hl-pop.show{ animation:none !important; }
+  }
+
 </style>
 
 <!-- ===================== HOME · reading library ===================== -->
@@ -939,6 +1262,242 @@
 <div id="homeBack" class="homeback"></div>
 <div id="toast" class="toast"></div>
 
+<div class="rd" id="rdChrome">
+  <button id="rdMenuBtn" class="chip hit rd-burger" aria-label="Reading menu" aria-expanded="false"><i></i></button>
+
+  <!-- pen · highlighter · eraser. Each carries the colour it will actually lay
+       down, so the three are told apart at a glance and not by memory. -->
+  <div class="rd-tools" id="rdTools">
+    <button id="rdPenBtn" class="chip hit rd-tool" aria-label="Pen" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="tint" d="M16.1 3.1a2.1 2.1 0 0 1 3 0l1.8 1.8a2.1 2.1 0 0 1 0 3l-1.6 1.6-4.8-4.8 1.6-1.6Z"/>
+        <path fill="currentColor" d="M13.4 5.8l4.8 4.8-8.3 8.3-5.5 1.4a.6.6 0 0 1-.72-.72l1.4-5.5L13.4 5.8Z" opacity=".82"/>
+        <path class="tint" d="M3.68 19.6l1.06-4.1 3.05 3.05-4.1 1.06Z"/>
+      </svg>
+    </button>
+    <button id="rdHlBtn" class="chip hit rd-tool" aria-label="Highlighter" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" opacity=".82" d="M15.7 3.1a2 2 0 0 1 2.9 0l2.4 2.4a2 2 0 0 1 0 2.9l-7 7-5.3-5.3 7-7Z"/>
+        <path class="tint" d="M7.1 11.4l5.6 5.6-1.8 1.8H8.6l-.9.9H4.4l-.7-.7 1.4-1.4v-2.4l2-3.8Z"/>
+        <rect class="tint" x="2.6" y="20.6" width="18.8" height="2.4" rx="1.2"/>
+      </svg>
+    </button>
+    <button id="rdErBtn" class="chip hit rd-tool" aria-label="Eraser" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="tint" d="M13.1 3.8a2 2 0 0 1 2.8 0l4.3 4.3a2 2 0 0 1 0 2.8l-4.6 4.6-7.1-7.1 4.6-4.6Z"/>
+        <path fill="currentColor" opacity=".82" d="M8.5 8.4l7.1 7.1-3.1 3.1a2 2 0 0 1-2.8 0l-4.3-4.3a2 2 0 0 1 0-2.8l3.1-3.1Z"/>
+        <rect fill="currentColor" x="9" y="20.4" width="11.4" height="1.9" rx=".95" opacity=".5"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="rd-ctl" id="rdCtl">
+    <button id="rdPrevPg" class="chip hit rd-edge l" aria-label="Previous page">‹</button>
+    <button id="rdNextPg" class="chip hit rd-edge r" aria-label="Next page">›</button>
+    <div class="rd-transport">
+      <button id="rdBack" class="chip hit sm" aria-label="Back a sentence">‹‹</button>
+      <button id="rdPlay" class="play-pill hit off" aria-label="Read aloud">
+        <svg id="rdPlayIcon" viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0.6v10.8L9.4 6 0 0.6Z"/></svg>
+        <span id="rdPlayLab">Play</span>
+      </button>
+      <button id="rdFwd" class="chip hit sm" aria-label="Skip a sentence">››</button>
+      <button id="rdRate" class="chip hit rate" aria-label="Narration speed">1.00×</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="zoomSnap" class="zoomsnap" aria-hidden="true"></canvas>
+<canvas id="penLive" class="penlayer" aria-hidden="true"></canvas>
+<canvas id="penPred" class="penlayer" aria-hidden="true"></canvas>
+<pre id="penDiag" class="pendiag" aria-hidden="true"></pre>
+<div id="rdRing" class="rd-ring" aria-hidden="true"></div>
+
+<div id="rdZoom" class="rd-zoom" role="group" aria-label="Zoom">
+  <button class="pct hit" id="zPct" aria-label="Zoom level — tap to reset">100%</button>
+  <button id="zLock" class="lk hit" aria-label="Lock zoom" aria-pressed="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path id="zShackle" d="M8 10.5V7.6a4 4 0 0 1 7.4-2"/>
+    </svg>
+  </button>
+</div>
+
+<div id="penBar" class="toolbar" role="group" aria-label="Pen">
+  <div class="trow" id="penSwatches"></div>
+  <div class="trow">
+    <button class="nib" data-pw="1.0" aria-label="Fine"><i style="width:4px;height:4px"></i></button>
+    <button class="nib" data-pw="2.3" aria-label="Medium"><i style="width:7px;height:7px"></i></button>
+    <button class="nib" data-pw="4.5" aria-label="Broad"><i style="width:10px;height:10px"></i></button>
+    <button class="tbtn" id="penSizeBtn" style="margin-left:auto">2.3&nbsp;mm</button>
+  </div>
+  <div class="trule"></div>
+  <div class="trow">
+    <button class="tbtn" id="undoBtn2" aria-label="Undo the last stroke">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 9h11a5 5 0 0 1 0 10h-4"/><path d="M8 5 4 9l4 4"/>
+      </svg>Undo</button>
+    <button class="tbtn" id="clearPgBtn">Clear page</button>
+  </div>
+  <div class="tnote">Press the nib harder, or hold it still, to erase</div>
+</div>
+
+<div id="hlBar" class="toolbar" role="group" aria-label="Highlighter">
+  <div class="trow" id="hlSwatches"></div>
+  <div class="trule"></div>
+  <div class="tnote" style="max-width:172px;line-height:1.45">
+    Drag across the words.<br>Hold a mark to save it.
+  </div>
+</div>
+
+<div id="erBar" class="toolbar" role="group" aria-label="Eraser">
+  <div class="trow" id="erPresets"></div>
+  <div class="trow">
+    <button class="tbtn" id="erModeBtn">By area</button>
+    <button class="tbtn" id="erSizeBtn" style="margin-left:auto">20&nbsp;mm</button>
+  </div>
+  <div class="trule"></div>
+  <button class="tbtn wide" id="clearPgBtn2">Clear current page</button>
+</div>
+
+<div id="sizePop" class="sizepop" role="dialog" aria-label="Size">
+  <div class="hd"><b id="sizePopName">Pen size</b><span class="v" id="sizePopVal">2.3 mm</span></div>
+  <input type="range" id="sizePopRange" min="1" max="30" step="0.1" value="2.3" />
+  <div class="trow" id="sizePopPresets"></div>
+  <div class="hex" id="sizePopHexRow" style="display:none">
+    <input type="range" id="sizePopHue" class="hue" min="0" max="360" step="1" value="50" />
+  </div>
+  <div class="hex" id="sizePopHexRow2" style="display:none">
+    <span class="sw" id="sizePopPreview" style="pointer-events:none"></span>
+    <input type="text" id="sizePopHex" maxlength="7" spellcheck="false" />
+  </div>
+</div>
+
+<div id="hlPop" class="hl-pop" role="menu" aria-label="Highlight">
+  <button id="hlPopSave" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px">
+      <path d="M5 4.8h11.2L20 8.6V19a1.2 1.2 0 0 1-1.2 1.2H5A1.2 1.2 0 0 1 3.8 19V6A1.2 1.2 0 0 1 5 4.8Z"/>
+      <path d="M7.6 4.8v5h7.2v-5M7.6 20.2v-5.6h8.8v5.6"/>
+    </svg>Save</button>
+  <span class="sep"></span>
+  <button id="hlPopDel" class="danger" role="menuitem">Remove</button>
+</div>
+
+<div id="rdScrim" class="rd-scrim"></div>
+<nav id="rdMenu" class="rd-menu" aria-label="Reading options">
+  <div class="scroll">
+
+    <button class="mrow" id="mSpeak">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 9.4h3.2L12 5.2v13.6L7.2 14.6H4a.8.8 0 0 1-.8-.8v-3.6a.8.8 0 0 1 .8-.8Z"/>
+        <path id="mSpeakWave" d="M15.8 9.2a4 4 0 0 1 0 5.6M18.5 6.6a7.8 7.8 0 0 1 0 10.8"/>
+      </svg></span>
+      <span class="lab"><b>Read aloud</b><span id="mSpeakSub">Off — touching the page never speaks</span></span>
+      <span class="dot"></span>
+    </button>
+
+    <button class="mrow" id="mVoice">
+      <span class="ico" style="font-size:15px">✦</span>
+      <span class="lab"><b>Voice</b><span id="mVoiceSub">Device · 1.00×</span></span>
+    </button>
+    <div class="msub" id="sVoice"><div><div class="pad">
+      <select id="mNar" aria-label="Narrator voice"></select>
+      <select id="mDlg" aria-label="Dialogue voice"></select>
+      <div class="mfield"><input type="range" id="mRate" min="0.6" max="2" step="0.05" value="1" aria-label="Speed" /><span class="v" id="mRateV">1.00×</span></div>
+      <button class="mghost" id="mEngine">Voice engines…</button>
+    </div></div></div>
+
+    <button class="mrow" id="mFollow">
+      <span class="ico">⇅</span>
+      <span class="lab"><b>Follow</b><span>Keep the spoken word on screen</span></span>
+      <span class="dot"></span>
+    </button>
+
+    <button class="mrow" id="mHlStyle">
+      <span class="ico" id="mHlStyleIco">▮</span>
+      <span class="lab"><b>Underline / Block</b><span id="mHlStyleLab">Block</span></span>
+    </button>
+
+    <button class="mrow" id="mTele">
+      <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor">
+        <rect x="2" y="10.6" width="2.8" height="2.8" rx="1.4"/>
+        <rect x="7.1" y="10.6" width="7.4" height="2.8" rx="1.4"/>
+        <rect x="16.8" y="10.6" width="2.8" height="2.8" rx="1.4"/>
+        <rect x="21.2" y="10.6" width="2.8" height="2.8" rx="1.4" opacity=".45"/>
+      </g></svg></span>
+      <span class="lab"><b>Telegraph Reading</b><span id="mTeleSub">Only the load-bearing words</span></span>
+      <span class="dot"></span>
+    </button>
+    <div class="msub" id="sTele"><div><div class="pad">
+      <div class="mseg" id="mTeleLvl">
+        <button data-v="light">Light</button><button data-v="balanced">Balanced</button><button data-v="aggressive">Aggressive</button>
+      </div>
+    </div></div></div>
+
+    <button class="mrow" id="mSr">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+        <path d="M3.6 17.2a9.2 9.2 0 1 1 16.8 0"/><path d="m12 15 4.6-5.4"/><circle cx="12" cy="16.6" r="1.5" fill="currentColor" stroke="none"/>
+      </svg></span>
+      <span class="lab"><b>Speed Reader</b><span id="mSrSub">A silent pacer</span></span>
+      <span class="dot"></span>
+    </button>
+    <div class="msub" id="sSr"><div><div class="pad">
+      <div class="mfield"><input type="range" id="mWpm" min="100" max="750" step="25" value="300" aria-label="Words per minute" /><span class="v" id="mWpmV">300 wpm</span></div>
+      <div class="mseg" id="mSrBreak">
+        <button data-v="fixed25">2.5s</button><button data-v="fixed30">3s</button><button data-v="dynamic">Dynamic</button>
+      </div>
+    </div></div></div>
+
+    <button class="mrow" id="mBionic">
+      <span class="ico" style="font-size:13.5px;letter-spacing:-.02em"><span><b style="font-weight:800">B</b><i style="font-style:normal;opacity:.5">b</i></span></span>
+      <span class="lab"><b>Bionic Reading</b><span>Weight the first letters</span></span>
+      <span class="dot"></span>
+    </button>
+
+    <button class="mrow" id="mFitText">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+        <path d="M3 5h18M6 9.5h12M6 14h12M3 18.5h18"/><path d="M2.2 12.2 4 10.4v3.6zM21.8 12.2 20 10.4v3.6" fill="currentColor" stroke="none"/>
+      </svg></span>
+      <span class="lab"><b>Fit Text</b><span id="mFitSub">Fill the width with the column, not the paper</span></span>
+      <span class="dot"></span>
+    </button>
+
+    <button class="mrow" id="mInf">
+      <span class="ico" style="font-size:17px">∞</span>
+      <span class="lab"><b>Infinite Scroll</b><span>One strip, no page turns</span></span>
+      <span class="dot"></span>
+    </button>
+
+    <button class="mrow" id="mFunnel">
+      <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2.6 4.2A1 1 0 0 1 3.5 3.6h17a1 1 0 0 1 .78 1.63l-6.53 8.06v5.3a1 1 0 0 1-.55.9l-3.2 1.6A1 1 0 0 1 9.55 20v-6.7L2.9 5.24a1 1 0 0 1-.3-1.04Z"/></svg></span>
+      <span class="lab"><b>Visual Funnel</b><span>Narrow the column to the fovea</span></span>
+      <span class="dot"></span>
+    </button>
+
+    <button class="mrow" id="mTheme">
+      <span class="ico"><svg viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:17px;height:17px">
+        <g id="mThemeSun"><path d="M12.4 17.76a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M12.4 1.76v2M12.4 21.76v2M4.63 4.98l1.42 1.42M18.77 19.12l1.42 1.42M1.4 12.76h2M21.4 12.76h2M4.63 20.54l1.42-1.42M18.77 6.4l1.42-1.42"/></g>
+        <g id="mThemeMoon" style="display:none"><path d="M21.19 13.2a9 9 0 1 1-9.79-9.79 7 7 0 0 0 9.79 9.79Z"/></g>
+      </svg></span>
+      <span class="lab"><b>Theme</b><span id="mThemeSub">Light</span></span>
+    </button>
+    <div class="msub" id="sTheme"><div><div class="pad">
+      <div class="mseg" id="mThemeSeg"><button data-v="light">Light</button><button data-v="dark">Dark</button></div>
+      <div class="mseg" id="mShadeSeg"><button data-v="midnight">Midnight</button><button data-v="graphite">Graphite</button></div>
+    </div></div></div>
+
+  </div>
+
+  <div class="foot">
+    <button class="mrow exit" id="mExit">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14.4 3.6h4a2 2 0 0 1 2 2v12.8a2 2 0 0 1-2 2h-4"/><path d="M9.6 16.4 14 12 9.6 7.6"/><path d="M14 12H3.6"/>
+      </svg></span>
+      <span class="lab"><b>Exit</b><span>Back to the library</span></span>
+    </button>
+  </div>
+</nav>
+
+
+
 <!-- type-in note -->
 <div id="noteSheet" class="sheet">
   <div class="box">
@@ -992,6 +1551,7 @@
       <input id="bkFile" type="file" accept="application/json,.json" hidden />
     </div>
 
+    <div id="bkStorage" class="bkstatus" style="white-space:pre-line">Checking browser storage…</div>
     <div id="bkStatus" class="bkstatus" style="display:none"></div>
 
     <div class="row">
@@ -1106,6 +1666,27 @@ function toast(msg, actionLabel, action){
 function hideToast(){ $('#toast').classList.remove('show'); }
 
 const THEME = { pen:'#e02424', mark:'#ffe08a' };
+
+/* ---------------------------------------------------------------------------
+   CLOUD DANCER
+   A PDF page arrives as a photograph of white paper, so it cannot be restyled —
+   but it can be printed on different stock. Multiplying the finished canvas by
+   #F0EEE9 leaves every dark pixel exactly where it was (black x anything is
+   black) and drops the white down to Cloud Dancer. Where a page left the canvas
+   transparent, multiply hands back the tint itself, so both kinds of PDF land
+   on the same sheet. One fill per page render; nothing to composite afterwards,
+   which matters on a Mali-T830.
+--------------------------------------------------------------------------- */
+const PAPER = '#F0EEE9';
+function tintPaper(ctx, cv){
+  if(!ctx || !cv || S.dark) return;              // dark mode inverts instead
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.restore();
+}
 (function(){
   const cs=getComputedStyle(document.documentElement);
   THEME.pen  = (cs.getPropertyValue('--pen')  || '#e02424').trim();
@@ -1180,7 +1761,7 @@ const mirror = {
 const FN = {
   on:false,
   chars:32,                    /* target line length, in characters          */
-  colW:0, spaceW:5, avgCharW:9, baseSize:19.5,
+  colW:0, boxW:0, spaceW:5, avgCharW:9, baseSize:19.5,
   padT:64, padB:80, pageW:820,
   heights:null,                /* funnelled height of every page, in page units */
   cache:Object.create(null), order:[], max:10,
@@ -1205,6 +1786,26 @@ function fnStyleOf(w, med){
 function fnSizeOf(w){
   if(w.f !== undefined && w.f !== null && EP_FONTS[w.f]) return EP_FONTS[w.f].s;
   return w.h;                              /* a PDF word's height is its type size */
+}
+
+/* The one logical page width the funnel lays out against, sampled across the
+   book rather than taken from page 1 — a cover or a plate is often a different
+   size from the body, and the whole book's geometry used to inherit it. */
+async function fnPageWidth(){
+  FN.pageW = 820;
+  if(!S.book || !S.book.doc) return;
+  const n = S.book.numPages || 1;
+  const step = Math.max(1, Math.floor(n / 5));
+  const ws = [];
+  for(let p = 1; p <= n; p += step){
+    try{
+      const pg = await S.book.doc.getPage(p);
+      const v = pg.getViewport({ scale:1 });
+      if(v.width > 0) ws.push(v.width);
+    }catch(e){}
+    if(ws.length >= 5) break;
+  }
+  if(ws.length){ ws.sort(function(a,b){ return a-b; }); FN.pageW = ws[ws.length >> 1]; }
 }
 
 /* One measurement for the whole book, so the column does not change width
@@ -1233,7 +1834,20 @@ function fnCalibrate(){
   FN.baseSize = sz.length ? sz[sz.length >> 1] : med;
   FN.medH = med;
   FN.spaceW = FN.avgCharW * 0.55;
+  /* FN.pageW is fixed for the whole book before this runs (see fnPageWidth).
+     It used to be overwritten by fnViewport() with whatever page had just been
+     asked for a viewport, so the same layout measured twice could come out two
+     different heights — and Infinite Scroll then positioned slots against
+     heights that no longer described them. It is read-only everywhere now. */
   FN.colW = clamp(FN.chars * FN.avgCharW, FN.pageW * 0.26, FN.pageW * 0.62);
+  /* The funnel throws away the original margins by design: it re-sets the text
+     into a narrow column and leaves the rest of the sheet blank. Rendering that
+     blank sheet anyway meant carrying a canvas twice the size of anything on it,
+     and — worse to read — it meant a zoomed funnel spent most of the screen on
+     paper with nothing printed on it. The funnel's page is now the column plus
+     its margins, and nothing else. */
+  const headM = Math.min(FN.pageW * 0.74, FN.colW * 1.7);
+  FN.boxW = Math.min(FN.pageW, Math.max(FN.colW, headM) + FN.colW * 0.34);
   return med;
 }
 
@@ -1241,7 +1855,9 @@ function fnCalibrate(){
    the position of every word so the rest of the app can find them again. */
 function fnLayout(p, wantBoxes){
   const list = S.byPage[p] || [];
-  const pageW = FN.pageW, colW = FN.colW;
+  /* everything below lays out inside the funnel's own page, which is boxW wide */
+  const colW = FN.colW;
+  const pageW = FN.boxW || FN.pageW;
   const cx = pageW / 2;
   const out = { h: FN.padT + FN.padB, items: wantBoxes ? [] : null,
                 box: wantBoxes ? Object.create(null) : null, imgs: [] };
@@ -1265,11 +1881,65 @@ function fnLayout(p, wantBoxes){
       cur = { y:w.y, yb:w.y + w.h, h:w.h, ws:[g], sty:fnStyleOf(w, FN.medH), sz:fnSizeOf(w) };
       lines.push(cur);
     }else{
+      /* falls through to the join below */
       cur.ws.push(g);
       if(w.h > cur.h) cur.h = w.h;
       if(w.y + w.h > cur.yb) cur.yb = w.y + w.h;
     }
   }
+
+  /* ── source tiling ──────────────────────────────────────────────────────
+     A PDF gives us no word boxes. rawWords() reconstructs them by splitting a
+     text run and handing each token a share of the run's width in proportion to
+     its CHARACTER COUNT — so in any proportional face an "i" is billed the same
+     as a "W" and every box is an estimate, wrong by whatever the letters in it
+     happen to weigh. Cropping a bitmap exactly on that estimate is what was
+     eating the last glyph of nearly every word.
+
+     So the crop is not taken from the box. Each line is TILED: a word's source
+     rectangle runs from the midpoint of the gap before it to the midpoint of
+     the gap after it, and covers the line's full height. The tiles of a line
+     therefore cover every pixel of it exactly once — no ink can fall between
+     two crops, and none can be claimed by two. The estimate is still used to
+     decide where a word GOES; it is no longer trusted to say where its ink
+     ENDS. */
+  const lineOf = Object.create(null);
+  for(let li = 0; li < lines.length; li++){
+    const ln = lines[li];
+    ln.i = li;
+    ln.order = ln.ws.slice().sort(function(a,b){ return S.ribbon[a].x - S.ribbon[b].x; });
+    ln.at = Object.create(null);
+    for(let i = 0; i < ln.order.length; i++) ln.at[ln.order[i]] = i;
+    for(let i = 0; i < ln.ws.length; i++) lineOf[ln.ws[i]] = ln;
+  }
+  /* Where a cut between two source-adjacent words falls. The midpoint of the
+     gap is the only defensible place: it belongs to neither word's ink, and it
+     makes the two crops meet exactly, so nothing is dropped and nothing is
+     copied twice. */
+  const cutAfter = function(g){
+    const ln = lineOf[g]; if(!ln) return null;
+    const w = S.ribbon[g], i = ln.at[g];
+    const nx = (i != null && i < ln.order.length - 1) ? S.ribbon[ln.order[i+1]] : null;
+    const wr = w.x + w.w;
+    if(!nx) return wr + Math.max(1.5, w.h * 0.55);
+    return Math.max(wr - w.w * 0.2, Math.min(wr + w.h * 0.55, (wr + nx.x) / 2));
+  };
+  const cutBefore = function(g){
+    const ln = lineOf[g]; if(!ln) return null;
+    const w = S.ribbon[g], i = ln.at[g];
+    const pv = (i != null && i > 0) ? S.ribbon[ln.order[i-1]] : null;
+    if(!pv) return w.x - Math.max(1, w.h * 0.22);
+    return Math.min(w.x + w.w * 0.2, Math.max(w.x - w.h * 0.22, (pv.x + pv.w + w.x) / 2));
+  };
+  /* Two words can be carried by one crop when they sit side by side on the same
+     original line. Then the crop keeps the book's own spacing and kerning
+     between them, and — the part that matters — makes no cut between them at
+     all, so no glyph can be split or duplicated. */
+  const joinable = function(a, b){
+    const la = lineOf[a], lb = lineOf[b];
+    if(!la || la !== lb) return false;
+    return lb.at[b] === la.at[a] + 1;
+  };
 
   /* --- lines into paragraphs ------------------------------------------- */
   const blocks = [];
@@ -1285,16 +1955,33 @@ function fnLayout(p, wantBoxes){
 
   /* --- set them ---------------------------------------------------------- */
   let y = FN.padT;
-  const push = function(g, x, top, wdt, sz){
+  out.segs = [];
+
+  /* A SEGMENT is a run of words that were side by side on one original line and
+     have stayed side by side on one funnelled line. It is drawn as a single
+     crop, so within a segment there is no cut, no estimated boundary, and the
+     book's own spacing survives untouched. A word's position inside its segment
+     is its original offset — exact, not a sum of estimated widths — which is
+     also what makes highlights land on the right glyphs. */
+  const emit = function(seg, top, sz){
+    const ln = seg.ln;
+    const vpad = Math.max(1, ln.h * 0.34);
+    seg.sT = ln.y - vpad; seg.sB = ln.yb + vpad;
+    seg.dY = seg.sT - ln.y;
+    seg.top = top;
+    out.segs.push(seg);
     if(!wantBoxes) return;
-    const r = S.ribbon[g];
-    /* keep the word's own proportions: the same ink, moved */
-    const asc = (r.bl !== undefined && r.bl !== null) ? (r.bl - r.y) : sz * 0.82;
-    const b = { text:r.text, say:r.say, page:r.page, skip:r.skip, tele:r.tele,
-                f:r.f, g:g,
-                x:x, y:top, w:wdt, h:r.h, bl:top + asc,
-                ox:r.x, oy:r.y, ow:r.w, oh:r.h };
-    out.items.push(b); out.box[g] = b;
+    for(let i = 0; i < seg.ws.length; i++){
+      const g = seg.ws[i], r = S.ribbon[g];
+      if(!r) continue;
+      const asc = (r.bl !== undefined && r.bl !== null) ? (r.bl - r.y) : sz * 0.82;
+      const b = { text:r.text, say:r.say, page:r.page, skip:r.skip, tele:r.tele,
+                  f:r.f, g:g,
+                  x: seg.dx + (r.x - seg.x0), y: top + (r.y - ln.y),
+                  w: r.w, h: r.h, bl: top + (r.y - ln.y) + asc,
+                  ox:r.x, oy:r.y, ow:r.w, oh:r.h };
+      out.items.push(b); out.box[g] = b;
+    }
   };
 
   let bi = 0, pi = 0;
@@ -1303,7 +1990,7 @@ function fnLayout(p, wantBoxes){
     const nextY = bi < blocks.length ? blocks[bi].y : Infinity;
     if(pi < pics.length && pics[pi].y <= nextY){
       const im = pics[pi++];
-      const maxW = im.cover ? pageW * 0.62 : Math.min(pageW * 0.72, colW * 1.7);
+      const maxW = im.cover ? pageW * 0.86 : Math.min(pageW * 0.92, colW * 1.7);
       const k = Math.min(1, maxW / Math.max(1, im.w));
       const dw = im.w * k, dh = im.h * k;
       out.imgs.push({ src:im.src, x:cx - dw/2, y:y, w:dw, h:dh });
@@ -1314,38 +2001,73 @@ function fnLayout(p, wantBoxes){
 
     const b = blocks[bi++];
     const isHead = (b.sty === 'head');
-    const measure = isHead ? Math.min(pageW * 0.74, colW * 1.7) : colW;
+    const measure = isHead ? Math.min(pageW * 0.92, colW * 1.7) : colW;
     const lh = b.sz * (isHead ? 1.34 : 1.5);
     const sp = FN.spaceW * (b.sz / Math.max(1, FN.baseSize));
 
-    /* greedy line breaking inside the measure */
-    let row = [], rowW = 0;
+    /* Greedy line breaking, measured in SEGMENTS. A segment's width is the real
+       distance its words occupy on the original page — one subtraction — rather
+       than the sum of several independently wrong estimates, so a funnelled line
+       is as wide as it will actually be drawn. */
+    let row = [], rowW = 0, last = -1;
     const flush = function(){
       if(!row.length) return;
       let x = cx - rowW / 2;
       for(let k = 0; k < row.length; k++){
-        const it = row[k];
-        push(it.g, x, y, it.w, b.sz);
-        x += it.w + sp;
+        const seg = row[k];
+        seg.dx = x;
+        emit(seg, y, b.sz);
+        /* A crop is cut at the middle of the gaps it sits between, so it already
+           carries half a word-space at each end. Adding a whole one on top of
+           that is what made funnelled lines look double-spaced. */
+        x += (seg.x1 - seg.x0) + sp * 0.35;
       }
       y += lh;
-      row = []; rowW = 0;
+      row = []; rowW = 0; last = -1;
     };
     for(let k = 0; k < b.ws.length; k++){
       const g = b.ws[k], w = S.ribbon[g];
-      if(!w) continue;
-      const ww = w.w;
-      const add = row.length ? sp + ww : ww;
-      if(row.length && rowW + add > measure){ flush(); }
-      row.push({ g:g, w:ww });
-      rowW += row.length === 1 ? ww : (sp + ww);
+      if(!w || !lineOf[g]) continue;
+      const tail = row.length ? row[row.length-1] : null;
+      const join = tail && last >= 0 && joinable(last, g);
+      const mkSeg = function(gg){
+        const ln = lineOf[gg], i = ln.at[gg];
+        return { ln:ln, ws:[gg], x0:cutBefore(gg), x1:cutAfter(gg),
+                 /* a cut's identity: the source line, and the word to its right.
+                    Both segments that meet at a cut name it the same way, so
+                    they can be given the same answer and meet exactly. */
+                 kL: i > 0 ? (ln.i*4096 + i) : -1,
+                 kR: i < ln.order.length-1 ? (ln.i*4096 + i + 1) : -1 };
+      };
+      if(join){
+        const grow = cutAfter(g) - tail.x1;
+        if(rowW + grow > measure && row.length){
+          flush();
+          const seg = mkSeg(g);
+          row.push(seg); rowW = seg.x1 - seg.x0; last = g;
+          continue;
+        }
+        const ln = lineOf[g], i = ln.at[g];
+        tail.ws.push(g); tail.x1 = cutAfter(g);
+        tail.kR = i < ln.order.length-1 ? (ln.i*4096 + i + 1) : -1;
+        rowW += grow; last = g;
+      }else{
+        const seg = mkSeg(g);
+        const span = seg.x1 - seg.x0;
+        const gap = sp * 0.35;
+        const add = row.length ? gap + span : span;
+        if(row.length && rowW + add > measure) flush();
+        row.push(seg);
+        rowW += row.length === 1 ? span : (gap + span);
+        last = g;
+      }
     }
     flush();
     y += lh * (isHead ? 0.55 : 0.42);            /* space between paragraphs */
   }
   while(pi < pics.length){
     const im = pics[pi++];
-    const maxW = Math.min(pageW * 0.72, colW * 1.7);
+    const maxW = Math.min(pageW * 0.92, colW * 1.7);
     const k = Math.min(1, maxW / Math.max(1, im.w));
     const dw = im.w * k, dh = im.h * k;
     out.imgs.push({ src:im.src, x:cx - dw/2, y:y, w:dw, h:dh });
@@ -1410,8 +2132,8 @@ function fnMeasureChunked(onDone){
 /* The shape of a funnelled page depends only on the book and the column, so
    the measurements are worth keeping between sessions. */
 function fnSig(){
-  return [S.book ? S.book.numPages : 0, Math.round(FN.pageW), Math.round(FN.colW*100),
-          Math.round(FN.baseSize*100), FN.chars].join('|');
+  return [S.book ? S.book.numPages : 0, Math.round(FN.pageW), Math.round(FN.boxW),
+          Math.round(FN.colW*100), Math.round(FN.baseSize*100), FN.chars].join('|');
 }
 async function fnLoadHeights(){
   if(!S.book) return false;
@@ -1478,6 +2200,8 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
   let src = null;
   try{
     const page = await doc.getPage(p+1);
+    /* the scratch is the ORIGINAL page at the same scale: source coordinates are
+       still original-page units, only the destination moved into the box */
     const vp0 = page.getViewport({ scale: sc });
     const w0 = Math.max(1, Math.round(vp0.width*dpr)), h0 = Math.max(1, Math.round(vp0.height*dpr));
     if(!FN.scratch){
@@ -1496,21 +2220,124 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
   }catch(e){ src = null; }
 
   if(!src){ ctx2d.restore(); return; }
-  for(let i = 0; i < lay.items.length; i++){
-    const it = lay.items[i];
-    const sx = it.ox*sc*dpr, sy = it.oy*sc*dpr;
-    const sw = Math.max(1, it.ow*sc*dpr), sh = Math.max(1, it.oh*sc*dpr);
-    try{ ctx2d.drawImage(src, sx, sy, sw, sh, it.x*sc, it.y*sc, it.ow*sc, it.oh*sc); }catch(e){}
+
+  /* Every number below is in DEVICE pixels of the scratch, which is the one
+     coordinate system where source and destination are the same size. Rounding
+     happens once, at that boundary, so each crop is a 1:1 integer blit: no
+     resampling, no half-pixel edge that fades a glyph's last column away.
+
+     multiply, not source-over: a tile carries blank paper around its word, and
+     white multiplied over anything leaves it alone. Tiles may therefore overlap
+     their neighbours and the line above without erasing a single stroke — which
+     is what makes generous bleed safe in the first place. */
+  const k  = sc * dpr;
+  const sw0 = src.width, sh0 = src.height;
+
+  /* Where exactly does one word stop and the next begin? The word boxes cannot
+     answer that — they are estimates — so the question is put to the only thing
+     that knows: the pixels. Around each cut we read a narrow window of the
+     scratch and take the emptiest column in it. A cut then falls in real
+     whitespace, and the two crops that meet there meet without splitting a
+     letter or copying one twice.
+
+     Only cuts INSIDE a source line are asked; a line's own ends need no help.
+     One window per cut, a few thousand pixels each, and the answers are cached
+     for as long as this page stays at this scale. */
+  const ckey = p + '|' + Math.round(k*1000);
+  if(FN.cutsKey !== ckey){ FN.cuts = Object.create(null); FN.cutsKey = ckey; }
+  const snapCut = function(id, nominal, bandTop, bandH, win){
+    if(id < 0) return nominal;
+    const hit = FN.cuts[id];
+    if(hit !== undefined) return hit;
+    /* The window has to be wide enough to reach the real gap. A box estimated
+       by character count can be a whole letter out, so the search spans about
+       half a line height either side rather than a fixed handful of pixels. */
+    const CUT_WIN = Math.max(12, Math.round(win));
+    let x0 = nominal - CUT_WIN, x1 = nominal + CUT_WIN;
+    if(x0 < 0) x0 = 0;
+    if(x1 > sw0) x1 = sw0;
+    let ty = bandTop, th = bandH;
+    if(ty < 0){ th += ty; ty = 0; }
+    if(ty + th > sh0) th = sh0 - ty;
+    if(x1 - x0 < 2 || th < 1){ FN.cuts[id] = nominal; return nominal; }
+    let best = nominal;
+    try{
+      const wpx = x1 - x0;
+      const d = FN.sctx.getImageData(x0, ty, wpx, th).data;
+      const ink = new Int32Array(wpx);
+      for(let c = 0; c < wpx; c++){
+        let a = 0;
+        for(let r = 0; r < th; r++){
+          const o = (r*wpx + c) << 2;
+          const lum = (d[o]*77 + d[o+1]*151 + d[o+2]*28) >> 8;
+          if(lum < 250) a += (250 - lum);
+        }
+        ink[c] = a;
+      }
+      /* A space between words is a RUN of blank columns; the gap between two
+         letters is a column or two at most. So the widest blank run wins, not
+         the single emptiest column — that is what tells a word boundary apart
+         from the notch inside a "rn" or beside an apostrophe. */
+      let bestLen = -1, bestDist = Infinity, run = 0;
+      for(let c = 0; c <= wpx; c++){
+        if(c < wpx && ink[c] === 0){ run++; continue; }
+        if(run > 0){
+          const mid = x0 + c - (run/2);
+          const dist = Math.abs(mid - nominal);
+          if(run > bestLen || (run === bestLen && dist < bestDist)){
+            bestLen = run; bestDist = dist; best = Math.round(mid);
+          }
+          run = 0;
+        }
+      }
+      if(bestLen < 0){                       // nothing blank: take the thinnest
+        let lo = Infinity;
+        for(let c = 0; c < wpx; c++){
+          const sc2 = ink[c]*1000 + Math.abs((x0+c) - nominal);
+          if(sc2 < lo){ lo = sc2; best = x0 + c; }
+        }
+      }
+    }catch(e){ best = nominal; }
+    FN.cuts[id] = best;
+    return best;
+  };
+  ctx2d.save();
+  ctx2d.setTransform(1,0,0,1,0,0);
+  ctx2d.globalCompositeOperation = 'multiply';
+  ctx2d.imageSmoothingEnabled = false;
+  const segs = lay.segs || [];
+  for(let i = 0; i < segs.length; i++){
+    const it = segs[i];
+    let sy = Math.round(it.sT * k), ey = Math.round(it.sB * k);
+    const nx0 = Math.round(it.x0 * k), nx1 = Math.round(it.x1 * k);
+    const win = (ey - sy) * 0.55;
+    let sx = snapCut(it.kL, nx0, sy, ey - sy, win);
+    let ex = snapCut(it.kR, nx1, sy, ey - sy, win);
+    if(ex <= sx) ex = sx + 1;
+    /* the destination moves by exactly what the source start moved, so the ink
+       inside the crop never shifts relative to where the layout put it */
+    let dx = Math.round(it.dx * k) + (sx - nx0);
+    let dy = Math.round((it.top + it.dY) * k);
+    /* clamp only here, at the real canvas edge, and move the destination by the
+       same amount so the ink never slides relative to its box */
+    if(sx < 0){ dx -= sx; sx = 0; }
+    if(sy < 0){ dy -= sy; sy = 0; }
+    if(ex > sw0) ex = sw0;
+    if(ey > sh0) ey = sh0;
+    const w = ex - sx, h = ey - sy;
+    if(w <= 0 || h <= 0) continue;
+    try{ ctx2d.drawImage(src, sx, sy, w, h, dx, dy, w, h); }catch(e){}
   }
+  ctx2d.restore();
   ctx2d.restore();
 }
 
 /* the funnelled height of a page, in the same units the rest of the app uses */
+/* The funnelled size of a page. It reads FN.pageW; it does not write it, so
+   two callers asking about the same page always get the same answer. */
 function fnViewport(page, p, scale){
-  const base = page.getViewport({ scale:1 });
   if(!FN.on) return page.getViewport({ scale:scale });
-  FN.pageW = base.width;
-  return { width: base.width*scale, height: fnHeight(p)*scale, scale:scale };
+  return { width: (FN.boxW || FN.pageW)*scale, height: fnHeight(p)*scale, scale:scale };
 }
 
 /* ============================================================================
@@ -1521,7 +2348,7 @@ const IS = {
   gap:14, pageW:0, pageH:0, slotH:0, total:0, inset:0,
   scale:1, dpr:2, aspect:1.294, baseW:612, poolN:3,
   strip:null, book:null, syncRaf:null, hlPage:-1, queue:[], busy:false, pumpT:null,
-  tops:null, hts:null
+  tops:null, hts:null, rendering:null, retry:false, contentW:0
 };
 
 /* Device pixels per canvas layer, capped. Beyond this a tablet starts
@@ -1549,8 +2376,13 @@ const S = {
   follow:true, hlStyle:'block',
   pendingPage:-1,
   renderToken:0,
-  selMode:false, hl:[], hlTab:'lib', hlView:'book',
-  focusRead:false, stats:null, dark:false, darkVar:'midnight', bionic:false, inf:false, funnel:false, dpr:1,
+  selMode:false, hl:[], hlDraft:[], hlTab:'lib', hlView:'book',
+  penColor:'#E02424', penW:2.3, eraseMM:20, eraseMode:'area', hlColor:'#FFE08A',
+  zoomLock:false, lockX:null, speak:false, tool:null,
+  /* The reading screen has one state and this is it. The flag survives only
+     because the engine reads it in a dozen places to mean "the page is all
+     there is" — which is now simply always true. */
+  focusRead:true, stats:null, dark:false, darkVar:'midnight', bionic:false, inf:false, funnel:false, dpr:1,
   homeNav:'library', homeGenre:'all',
   themes:null,
   edit:false, genreNames:null, customGenres:null
@@ -3101,6 +3933,7 @@ async function openBook(bk, autoResume){
     }
   }
 
+  FT.on = false; FT.ok = false; document.body.classList.remove('fittext');
   S.book=bk; S.ribbon=[]; S.byPage=[]; S.chunks=[]; S.wordIdx=-1; S.page=0;
 
   bk.pages.forEach(function(pg,pi){
@@ -3117,6 +3950,7 @@ async function openBook(bk, autoResume){
 
   S.strokes = await loadInk(bk);
   S.hl = (await store.get('marks:'+bk.id)) || [];
+  S.hlDraft = mirror.get('draft:'+bk.id) || (await store.get('draft:'+bk.id)) || [];
 
   $('#nowTitle').innerHTML='';
   $('#nowTitle').appendChild(document.createTextNode(bookTitle(bk)));
@@ -3273,6 +4107,7 @@ function savePosNow(){
   lastFlush = Date.now();
 }
 function schedulePos(){
+  if(TURBO.on){ TURBO.pend.pos = true; return; }    // no storage during a stroke
   if(!S.book) return;
   const now = Date.now();
   if(now-lastMirror > 900){ mirror.set('pos:'+S.book.id, posRecord()); lastMirror=now; }
@@ -3330,7 +4165,7 @@ function inkTrim(list){
                  y: Math.round(pts[i].y * 10) / 10,
                  p: Math.round(pts[i].p * 100) / 100 });
     }
-    out.push({ mode: st.mode, pts: cut });
+    out.push({ mode: st.mode, c: st.c, w: st.w, pts: cut });
   }
   return out;
 }
@@ -3395,6 +4230,8 @@ function flushAll(){
   inkFlushNow();
   clearTimeout(markT);
   store.set('marks:'+S.book.id, S.hl);
+  clearTimeout(draftT);
+  store.set('draft:'+S.book.id, S.hlDraft || []);
   saveSettings();
 }
 window.addEventListener('pagehide', flushAll);
@@ -3437,6 +4274,120 @@ function warmNextPage(n){
   if(window.requestIdleCallback) requestIdleCallback(go, { timeout:1200 }); else setTimeout(go, 300);
 }
 
+const PAGE_PX_BUDGET = 6.0e6;          // per canvas layer, in device pixels
+function pageDpr(w, h){
+  const cap = Math.min(window.devicePixelRatio || 1, 2);
+  const area = Math.max(1, w * h);
+  if(area * cap * cap <= PAGE_PX_BUDGET) return cap;
+  return Math.max(0.6, Math.sqrt(PAGE_PX_BUDGET / area));
+}
+
+/* ============================================================================
+   FIT TEXT
+   Page zoom magnifies the paper: at 150% a 900-unit page becomes 1350 units on
+   a 960-unit screen, and half of every line goes off the side. That is correct
+   arithmetic and a poor way to read.
+
+   A book does not use all of its paper. Between the margins there is a column,
+   and it is usually 60-75% of the sheet. Fit Text finds that column once, for
+   the whole book, and scales the page so the COLUMN — not the sheet — fills the
+   screen. The type gets bigger by the width of the margins, and not one line
+   goes off the edge, because nothing was ever added to the line length.
+
+   The measurement has to survive a page number sitting alone in a corner and a
+   footnote that starts further left than the body, so it is taken as robust
+   percentiles over a sample of pages rather than as a minimum and a maximum.
+============================================================================ */
+const FT = { on:false, L:0, R:0, ok:false, sig:'' };
+function ftMeasure(){
+  FT.ok = false;
+  if(!S.book || !S.byPage || !S.byPage.length) return false;
+  const n = S.book.numPages || 0;
+  const step = Math.max(1, Math.floor(n / 24));
+  const lefts = [], rights = [], hs = [];
+  for(let p = 0; p < n; p += step){
+    const list = S.byPage[p] || [];
+    for(let i = 0; i < list.length; i++){
+      const w = S.ribbon[list[i]];
+      if(!w || !w.text || w.skip) continue;      // running heads and folios excluded
+      hs.push(w.h);
+    }
+  }
+  if(hs.length < 20) return false;
+  hs.sort(function(a,b){ return a-b; });
+  const medH = hs[hs.length >> 1];
+  for(let p = 0; p < n; p += step){
+    const list = S.byPage[p] || [];
+    /* one left edge and one right edge PER LINE, so a long line and a short one
+       count the same and a page of dialogue cannot drag the column narrow */
+    const byLine = Object.create(null);
+    for(let i = 0; i < list.length; i++){
+      const w = S.ribbon[list[i]];
+      if(!w || !w.text || w.skip) continue;
+      if(w.h > medH * 1.5 || w.h < medH * 0.6) continue;   // headings and fine print
+      const key = Math.round(w.y / Math.max(3, medH * 0.6));
+      const b = byLine[key] || (byLine[key] = { l: Infinity, r: -Infinity, n:0 });
+      if(w.x < b.l) b.l = w.x;
+      if(w.x + w.w > b.r) b.r = w.x + w.w;
+      b.n++;
+    }
+    for(const k in byLine){
+      const b = byLine[k];
+      if(b.n < 3) continue;                       // not a line of running text
+      lefts.push(b.l); rights.push(b.r);
+    }
+  }
+  if(lefts.length < 12) return false;
+  lefts.sort(function(a,b){ return a-b; });
+  rights.sort(function(a,b){ return a-b; });
+  const q = function(arr, f){ return arr[clamp(Math.floor(arr.length*f), 0, arr.length-1)]; };
+  /* the 12th percentile of left edges and the 88th of right edges: indented
+     first lines and the odd overhanging line are outvoted, not obeyed */
+  FT.L = q(lefts, 0.12);
+  FT.R = q(rights, 0.88);
+  if(!(FT.R > FT.L + 20)) return false;
+  FT.ok = true;
+  return true;
+}
+/* the zoom that puts that column across the glass, with margins left to read by */
+function ftZoom(){
+  if(!S.book) return S.zoom;
+  const viewer = $('#viewer');
+  const avail = Math.max(160, viewer.clientWidth - FT_MARGIN - FT_RIGHT);
+  const fit = Math.min(viewer.clientWidth-40, 900);
+  if(FN.on && FN.boxW){
+    /* the funnel has already decided what the column is; fitting it is just a
+       matter of making its page fill the glass */
+    return clamp(avail * FN.pageW / (FN.boxW * fit), 0.6, 3);
+  }
+  if(!FT.ok) return S.zoom;
+  const baseW = IS.baseW || 612;
+  const want = avail / (FT.R - FT.L);            // page units -> css px
+  return clamp(want * baseW / fit, 0.6, 3);
+}
+/* The two margins are not the same width because the screen is not symmetric:
+   the pen, highlighter and eraser float over the right-hand edge. Fitting the
+   column edge-to-edge would put them on top of the last word of every line. */
+const FT_MARGIN = 18;
+const FT_RIGHT  = 52;
+/* Fit Text is a zoom mode, not a layout: once the column is the right size the
+   page simply has to be scrolled so the column, rather than the sheet, is
+   centred. */
+function ftCentre(){
+  if(!FT.on || !S.book) return;
+  if(S.zoomLock) return;                       // pinned means pinned
+  const viewer = $('#viewer');
+  const over = viewer.scrollWidth - viewer.clientWidth;
+  if(over <= 1){ viewer.scrollLeft = 0; return; }
+  /* the funnel's page is already the column, so there is nothing to hunt for */
+  if(FN.on){ viewer.scrollLeft = clamp(over/2, 0, over); return; }
+  if(!FT.ok) return;
+  const sc = IS.on ? IS.scale : S.scale;
+  /* put the column's LEFT edge on the left margin rather than centring it, so
+     the wider right margin stays where the floating tools are */
+  viewer.scrollLeft = clamp(FT.L * sc - FT_MARGIN, 0, over);
+}
+
 async function renderPage(pageIdx){
   if(!S.book || !S.book.doc) return;
   pageIdx = clamp(pageIdx, 0, S.book.numPages-1);
@@ -3451,9 +4402,20 @@ async function renderPage(pageIdx){
   const viewer = $('#viewer');
   const fit    = Math.min(viewer.clientWidth-40, 900);
   const base   = page.getViewport({ scale:1 });
-  S.scale = (fit/base.width) * S.zoom;
+  /* With the funnel on, every page is FN.pageW units wide by definition, so the
+     scale must come from that one number or two pages of different sizes would
+     be funnelled to two different widths. */
+  const bw = (FN.on && FN.pageW) ? FN.pageW : base.width;
+  S.scale = (fit/bw) * S.zoom;
   const vp  = fnViewport(page, pageIdx, S.scale);
-  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  /* Five stacked canvases share every page. At 3x zoom an unbudgeted layer is
+     5400 x 6988 - about 38 megapixels, 150 MB each, 750 MB for the stack - which
+     a 4 GB tablet cannot give us. Trading device pixels for zoom keeps the stack
+     at a fixed size, and the arithmetic works out kindly: above the threshold
+     the scale rises exactly as fast as the density falls, so a zoomed page holds
+     ~3.5 device pixels per PDF unit against 2.9 at 100%. Zooming in never looks
+     softer than not zooming, and it costs no extra memory at all. */
+  const dpr = pageDpr(vp.width, vp.height);
   S.dpr = dpr;
 
   const cw = Math.round(vp.width*dpr), ch = Math.round(vp.height*dpr);
@@ -3461,12 +4423,16 @@ async function renderPage(pageIdx){
     const c2 = cv.getContext('2d');
     if(cv.width !== cw || cv.height !== ch){
       cv.width = cw; cv.height = ch;                  // reallocates: only when it must
-      cv.style.width  = vp.width+'px';
-      cv.style.height = vp.height+'px';
     }else{
       c2.setTransform(1,0,0,1,0,0);
       c2.clearRect(0,0,cw,ch);                        // same size: just wipe it
     }
+    /* The size on screen is set every time, not only when the backing store
+       changes. Once the device pixels are budgeted those became two different
+       questions: a page can get visibly bigger while its bitmap stays exactly
+       the same size, and tying the two together left zoom stuck. */
+    cv.style.width  = vp.width+'px';
+    cv.style.height = vp.height+'px';
     c2.setTransform(dpr,0,0,dpr,0,0);
   });
   ictx.lineCap='round'; ictx.lineJoin='round';
@@ -3483,6 +4449,7 @@ async function renderPage(pageIdx){
   }
   if(token !== S.renderToken) return;
 
+  tintPaper(pctx, pdfCanvas);
   paintBionic();
   redrawInk(); paintVeil(); paintMarks(); paintHighlight();
 
@@ -3896,6 +4863,7 @@ function paintVeil(noClear){
 }
 
 function paintHighlight(noClear){
+  if(TURBO.on){ TURBO.pend.hl = true; return; }     // frozen: replayed at pen-up
   if(IS.on && !IS.bound){ isPaintHL(); return; }
   if(!noClear && lastHL){ hctx.clearRect(lastHL.x-3, lastHL.y-3, lastHL.w+6, lastHL.h+6); lastHL=null; }
   const w = wbox(S.wordIdx);
@@ -3917,6 +4885,7 @@ function paintHighlight(noClear){
 let followAnim=null, userScrolling=false, glide=null;
 function cancelFollow(){ if(followAnim){ cancelAnimationFrame(followAnim); followAnim=null; } }
 function smoothScrollTo(target){
+  if(TURBO.on) return;                              // the page holds still
   const viewer=$('#viewer');
   cancelFollow();
   const start=viewer.scrollTop, dist=target-start, t0=performance.now(), dur=260;
@@ -3962,6 +4931,7 @@ function setActive(g){
   paintHighlight(); followHighlight(); updateProgress(); schedulePos();
 }
 function updateProgress(){
+  if(TURBO.on){ TURBO.pend.prog = true; return; }
   const pct = pctNow();
   $('#progressBar').style.width = (pct*100)+'%';
   const fb = $('#focusProgBar');
@@ -4480,6 +5450,7 @@ function livePageMs(idx){
   return ms;
 }
 function tickClock(){
+  if(TURBO.on) return;                              // the stopwatch can wait
   const el = $('#focusClockTime'); if(!el) return;
   el.textContent = fmtClock(livePageMs(S.page));
   updateStatsStrip();
@@ -5897,15 +6868,31 @@ function isPumpSoon(){
   IS.pumpT = setTimeout(function(){ IS.pumpT = null; isPump(); }, 90);
 }
 function isPump(){
-  if(IS.busy || !IS.queue.length) return;
+  if(TURBO.on){ TURBO.pend.pump = true; return; }   // no page rendering mid-stroke
+  if(IS.busy) return;
+  if(!IS.queue.length){
+    /* A render can end without drawing anything: cancelled, superseded, or the
+       page simply failed. The slot is still assigned and still blank, so ask
+       once more rather than leaving it there for good. */
+    if(IS.retry){ IS.retry = false; isSync(true); }
+    return;
+  }
   /* drawing a page costs several milliseconds; spending them while the finger
      is still travelling is exactly what makes a scroll feel gritty */
   if(isFlinging()){ isPumpSoon(); return; }
   const job = IS.queue.shift();
-  if(job.slot.page !== job.page){ isPump(); return; }
-  IS.busy = true;
+  if(job.slot.page !== job.page || (job.gen !== undefined && job.gen !== job.slot.gen)){ isPump(); return; }
+  IS.busy = true; IS.rendering = job.slot;
+  job.slot.tries = (job.slot.tries || 0) + 1;
   isRenderSlot(job.slot, job.page).catch(function(){}).then(function(){
-    IS.busy = false; isPump();
+    IS.busy = false; IS.rendering = null;
+    if(job.slot.page === job.page && !job.slot.ready){
+      /* three honest attempts, then stop: an unrenderable page must not become
+         a loop that starves every other page in the strip */
+      if(job.slot.tries >= 3) job.slot.ready = true;
+      else IS.retry = true;
+    }
+    isPump();
   });
 }
 
@@ -5919,7 +6906,8 @@ async function isRenderSlot(sl, pageIdx){
   /* fit inside the box both ways, so an odd-sized page can never overlap its
      neighbour and the strip never has to shift under your thumb */
   const boxH = IS.hts[pageIdx] || IS.pageH;
-  const sc = FN.on ? (IS.pageW / base.width)
+  /* the same scale isLayout used to reserve this page's height */
+  const sc = FN.on ? IS.scale
                    : Math.min(IS.pageW / base.width, boxH / base.height);
   const vp = fnViewport(page, pageIdx, sc);
   const dpr = IS.dpr;
@@ -5929,12 +6917,12 @@ async function isRenderSlot(sl, pageIdx){
     const c2 = cv.getContext('2d');
     if(cv.width !== cw || cv.height !== ch){
       cv.width = cw; cv.height = ch;
-      cv.style.width = vp.width+'px';
-      cv.style.height = vp.height+'px';
     }else{
       c2.setTransform(1,0,0,1,0,0);
       c2.clearRect(0,0,cw,ch);
     }
+    cv.style.width = vp.width+'px';
+    cv.style.height = vp.height+'px';
     c2.setTransform(dpr,0,0,dpr,0,0);
   });
   sl.ictx.lineCap='round'; sl.ictx.lineJoin='round';
@@ -5942,7 +6930,7 @@ async function isRenderSlot(sl, pageIdx){
 
   /* centre a page that does not fill its box */
   const dy = IS.tops[pageIdx] + Math.max(0, (boxH - vp.height)/2);
-  const dx = (IS.pageW - vp.width)/2;
+  const dx = ((IS.contentW || IS.pageW) - vp.width)/2;
   sl.el.style.transform = 'translate('+Math.round(dx)+'px,'+Math.round(dy)+'px)';
   sl.el.style.display = '';
 
@@ -5953,11 +6941,12 @@ async function isRenderSlot(sl, pageIdx){
   }else{
     sl.task = page.render({ canvasContext: sl.bctx, viewport: vp });
     try{ await sl.task.promise; }
-    catch(e){ if(e && e.name === 'RenderingCancelledException') return; }
+    catch(e){ sl.task = null; return; }        // cancelled or failed: isPump retries
     sl.task = null;
   }
   if(gen !== sl.gen || !IS.on) return;
 
+  tintPaper(sl.bctx, sl.base);
   sl.ready = true;
   isBind(sl);
   paintBionic();
@@ -5983,7 +6972,15 @@ function isLayout(preserve){
   IS.pageW = Math.max(80, Math.min(viewer.clientWidth - 40, 900) * S.zoom);
   IS.pageH = IS.pageW * IS.aspect;
   IS.slotH = IS.pageH + IS.gap;
-  IS.scale = IS.pageW / IS.baseW;
+  /* One scale, one width. With the funnel on a page is FN.pageW units wide by
+     definition, so the strip must scale against that and not against the first
+     page's own width — otherwise the height this function reserves for a page
+     and the height isRenderSlot actually draws come from two different numbers,
+     and the difference shows up as a gap or an overlap in the strip. */
+  IS.scale = IS.pageW / (FN.on ? FN.pageW : IS.baseW);
+  /* what is actually drawn is narrower than the nominal page when the funnel is
+     on, and the strip must be that width or the reader pans across dead space */
+  IS.contentW = FN.on ? (FN.boxW || FN.pageW) * IS.scale : IS.pageW;
   IS.inset = 0;
 
   /* Every page gets its own height, because a funnelled page is as long as its
@@ -6003,7 +7000,7 @@ function isLayout(preserve){
   IS.dpr   = isDprFor(IS.pageW, tallest);
   IS.poolN = isPoolFor(IS.pageW, tallest, IS.dpr);
 
-  IS.strip.style.width  = Math.round(IS.pageW)+'px';
+  IS.strip.style.width  = Math.round(IS.contentW)+'px';
   IS.strip.style.height = Math.round(IS.total)+'px';
 
   while(IS.slots.length < IS.poolN) isMakeSlot();
@@ -6063,19 +7060,30 @@ function isSync(force){
     const sl = IS.slots[i];
     if(sl.page >= 0 && keep.indexOf(sl.page) < 0) isRelease(sl);
   }
+  /* INVARIANT: a page counts as handled only while its slot is READY, or while
+     a job for it is actually in flight. Holding a slot used to be enough — so
+     every time this ran it cleared the queue, saw the slot still assigned, and
+     skipped the page. The job was gone, the page was marked done, and it stayed
+     blank for as long as the slot lived. That is the hole in the strip. */
   IS.queue.length = 0;
   for(let i=0;i<keep.length;i++){
     const p = keep[i];
-    if(IS.live[p]) continue;
+    const held = IS.live[p];
+    if(held){
+      if(held.ready || held === IS.rendering) continue;
+      held.el.style.transform = 'translate(0px,'+Math.round(IS.tops[p])+'px)';
+      IS.queue.push({ slot:held, page:p, gen:held.gen });
+      continue;
+    }
     let free = null;
     for(let k=0;k<IS.slots.length;k++) if(IS.slots[k].page < 0){ free = IS.slots[k]; break; }
     if(!free) break;
-    free.gen++; free.page = p; free.ready = false;
+    free.gen++; free.page = p; free.ready = false; free.tries = 0;
     IS.live[p] = free;
     /* park it in the right place immediately so nothing flashes in the wrong
        spot while the render is still coming */
     free.el.style.transform = 'translate(0px,'+Math.round(IS.tops[p])+'px)';
-    IS.queue.push({ slot:free, page:p });
+    IS.queue.push({ slot:free, page:p, gen:free.gen });
   }
   isPump();
   isWarmLayout(keep);
@@ -6176,13 +7184,17 @@ async function setInfinite(on, quiet){
     isGoToPage(S.page);
     if(!quiet) toast('Infinite scroll on.');
   }else{
+    /* Remember the WORD before the strip is torn down. Landing on the right page
+       but at the top of it is still losing your place — on a funnelled page that
+       can be several screens away from where you were reading. */
+    const keep = readingAnchor();
     const back = IS.cur;
     IS.on = false;
     document.body.classList.remove('infscroll');
     isTeardown();
     S.page = back;
-    await renderPage(back);
-    scrollToPageTop();
+    if(keep >= 0) await goToWord(keep);
+    else { await renderPage(back); scrollToPageTop(); }
     if(!quiet) toast('Infinite scroll off.');
   }
   /* a quiet toggle is the app tidying up (leaving focused reading), not you
@@ -6253,6 +7265,37 @@ function syncFunnelBtn(){
   b.setAttribute('aria-pressed', FN.on ? 'true' : 'false');
   b.title = FN.on ? 'Visual Funnel — on' : 'Visual Funnel (Bionic Margin Tuning)';
 }
+/* Fit Text and a pinch are the same dimension of state — both decide the zoom —
+   so turning one on turns the other off rather than fighting it. */
+async function setFitText(on, quiet){
+  on = !!on;
+  if(!S.book){ toast('Open a book first.'); return; }
+  if(on === FT.on) return;
+  const keep = readingAnchor();
+  if(on){
+    if(!FN.on && !FT.ok && !ftMeasure()){
+      toast('This book has no steady text column to fit to.');
+      if(window.rdSync) rdSync();
+      return;
+    }
+    FT.on = true;
+    S.zoom = ftZoom();
+  }else{
+    FT.on = false;
+    S.zoom = 1;
+  }
+  S.zoomLock = false; S.lockX = null;
+  document.body.classList.toggle('fittext', FT.on);
+  if(window.zSync) zSync();
+  if(IS.on) isLayout(true);
+  else if(keep >= 0) await goToWord(keep);
+  else await renderPage(S.page);
+  ftCentre();
+  if(window.rdSync) rdSync();
+  if(!quiet) toast(FT.on ? 'Fit Text on — ' + Math.round(S.zoom*100) + '%.' : 'Fit Text off.');
+}
+window.setFitText = setFitText;
+
 async function setFunnel(on, quiet){
   on = !!on;
   if(on === FN.on) return;
@@ -6260,12 +7303,7 @@ async function setFunnel(on, quiet){
 
   const keep = readingAnchor();
   if(on){
-    FN.pageW = 820;
-    try{
-      const p0 = await S.book.doc.getPage(1);
-      const v0 = p0.getViewport({ scale:1 });
-      if(v0.width > 0) FN.pageW = v0.width;
-    }catch(e){}
+    await fnPageWidth();
     fnCalibrate();
     FN.on = true;
     fnForget();
@@ -6301,52 +7339,558 @@ function canvasPoint(e){
 }
 function strokesHere(){ if(!S.strokes[S.page]) S.strokes[S.page]=[]; return S.strokes[S.page]; }
 
-let cur=null, penId=null, penDown=null, penMoved=0;
+/* ============================================================================
+   PEN TURBO
+   ─────────
+   Handwriting is the only thing in this app with a hard real-time deadline.
+   Everything else can be a frame late and nobody notices; ink that is a frame
+   late is ink you can watch chasing the nib. So while the pen is down the app
+   stops being a reader and becomes a single-purpose drawing surface.
+
+   The old path drew every accepted sample straight into the permanent ink
+   canvas — a full device-resolution layer sitting in a stack of five, two of
+   which composite with mix-blend-mode:multiply. Every segment therefore cost a
+   blended recomposite of the whole page on a Mali-T830 MP2. And it accepted a
+   new sample every 0.34 px, which on a 224 PPI panel is far below anything a
+   human eye can resolve: most of that work bought nothing at all.
+
+   What replaces it:
+
+     · a LIVE surface — one transparent, desynchronized canvas at 1x CSS
+       resolution covering the viewport, and nothing else in it. A segment costs
+       a quarter of the fill it used to and composites against one layer.
+     · a FLAT backdrop — on the frame after pen-down, the five page layers are
+       collapsed into the single bitmap already used by pinch-zoom and hidden.
+       While writing, the screen is one static picture plus one live overlay.
+     · THINNING with a floor of ~0.9 CSS px, which rises on its own when the
+       handler starts running long and falls back when it recovers.
+     · STALENESS control — an event that reaches JavaScript more than a few
+       milliseconds after it was generated describes where the nib WAS. It is
+       kept for the saved geometry and skipped for drawing, so the visible ink
+       always races toward the newest position instead of faithfully retracing
+       the backlog.
+     · PREDICTION where the browser offers it, drawn on its own scratch layer so
+       a guess can be wiped without disturbing real ink.
+
+   Live quality is deliberately lower than final quality. On pen-up the vector
+   is committed and repainted once, properly, at full device resolution.
+============================================================================ */
+const TURBO = {
+  /* ── tunables · see the notes at the end of this block ────────────────── */
+  liveDpr:    0.8,        // backing store of the live surface, x CSS pixels
+  minDist:    0.1,      // CSS px a nib must travel before a point is drawn
+  minDistLo:  0.8,      // floor when the device is keeping up
+  minDistHi:  3,      // ceiling when it is not
+  staleMs:    0.1,       // older than this: record it, do not draw it
+  maxSkipRun: 0,        // never skip more than this many drawings in a row
+  budgetMs:   1.5,      // target cost of one pen handler
+  freeFirst:  3,        // first N points always drawn, whatever the spacing
+  predict:    false,
+  predictMax: 3,        // predicted samples drawn ahead of the nib
+  flatten:    true,     // collapse the page stack while the pen is down
+  commitSep:  0.30,     // page-unit spacing kept in the saved vector
+
+  /* ── live state ──────────────────────────────────────────────────────── */
+  on:false, live:false, flat:false, raw:false,
+  cx:0, cy:0, bucket:-1, open:false,
+  dist:0.9, skipRun:0, avgMs:0, flatRaf:0, lastDraw:0,
+  pend:{ hl:false, prog:false, pos:false, marks:false, pump:false }
+};
+
+/* what the browser will actually give us, asked once */
+TURBO.raw      = ('onpointerrawupdate' in window) || ('onpointerrawupdate' in document.createElement('canvas'));
+TURBO.hasCoal  = (typeof PointerEvent !== 'undefined') && ('getCoalescedEvents' in PointerEvent.prototype);
+TURBO.hasPred  = (typeof PointerEvent !== 'undefined') && ('getPredictedEvents' in PointerEvent.prototype);
+
+/* ── the two scratch surfaces ─────────────────────────────────────────────
+   Both are viewport-sized and fixed, so a point's position on them is just its
+   client coordinate — no rectangle to cache, nothing to recompute when the page
+   scrolls, and no getBoundingClientRect anywhere in the hot path. */
+const liveCv = document.getElementById('penLive');
+const predCv = document.getElementById('penPred');
+let livCtx = null, preCtx = null;
+function penCtx(cv){
+  try{ return cv.getContext('2d', { desynchronized:true, alpha:true }); }
+  catch(e){ return cv.getContext('2d'); }
+}
+function sizeLive(){
+  const d = TURBO.liveDpr;
+  const w = Math.max(1, Math.round(innerWidth * d)), h = Math.max(1, Math.round(innerHeight * d));
+  [liveCv, predCv].forEach(function(cv){
+    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    cv.style.width = innerWidth + 'px';
+    cv.style.height = innerHeight + 'px';
+  });
+  if(!livCtx){ livCtx = penCtx(liveCv); preCtx = penCtx(predCv); }
+  livCtx.lineCap = preCtx.lineCap = 'round';
+  livCtx.lineJoin = preCtx.lineJoin = 'round';
+}
+sizeLive();
+window.addEventListener('resize', function(){ if(!TURBO.on) sizeLive(); });
+
+/* ── the point buffer ─────────────────────────────────────────────────────
+   Three preallocated Float32Arrays instead of an array of objects. A minute of
+   handwriting is tens of thousands of samples; allocating a literal for each one
+   hands the collector a bill that comes due mid-stroke. */
+const PB = { x:new Float32Array(2048), y:new Float32Array(2048), p:new Float32Array(2048), n:0 };
+function pbReset(){ PB.n = 0; }
+function pbPush(x, y, p){
+  if(PB.n === PB.x.length){
+    const m = PB.n * 2;
+    let a = new Float32Array(m); a.set(PB.x); PB.x = a;
+    a = new Float32Array(m); a.set(PB.y); PB.y = a;
+    a = new Float32Array(m); a.set(PB.p); PB.p = a;
+  }
+  PB.x[PB.n] = x; PB.y[PB.n] = y; PB.p[PB.n] = p; PB.n++;
+}
+/* One tidy-up, after the pen has left the glass, where it costs nothing. */
+function pbCommit(sep){
+  const out = [];
+  if(!PB.n) return out;
+  const s2 = sep * sep;
+  out.push({ x:PB.x[0], y:PB.y[0], p:PB.p[0] });
+  let lx = PB.x[0], ly = PB.y[0];
+  for(let i = 1; i < PB.n - 1; i++){
+    const dx = PB.x[i] - lx, dy = PB.y[i] - ly;
+    if(dx*dx + dy*dy < s2) continue;
+    out.push({ x:PB.x[i], y:PB.y[i], p:PB.p[i] });
+    lx = PB.x[i]; ly = PB.y[i];
+  }
+  if(PB.n > 1) out.push({ x:PB.x[PB.n-1], y:PB.y[PB.n-1], p:PB.p[PB.n-1] });
+  return out;
+}
+
+/* ── live ink ─────────────────────────────────────────────────────────────
+   Pressure drives width, but only through eight buckets. The M-Pen reports 2048
+   levels; the difference between two adjacent ones is invisible, while a width
+   change forces a new path and a new stroke call. Bucketing keeps the pressure
+   feel and collapses a burst of samples into one path. */
+let liveW = 1, liveColor = '#000';
+function widthFor(bucket){
+  const mm = (typeof PX_PER_MM === 'number') ? PX_PER_MM : 3.7795;
+  return Math.max(0.6, S.penW * mm * (0.55 + (bucket / 8) * 0.9)) * TURBO.liveDpr;
+}
+function liveMoveTo(x, y){ TURBO.cx = x; TURBO.cy = y; TURBO.bucket = -1; TURBO.open = false; }
+function liveTo(x, y, bucket){
+  if(bucket !== TURBO.bucket){
+    if(TURBO.open) livCtx.stroke();
+    livCtx.beginPath();
+    livCtx.moveTo(TURBO.cx, TURBO.cy);
+    livCtx.lineWidth = widthFor(bucket);
+    TURBO.bucket = bucket;
+    TURBO.open = true;
+  }
+  livCtx.lineTo(x, y);
+  TURBO.cx = x; TURBO.cy = y;
+}
+function liveFlush(){
+  if(TURBO.open){ livCtx.stroke(); TURBO.open = false; TURBO.bucket = -1; }
+}
+function liveClear(){
+  if(!livCtx) return;
+  livCtx.clearRect(0, 0, liveCv.width, liveCv.height);
+  preCtx.clearRect(0, 0, predCv.width, predCv.height);
+  PRED.has = false;
+  TURBO.open = false; TURBO.bucket = -1;
+}
+
+/* ── prediction ───────────────────────────────────────────────────────────
+   A guess about where the nib is heading, drawn on its own layer so wiping it
+   can never take real ink with it. Only its bounding box is cleared, which is a
+   few hundred pixels rather than a screenful. */
+const PRED = { has:false, x0:0, y0:0, x1:0, y1:0 };
+function predClear(){
+  if(!PRED.has) return;
+  preCtx.clearRect(PRED.x0, PRED.y0, PRED.x1 - PRED.x0, PRED.y1 - PRED.y0);
+  PRED.has = false;
+}
+function predDraw(e, bucket){
+  predClear();
+  if(!TURBO.predict || !TURBO.hasPred || TURBO.predOk === false || !e.getPredictedEvents) return;
+  let pe;
+  try{ pe = e.getPredictedEvents(); }catch(err){ TURBO.predOk = false; return; }
+  if(!pe || !pe.length){
+    /* The method exists on every Chrome; whether the platform actually fills it
+       is another question. Two empty answers in a row and we stop asking, which
+       also stops allocating an array per sample for nothing. */
+    if(++TURBO.predMiss > 2) TURBO.predOk = false;
+    return;
+  }
+  TURBO.predMiss = 0; TURBO.predOk = true;
+  const d = TURBO.liveDpr;
+  const w = widthFor(bucket);
+  let x0 = TURBO.cx, y0 = TURBO.cy, x1 = TURBO.cx, y1 = TURBO.cy;
+  preCtx.strokeStyle = liveColor;
+  preCtx.lineWidth = w;
+  preCtx.beginPath();
+  preCtx.moveTo(TURBO.cx, TURBO.cy);
+  const m = pe.length < TURBO.predictMax ? pe.length : TURBO.predictMax;
+  for(let i = 0; i < m; i++){
+    const px = pe[i].clientX * d, py = pe[i].clientY * d;
+    preCtx.lineTo(px, py);
+    if(px < x0) x0 = px; else if(px > x1) x1 = px;
+    if(py < y0) y0 = py; else if(py > y1) y1 = py;
+  }
+  preCtx.stroke();
+  const pad = w + 3;
+  PRED.x0 = x0 - pad; PRED.y0 = y0 - pad;
+  PRED.x1 = x1 + pad; PRED.y1 = y1 + pad;
+  PRED.has = true;
+}
+
+/* ── freezing the reader ──────────────────────────────────────────────────
+   Nothing here stops narration audio. It stops the visual bookkeeping that
+   follows narration around, which is what actually competes for the main
+   thread. Every suppressed job records that it wanted to run and is let through
+   once, at pen-up. */
+function turboEnter(mode){
+  TURBO.on = true;
+  TURBO.live = (mode !== 'erase');
+  TURBO.dist = TURBO.minDist;
+  TURBO.skipRun = 0; TURBO.avgMs = 0;
+  TURBO.predOk = null; TURBO.predMiss = 0;
+  const P = TURBO.pend;
+  P.hl = P.prog = P.pos = P.marks = P.pump = false;
+  document.body.classList.add('drawing');
+  if(glide){ cancelAnimationFrame(glide); glide = null; }
+  if(followAnim){ cancelAnimationFrame(followAnim); followAnim = null; }
+  if(IS.pumpT){ clearTimeout(IS.pumpT); IS.pumpT = null; }
+  if(TURBO.live) liveClear();
+  /* The flatten is deliberately one frame late: the first mark must not wait
+     behind a full-page blit. A tap that is over before the frame arrives never
+     pays for it at all. */
+  if(TURBO.live && TURBO.flatten && !IS.on && !FN.on){
+    TURBO.flatRaf = requestAnimationFrame(function(){
+      TURBO.flatRaf = 0;
+      if(!TURBO.on || !TURBO.live) return;
+      if(snapPage()){ TURBO.flat = true; document.body.classList.add('turboflat'); }
+    });
+  }
+}
+function turboExit(){
+  if(TURBO.flatRaf){ cancelAnimationFrame(TURBO.flatRaf); TURBO.flatRaf = 0; }
+  TURBO.on = false; TURBO.live = false;
+  document.body.classList.remove('drawing');
+  if(TURBO.flat){
+    TURBO.flat = false;
+    document.body.classList.remove('turboflat');
+    const zs = document.getElementById('zoomSnap');
+    if(zs){ zs.classList.remove('show'); zs.style.transform = ''; }
+  }
+  const P = TURBO.pend;
+  if(P.marks){ P.marks = false; try{ paintMarks(); }catch(e){} }
+  if(P.hl)   { P.hl = false;    try{ paintHighlight(); }catch(e){} }
+  if(P.prog) { P.prog = false;  try{ updateProgress(); }catch(e){} }
+  if(P.pos)  { P.pos = false;   try{ schedulePos(); }catch(e){} }
+  if(P.pump) { P.pump = false;  try{ isPumpSoon(); }catch(e){} }
+}
+
+let cur=null, penId=null, penDown=null, penMoved2=0;
+
+/* ---------------------------------------------------------------------------
+   THE PRESSURE ERASER
+   A separate eraser tool is a trip to a toolbar and back for every stray line.
+   Here the nib is the eraser: lean on it, or hold it still for the length of a
+   blink, and it starts taking ink away. Lift, and it is a pen again — there is
+   no mode left switched on behind you.
+
+   Two independent triggers, because a stylus is not consistent about which one
+   it can report:
+     · PRESSURE  — the M-Pen reports 2048 steps; past PEN.press it is a rub.
+     · HOLD      — 150 ms with the nib parked inside PEN.slop pixels.
+--------------------------------------------------------------------------- */
+const PEN = { press:0.62, holdMs:150, slop:7, slop2:49 };
+let holdT=null, lastPenX=0, lastPenY=0;
+
+/* Vibration is a syscall. It is worth having when the eraser takes over,
+   because that is a mode change you need to feel — but it is not worth having
+   inside the pen handler, so it is thrown over the fence to the next task. */
+function buzzPen(ms){
+  if(!TURBO.buzzOn) return;
+  setTimeout(function(){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }, 0);
+}
+TURBO.buzzOn = true;
+
+function eraseNow(){
+  if(!cur || cur.mode === 'erase') return;
+  /* Anything already laid down stays a pen line, so it is committed here and
+     the eraser starts a stroke of its own. The live surface hands its ink over
+     to the permanent layer at the same moment, because an eraser has to cut
+     into real ink and cannot do that through a scratch overlay. */
+  const pts = pbCommit(TURBO.commitSep);
+  if(pts.length > 3){
+    cur.pts = pts;
+    strokesHere().push(cur);
+    drawStrokeFinal(cur);
+    scheduleInk();
+  }
+  if(TURBO.flatRaf){ cancelAnimationFrame(TURBO.flatRaf); TURBO.flatRaf = 0; }
+  if(TURBO.flat){
+    TURBO.flat = false;
+    document.body.classList.remove('turboflat');
+    const zs = document.getElementById('zoomSnap');
+    if(zs){ zs.classList.remove('show'); zs.style.transform = ''; }
+  }
+  liveClear();
+  TURBO.live = false;
+  const lastX = PB.n ? PB.x[PB.n-1] : 0, lastY = PB.n ? PB.y[PB.n-1] : 0;
+  pbReset(); pbPush(lastX, lastY, 1);
+  cur = { mode:'erase', c:S.penColor, w:S.eraseMM, pts:[{ x:lastX, y:lastY, p:1 }] };
+  if(window.ringShow) ringShow(lastPenX, lastPenY);
+  buzzPen(8);
+}
+
+/* ---------------------------------------------------------------------------
+   POINTER DOWN
+   The shortest path that exists between the nib touching glass and a pixel
+   changing colour. Everything that is not on that path has been moved out of
+   it: no layout read, no style read, no toolbar refresh, no storage, no
+   vibration, no animation, no snapshot.
+--------------------------------------------------------------------------- */
 function penBegin(e){
   if(e.pointerType==='touch') return;
   if(FN.on){ toast('Turn the funnel off to annotate.'); return; }
-  cancelFollow();
-  if(glide){ cancelAnimationFrame(glide); glide=null; }
-  penId=e.pointerId; penDown={x:e.clientX,y:e.clientY}; penMoved=0; S.drawing=true;
-  refreshInkRect();
+  penId=e.pointerId; penDown={x:e.clientX,y:e.clientY}; penMoved2=0; S.drawing=true;
+  lastPenX=e.clientX; lastPenY=e.clientY;
+  if(!inkRect) refreshInkRect();                 // cached at pen-down, never during
   try{ inkCanvas.setPointerCapture(e.pointerId); }catch(err){}
-  cur = { mode:S.penMode, pts:[canvasPoint(e)] };
+
+  const hardNow = (e.pressure > 0 && e.pressure >= PEN.press) || e.button === 5 || (e.buttons & 32);
+  const mode = (S.penMode === 'erase' || hardNow) ? 'erase' : 'pen';
+  const pr = e.pressure > 0 ? e.pressure : 0.5;
+  const px = (e.clientX - inkRect.left) / S.scale, py = (e.clientY - inkRect.top) / S.scale;
+
+  cur = { mode:mode, c:S.penColor, w:(mode==='erase' ? S.eraseMM : S.penW), pts:null };
+  pbReset(); pbPush(px, py, pr);
+
+  turboEnter(mode);
+
+  if(TURBO.live){
+    const d = TURBO.liveDpr;
+    liveColor = S.penColor || THEME.pen;
+    livCtx.globalCompositeOperation = 'source-over';
+    livCtx.strokeStyle = liveColor;
+    preCtx.globalCompositeOperation = 'source-over';
+    liveMoveTo(e.clientX * d, e.clientY * d);
+    /* the first dab, so a tap leaves a mark and the first millimetre of a
+       stroke is already on the glass before anything else happens */
+    const b = (pr * 8) | 0;
+    livCtx.lineWidth = widthFor(b);
+    livCtx.beginPath();
+    livCtx.arc(TURBO.cx, TURBO.cy, livCtx.lineWidth / 2, 0, 6.2832);
+    livCtx.fillStyle = liveColor;
+    livCtx.fill();
+    TURBO.lastDraw = e.timeStamp || 0;
+    DIAG.draw++;
+  }else{
+    cur.pts = [{ x:px, y:py, p:pr }];
+    if(window.ringShow) ringShow(e.clientX, e.clientY);
+    if(hardNow && S.penMode !== 'erase') buzzPen(8);
+  }
+
+  clearTimeout(holdT); holdT = null;
+  if(mode !== 'erase'){
+    holdT = setTimeout(function(){
+      holdT = null;
+      if(penId === null || !cur || penMoved2 > PEN.slop2) return;
+      eraseNow();
+    }, PEN.holdMs);
+  }
   e.preventDefault();
 }
 inkCanvas.addEventListener("pointerdown", penBegin, { passive:false });
 
+/* ---------------------------------------------------------------------------
+   POINTER MOVE
+   Runs hundreds of times a second. Everything in here is either arithmetic on
+   numbers already in registers or a canvas call that draws something.
+--------------------------------------------------------------------------- */
 function penMove(e){
   if(e.pointerId!==penId || !cur) return;
-  penMoved = Math.max(penMoved, Math.hypot(e.clientX-penDown.x, e.clientY-penDown.y));
-  let evs=[e];
-  if(e.getCoalescedEvents){ const c=e.getCoalescedEvents(); if(c && c.length) evs=c; }
-  for(let i=0;i<evs.length;i++){
-    const q = canvasPoint(evs[i]);
-    if(!inkFarEnough(cur.pts, q)) continue;
-    cur.pts.push(q); drawTail(cur);
-  }
-  e.preventDefault();
-}
-if('onpointerrawupdate' in inkCanvas) inkCanvas.addEventListener('pointerrawupdate', penMove, { passive:false });
-else inkCanvas.addEventListener('pointermove', penMove, { passive:false });
+  const t0 = performance.now();
 
+  lastPenX = e.clientX; lastPenY = e.clientY;
+  const mdx = e.clientX - penDown.x, mdy = e.clientY - penDown.y;
+  const m2 = mdx*mdx + mdy*mdy;
+  if(m2 > penMoved2) penMoved2 = m2;
+  if(holdT && penMoved2 > PEN.slop2){ clearTimeout(holdT); holdT = null; }
+
+  const pr = e.pressure > 0 ? e.pressure : 0.5;
+  if(cur.mode !== 'erase' && pr >= PEN.press) eraseNow();
+
+  if(!TURBO.live){
+    /* eraser: cuts straight into the permanent layer, which is the only place
+       destination-out means anything */
+    if(window.ringShow) ringShow(e.clientX, e.clientY);
+    const q = canvasPoint(e);
+    const last = cur.pts[cur.pts.length-1];
+    if(Math.abs(q.x-last.x)*S.scale + Math.abs(q.y-last.y)*S.scale > 0.9){
+      cur.pts.push(q); drawTail(cur);
+    }
+    if(e.cancelable) e.preventDefault();
+    DIAG.evt++;
+    return;
+  }
+
+  const d = TURBO.liveDpr, invS = 1 / S.scale;
+  const iL = inkRect.left, iT = inkRect.top;
+
+  /* pointerrawupdate is already one event per physical sample, so asking it for
+     its coalesced history allocates an array to tell us what we already have. */
+  const many = !TURBO.raw && e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+  const n = many ? many.length : 1;
+  const now = t0;
+  let drewAny = false, lastBucket = (pr*8)|0;
+
+  for(let i = 0; i < n; i++){
+    const s = many ? many[i] : e;
+    const sx = s.clientX, sy = s.clientY;
+    const sp = s.pressure > 0 ? s.pressure : 0.5;
+
+    /* the saved geometry keeps everything: it is three float stores */
+    pbPush((sx - iL) * invS, (sy - iT) * invS, sp);
+    DIAG.evt++;
+
+    const lx = sx * d, ly = sy * d;
+    const dx = lx - TURBO.cx, dy = ly - TURBO.cy;
+    const far = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+
+    if(PB.n > TURBO.freeFirst && far < TURBO.dist * d){ DIAG.thin++; continue; }
+
+    /* An event that took too long to reach us describes where the nib was, not
+       where it is. Draw it and the ink retraces history while the hand has
+       moved on — which is the exact effect this whole file exists to remove.
+       It is already recorded above, so nothing is lost from the saved stroke. */
+    const age = now - (s.timeStamp || now);
+    /* Never drop the newest sample of a COALESCED batch — it is the only one in
+       that batch that describes the present. A standalone raw sample is a
+       different matter: skipping it and waiting for the next one is precisely
+       how the ink catches up with the nib, and maxSkipRun stops that from
+       becoming a stall. */
+    if(age > TURBO.staleMs && TURBO.skipRun < TURBO.maxSkipRun && !(many && i === n - 1)){
+      TURBO.skipRun++; DIAG.stale++;
+      continue;
+    }
+    TURBO.skipRun = 0;
+
+    lastBucket = (sp * 8) | 0;
+    liveTo(lx, ly, lastBucket);
+    drewAny = true;
+    DIAG.draw++;
+  }
+  if(drewAny) liveFlush();
+
+  /* the guess goes last, so it always starts from the newest real ink */
+  if(drewAny || PRED.has) predDraw(e, lastBucket);
+
+  /* Adaptive spacing. The handler measures itself and asks for less work when
+     it starts costing more than its share of a frame. */
+  if(e.cancelable) e.preventDefault();
+
+  const dt = performance.now() - t0;
+  TURBO.avgMs = TURBO.avgMs * 0.85 + dt * 0.15;
+  if(TURBO.avgMs > TURBO.budgetMs){
+    if(TURBO.dist < TURBO.minDistHi) TURBO.dist = Math.min(TURBO.minDistHi, TURBO.dist * 1.06);
+  }else if(TURBO.avgMs < TURBO.budgetMs * 0.5){
+    if(TURBO.dist > TURBO.minDistLo) TURBO.dist = Math.max(TURBO.minDistLo, TURBO.dist * 0.98);
+  }
+  if(dt > DIAG.worst) DIAG.worst = dt;
+  DIAG.sum += dt; DIAG.calls++;
+}
+if(TURBO.raw) inkCanvas.addEventListener('pointerrawupdate', penMove, { passive:false });
+else          inkCanvas.addEventListener('pointermove', penMove, { passive:false });
+
+/* ---------------------------------------------------------------------------
+   POINTER UP
+   Now the expensive, careful work is allowed: simplify once, commit the vector,
+   repaint that one stroke at full device resolution, put the reader back
+   together, and let the delayed save go.
+--------------------------------------------------------------------------- */
+function finishStroke(){
+  if(!cur) return null;
+  if(TURBO.live) cur.pts = pbCommit(TURBO.commitSep);
+  const st = cur;
+  cur = null;
+  return (st.pts && st.pts.length) ? st : null;
+}
 function endPen(e){
   if(e.pointerId!==penId) return;
+  clearTimeout(holdT); holdT=null;
+  if(window.ringHide) ringHide();
   S.drawing=false; penId=null;
-  const wasTap = cur && penMoved<6 && cur.pts.length<4;
-  if(cur && !wasTap){ strokesHere().push(cur); scheduleInk(); }
-  cur=null;
+
+  const wasLive = TURBO.live;
+  const wasTap = cur && cur.mode!=='erase' && penMoved2 < 36 && PB.n < 4;
+  const st = finishStroke();
+  if(st && !wasTap){
+    strokesHere().push(st);
+    if(wasLive) drawStrokeFinal(st);        // one stroke, not the whole page
+    scheduleInk();
+  }
+  turboExit();
+  /* The flat copy and the live ink come down a frame after the permanent ink
+     has been painted, so there is never a frame with nothing in it. */
+  if(wasLive) requestAnimationFrame(function(){ requestAnimationFrame(liveClear); });
+
   if(S.pendingPage>=0){ const p=S.pendingPage; S.pendingPage=-1; renderPage(p); }
-  if(wasTap) tapWord(e.clientX, e.clientY);
+  if(wasTap) tapWord(e.clientX, e.clientY);   /* the pen taps a word to read it */
 }
 inkCanvas.addEventListener('pointerup', endPen);
 function penCancel(e){
   if(e.pointerId!==penId) return;
-  if(cur){ strokesHere().push(cur); scheduleInk(); }
-  cur=null; penId=null; S.drawing=false;
+  clearTimeout(holdT); holdT=null;
+  if(window.ringHide) ringHide();
+  const wasLive = TURBO.live;
+  const st = finishStroke();
+  if(st){ strokesHere().push(st); if(wasLive) drawStrokeFinal(st); scheduleInk(); }
+  penId=null; S.drawing=false;
+  turboExit();
+  if(wasLive) requestAnimationFrame(function(){ requestAnimationFrame(liveClear); });
   if(S.pendingPage>=0){ const p=S.pendingPage; S.pendingPage=-1; renderPage(p); }
 }
 inkCanvas.addEventListener('pointercancel', penCancel);
+
+/* ── diagnostics ──────────────────────────────────────────────────────────
+   Counters are integer adds whether or not the read-out is showing; the panel
+   itself only exists, and only updates, when it has been asked for. Press and
+   hold the zoom percentage for a second to bring it up, or call penDiag(true).
+--------------------------------------------------------------------------- */
+const DIAG = { on:false, evt:0, draw:0, thin:0, stale:0, calls:0, sum:0, worst:0, t0:0, timer:null, el:null };
+function penDiag(on){
+  DIAG.on = (on === undefined) ? !DIAG.on : !!on;
+  const el = document.getElementById('penDiag');
+  if(!el) return DIAG.on;
+  el.classList.toggle('show', DIAG.on);
+  clearInterval(DIAG.timer); DIAG.timer = null;
+  if(DIAG.on){
+    DIAG.evt=DIAG.draw=DIAG.thin=DIAG.stale=DIAG.calls=DIAG.sum=0; DIAG.worst=0;
+    DIAG.t0 = performance.now();
+    DIAG.timer = setInterval(diagPaint, 500);
+    diagPaint();
+  }
+  return DIAG.on;
+}
+window.penDiag = penDiag;
+function diagPaint(){
+  const el = document.getElementById('penDiag');
+  if(!el || !DIAG.on) return;
+  const secs = Math.max(0.001, (performance.now() - DIAG.t0) / 1000);
+  const r = function(v){ return (v/secs).toFixed(0); };
+  el.textContent =
+    'raw ' + (TURBO.raw ? 'yes' : 'no') + '   coalesced ' + (TURBO.hasCoal ? 'yes' : 'no') +
+    '   predicted ' + (TURBO.hasPred ? 'yes' : 'no') + '\n' +
+    'samples/s ' + r(DIAG.evt) + '   drawn/s ' + r(DIAG.draw) +
+    '   thinned/s ' + r(DIAG.thin) + '   stale/s ' + r(DIAG.stale) + '\n' +
+    'handler avg ' + (DIAG.calls ? (DIAG.sum/DIAG.calls).toFixed(2) : '0.00') + ' ms' +
+    '   worst ' + DIAG.worst.toFixed(2) + ' ms' +
+    '   ewma ' + TURBO.avgMs.toFixed(2) + ' ms\n' +
+    'spacing ' + TURBO.dist.toFixed(2) + ' px   live ' + liveCv.width + '×' + liveCv.height +
+    ' @' + TURBO.liveDpr + 'x   page dpr ' + (S.dpr || 0).toFixed(2) + '\n' +
+    'prediction ' + (TURBO.predOk === false ? 'not answered' : TURBO.predOk ? 'live' : 'untested') +
+    '   flat ' + (TURBO.flat ? 'on' : 'off') + '   turbo ' + (TURBO.on ? 'on' : 'off') +
+    '   points ' + PB.n;
+}
+
 
 let touchId=null, lastY=0, vel=0, tMoved=0, pending=0, rafScroll=null, tStart=0, glideWasRunning=false;
 let lastT=0, vpx=0, lastX=0, pendingX=0;
@@ -6355,12 +7899,213 @@ function flushScroll(){
   rafScroll=null;
   if(pending){ viewer.scrollTop -= pending; pending=0; inkRect=null; }
   if(pendingX){
-    if(IS.on && viewer.scrollWidth > viewer.clientWidth + 1){ viewer.scrollLeft -= pendingX; inkRect=null; }
+    /* A locked zoom means the page is pinned, not merely fixed in size: the
+       column you are reading must stay under the same part of the glass. */
+    if(!S.zoomLock && viewer.scrollWidth > viewer.clientWidth + 1){ viewer.scrollLeft -= pendingX; inkRect=null; }
     pendingX=0;
   }
 }
+/* ---------------------------------------------------------------------------
+   PINCH TO ZOOM
+   Two fingers scale the page live, on the compositor, so it tracks the hands at
+   1:1 with no re-rendering while they move. Only on release does the page get
+   re-rendered at the new scale, which is the one moment a moment's work is
+   invisible. The point under the middle of the pinch is put back exactly where
+   it was, so the paragraph you were pinching towards does not run away.
+--------------------------------------------------------------------------- */
+const PZ = { p:{}, n:0, on:false, d0:1, z0:1, k:1, keep:null, el:null,
+             raf:null, tx:0, ty:0, ox:0, oy:0, snapped:false };
+const snapCv = document.getElementById('zoomSnap');
+const snapCtx = snapCv.getContext('2d');
+
+function pzPair(){
+  const ks = Object.keys(PZ.p);
+  return ks.length >= 2 ? [PZ.p[ks[0]], PZ.p[ks[1]]] : null;
+}
+
+/* Flatten what is on screen into one ordinary bitmap at CSS resolution.
+   The live page is five stacked canvases at device resolution — about 21
+   million pixels for this tablet — and asking the compositor to resample all
+   five every frame is what made the pinch crawl. One flat layer at 1x is what
+   iOS scales too, and it is why a pinch there never stutters: the crisp
+   re-render happens once, at the end, when it costs nothing to wait for. */
+/* Collapsing the five page layers into one bitmap is wanted in two different
+   places — a pinch scales it, a stroke holds it still — so it is written once.
+   It is also the single most useful thing that can be done for the compositor
+   on this GPU: two of those five layers blend with mix-blend-mode:multiply, and
+   a blended layer has to be re-read every frame anything above it moves. */
+function snapPage(){
+  if(IS.on) return false;                       // the strip has no single frame
+  const frame = document.getElementById('pageframe');
+  const r = frame.getBoundingClientRect();
+  if(r.width < 4 || r.height < 4) return false;
+  const cw = Math.max(1, Math.round(r.width)), chh = Math.max(1, Math.round(r.height));
+  /* One flat layer can afford real device pixels: at the same budget a single
+     canvas costs what one of the five live ones already cost, so the pinch is
+     both five times lighter AND as sharp as the page it stands in for. */
+  const sd = Math.min(window.devicePixelRatio || 1, 2,
+                      Math.sqrt(4.2e6 / Math.max(1, cw * chh)));
+  const w = Math.max(1, Math.round(cw * sd)), h = Math.max(1, Math.round(chh * sd));
+  if(snapCv.width !== w || snapCv.height !== h){ snapCv.width = w; snapCv.height = h; }
+  snapCtx.setTransform(1,0,0,1,0,0);
+  snapCtx.globalCompositeOperation = 'source-over';
+  snapCtx.globalAlpha = 1;
+  snapCtx.clearRect(0,0,w,h);
+  snapCtx.fillStyle = S.dark ? '#ffffff' : PAPER;    // inverted back by the filter
+  snapCtx.fillRect(0,0,w,h);
+  const mul = S.dark ? 'screen' : 'multiply';
+  const layers = [[pdfCanvas,'source-over',1],
+                  [veilCanvas,'source-over', veilCanvas.classList.contains('on') ? 1 : 0],
+                  [markCanvas,mul,1], [hlCanvas,mul,1], [inkCanvas,'source-over',1]];
+  for(let i=0;i<layers.length;i++){
+    const cv = layers[i][0];
+    if(!cv || !cv.width || !layers[i][2]) continue;
+    snapCtx.globalCompositeOperation = layers[i][1];
+    snapCtx.globalAlpha = layers[i][2];
+    try{ snapCtx.drawImage(cv, 0, 0, w, h); }catch(e){}
+  }
+  snapCtx.globalCompositeOperation = 'source-over';
+  snapCtx.globalAlpha = 1;
+  PZ.ox = r.left; PZ.oy = r.top;
+  PZ.sw = cw; PZ.sh = chh;                       // CSS size, which is what we scale
+  snapCv.style.left = '0px'; snapCv.style.top = '0px';
+  snapCv.style.width = cw+'px'; snapCv.style.height = chh+'px';
+  try{ snapCv.style.filter = getComputedStyle(pdfCanvas).filter || 'none'; }catch(e){}
+  snapCv.style.transform = 'translate3d('+r.left+'px,'+r.top+'px,0)';
+  snapCv.classList.add('show');
+  return true;
+}
+function pzSnapshot(){ return snapPage(); }
+function pzHideSnapshot(){
+  snapCv.classList.remove('show');
+  snapCv.style.transform = '';
+  PZ.snapped = false;
+}
+
+function pzStart(){
+  const q = pzPair(); if(!q) return;
+  cancelFollow();
+  if(glide){ cancelAnimationFrame(glide); glide=null; }
+  touchId = null; userScrolling = false;
+  if(selId !== null) abortSelect();
+  if(window.rdHlPopClose) rdHlPopClose();
+  PZ.on = true; PZ.k = 1; PZ.z0 = S.zoom;
+  PZ.d0 = Math.max(1, Math.hypot(q[0].x-q[1].x, q[0].y-q[1].y));
+  const mid = { x:(q[0].x+q[1].x)/2, y:(q[0].y+q[1].y)/2 };
+  PZ.el = IS.on ? document.getElementById('scrollStrip') : document.getElementById('pageframe');
+  const r = PZ.el.getBoundingClientRect();
+  PZ.keep = { x:mid.x, y:mid.y,
+              fx: r.width  ? (mid.x - r.left)/r.width  : 0.5,
+              fy: r.height ? (mid.y - r.top )/r.height : 0.5 };
+  PZ.snapped = pzSnapshot();
+  if(!PZ.snapped){                              // infinite scroll: scale in place
+    PZ.el.style.transformOrigin = (PZ.keep.fx*100)+'% '+(PZ.keep.fy*100)+'%';
+  }
+  document.body.classList.add('pinching');
+  if(window.rdZoomHud) rdZoomHud(true);
+}
+
+/* Touch samples arrive faster than the screen refreshes. Writing a transform on
+   every one of them queues work the display will never show, so the values are
+   parked and written once per frame instead. */
+let pzWantPct = 100;
+function pzFrame(){
+  PZ.raf = null;
+  PZ.frames = (PZ.frames||0) + 1;
+  if(!PZ.on) return;
+  if(PZ.snapped){
+    snapCv.style.transform = 'translate3d('+PZ.tx+'px,'+PZ.ty+'px,0) scale('+PZ.k+')';
+  }else if(PZ.el){
+    PZ.el.style.transform = 'scale('+PZ.k+')';
+  }
+  if(zPctEl) zPctEl.textContent = pzWantPct+'%';
+}
+const zPctEl = document.getElementById('zPct');
+function pzMoveNow(){
+  const q = pzPair(); if(!q || !PZ.on) return;
+  const d = Math.max(1, Math.hypot(q[0].x-q[1].x, q[0].y-q[1].y));
+  let k = S.zoomLock ? 1 : d / PZ.d0;
+  const want = clamp(PZ.z0 * k, 0.6, 3);
+  PZ.k = want / PZ.z0;
+  pzWantPct = Math.round(want*100);
+  if(PZ.snapped){
+    /* keep the pinch centre pinned under the fingers: scale about the grab
+       point, then follow wherever the midpoint travels */
+    const mx = (q[0].x+q[1].x)/2, my = (q[0].y+q[1].y)/2;
+    PZ.tx = mx - (PZ.keep.fx * PZ.sw) * PZ.k;
+    PZ.ty = my - (PZ.keep.fy * PZ.sh) * PZ.k;
+  }
+  if(!PZ.raf) PZ.raf = requestAnimationFrame(pzFrame);
+}
+
+function pzEnd(){
+  if(!PZ.on) return;
+  PZ.on = false;
+  if(PZ.raf){ cancelAnimationFrame(PZ.raf); PZ.raf = null; }
+  document.body.classList.remove('pinching');
+  const el = PZ.el, keep = PZ.keep, k = PZ.k, wasSnapped = PZ.snapped;
+  if(el && !wasSnapped){ el.style.transform=''; el.style.transformOrigin=''; }
+  PZ.el = null;
+  const done = function(){
+    /* hold the flat copy over the page until the crisp one has actually been
+       painted, so the reallocation flash never reaches the eye */
+    if(wasSnapped) requestAnimationFrame(function(){ requestAnimationFrame(pzHideSnapshot); });
+    else pzHideSnapshot();
+    if(window.rdRecentre) rdRecentre();
+  };
+  if(S.zoomLock){
+    if(Math.abs(k-1) > 0.02) toast('Zoom is locked — tap the padlock to unlock.');
+    if(window.rdZoomHud) rdZoomHud(true);
+    done(); return;
+  }
+  if(Math.abs(k-1) < 0.02){ if(window.zSync) zSync(); done(); return; }
+  const p = window.rdSetZoom ? rdSetZoom(PZ.z0*k, keep) : null;
+  if(p && p.then) p.then(done); else done();
+}
+
+/* ---------------------------------------------------------------------------
+   ONE FINGER
+   A tap asks for the controls. A press and hold asks for the thing under it:
+   a mark offers to be kept, a word offers to be read. Everything else is a
+   scroll, exactly as before.
+--------------------------------------------------------------------------- */
+let holdFT = null, holdFX = 0, holdFY = 0;
+function abortSelect(){ selAnchor = selHead = -1; selId = null; paintMarks(); }
+function cancelHoldF(){ if(holdFT){ clearTimeout(holdFT); holdFT = null; } }
+function armHoldF(x, y){
+  cancelHoldF();
+  holdFX = x; holdFY = y;
+  holdFT = setTimeout(function(){
+    holdFT = null;
+    const ref = window.rdRunAt ? rdRunAt(holdFX, holdFY) : null;
+    if(ref){
+      if(selId !== null) abortSelect();
+      try{ if(navigator.vibrate) navigator.vibrate(10); }catch(e){}
+      rdHlPop(ref, holdFX, holdFY);
+      return;
+    }
+    if(S.selMode) return;                       /* mid-drag: leave the paint alone */
+    if(!S.speak) return;                        /* the page stays quiet unless asked */
+    const g = wordAt(holdFX, holdFY, 50, false);
+    if(g >= 0){
+      try{ if(navigator.vibrate) navigator.vibrate(6); }catch(e){}
+      startAt(g);
+      if(window.rdChromeShow) rdChromeShow(true);
+    }
+  }, 430);
+}
+function fingerTap(){
+  if(window.rdHlPopClose) rdHlPopClose();
+  if(window.rdChromeShow) rdChromeShow(!document.body.classList.contains('chrome-on'));
+}
+
 viewer.addEventListener('pointerdown', function(e){
   if(e.pointerType!=='touch' || penId!==null) return;
+  PZ.p[e.pointerId] = { x:e.clientX, y:e.clientY };
+  PZ.n = Object.keys(PZ.p).length;
+  if(PZ.n >= 2){ cancelHoldF(); pzStart(); e.preventDefault(); return; }
+  if(PZ.on) return;
+  armHoldF(e.clientX, e.clientY);
   if(S.selMode){                                   // finger paints a highlight instead of scrolling
     if(beginSelect(e.clientX, e.clientY, e.pointerId)){
       try{ viewer.setPointerCapture(e.pointerId); }catch(err){}
@@ -6376,6 +8121,10 @@ viewer.addEventListener('pointerdown', function(e){
   userScrolling=true;
 });
 viewer.addEventListener('pointermove', function(e){
+  if(TURBO.on) return;        // pen events bubble here too; this is the hot path
+  if(PZ.p[e.pointerId]){ PZ.p[e.pointerId].x = e.clientX; PZ.p[e.pointerId].y = e.clientY; }
+  if(PZ.on){ pzMoveNow(); e.preventDefault(); return; }
+  if(holdFT && Math.hypot(e.clientX-holdFX, e.clientY-holdFY) > 9) cancelHoldF();
   if(S.selMode && selId===e.pointerId){ moveSelect(e.clientX, e.clientY); e.preventDefault(); return; }
   if(e.pointerId!==touchId) return;
   const now = performance.now();
@@ -6392,6 +8141,10 @@ viewer.addEventListener('pointermove', function(e){
   if(!rafScroll) rafScroll = requestAnimationFrame(flushScroll);
 });
 viewer.addEventListener('pointerup', function(e){
+  const wasPinch = PZ.on;
+  if(PZ.p[e.pointerId]){ delete PZ.p[e.pointerId]; PZ.n = Object.keys(PZ.p).length; }
+  if(wasPinch){ if(PZ.n < 2) pzEnd(); cancelHoldF(); return; }
+  cancelHoldF();
   if(S.selMode && selId===e.pointerId){ endSelect(); e.preventDefault(); userScrolling=false; return; }
   if(e.pointerId===touchId && IS.on) setTimeout(function(){ if(!isFlinging()) isPump(); }, 0);
   if(e.pointerId!==touchId) return;
@@ -6399,7 +8152,7 @@ viewer.addEventListener('pointerup', function(e){
   const dt = performance.now() - tStart;
   if(tMoved<10 && dt<400){
     if(glideWasRunning) return;
-    tapWord(e.clientX, e.clientY);
+    fingerTap();                     /* a bare tap asks for the controls */
     return;
   }
   if(Math.abs(vpx)>0.05){
@@ -6415,15 +8168,38 @@ viewer.addEventListener('pointerup', function(e){
     glide=requestAnimationFrame(step);
   }
 });
-viewer.addEventListener('pointercancel', function(e){ if(S.selMode && selId===e.pointerId){ endSelect(); return; } touchId=null; userScrolling=false; });
-viewer.addEventListener('scroll', function(){ inkRect=null; isScheduleSync(); }, { passive:true });
+viewer.addEventListener('pointercancel', function(e){
+  cancelHoldF();
+  if(PZ.p[e.pointerId]){ delete PZ.p[e.pointerId]; PZ.n = Object.keys(PZ.p).length; }
+  if(PZ.on && PZ.n < 2){ pzEnd(); return; }
+  if(S.selMode && selId===e.pointerId){ endSelect(); return; }
+  touchId=null; userScrolling=false;
+});
+viewer.addEventListener('scroll', function(){
+  /* Whatever nudged it — a scrollbar, a focus jump, a relayout, a re-render —
+     put it back. This is the guarantee, not the intention: while the padlock is
+     closed the horizontal position is a constant. */
+  if(S.zoomLock && S.lockX !== null && viewer.scrollLeft !== S.lockX) viewer.scrollLeft = S.lockX;
+  inkRect=null; isScheduleSync();
+}, { passive:true });
 
+/* How wide the nib is at this instant. Sizes are stored in millimetres, so a
+   stroke drawn at 2.3 mm is 2.3 mm on any screen; pressure then swings it
+   either side of that (the M-Pen reports 2048 steps, which is plenty to feel).
+   Strokes from before nib sizes existed have no width recorded and fall back to
+   exactly the old formula, so nothing already on a page changes. */
+function inkWidth(st, p){
+  const mm = (typeof PX_PER_MM === 'number') ? PX_PER_MM : 3.7795;
+  if(st.mode === 'erase') return Math.max(4, (st.w || 20) * mm);
+  if(st.w == null) return 1.4 + p*3.2;
+  return Math.max(0.6, st.w * mm * (0.55 + p*0.9));
+}
 function drawTail(stroke){
   const n=stroke.pts.length; if(n<2) return;
   const s=S.scale, a=stroke.pts[n-2], b=stroke.pts[n-1];
   ictx.globalCompositeOperation = stroke.mode==='erase' ? 'destination-out' : 'source-over';
-  ictx.strokeStyle = THEME.pen;
-  ictx.lineWidth = stroke.mode==='erase' ? 20 : (1.4 + b.p*3.2);
+  ictx.strokeStyle = stroke.c || THEME.pen;
+  ictx.lineWidth = inkWidth(stroke, b.p);
   ictx.beginPath(); ictx.moveTo(a.x*s,a.y*s); ictx.lineTo(b.x*s,b.y*s); ictx.stroke();
 }
 /* has the nib moved far enough on screen to be worth another segment? */
@@ -6431,6 +8207,28 @@ function inkFarEnough(pts, q){
   if(!pts.length) return true;
   const last = pts[pts.length-1], s = S.scale || 1;
   return Math.abs(q.x-last.x)*s + Math.abs(q.y-last.y)*s > 0.34;
+}
+/* Committing a stroke repaints that stroke, not the page. The PDF underneath
+   is never re-rendered, and the other strokes already on the ink layer are left
+   exactly where they are. */
+function drawStrokeFinal(st){
+  if(!st || !st.pts || st.pts.length < 1) return;
+  if(FN.on) return;
+  if(IS.on){ redrawInk(); return; }
+  const s = S.scale;
+  ictx.globalCompositeOperation = st.mode==='erase' ? 'destination-out' : 'source-over';
+  ictx.strokeStyle = st.c || THEME.pen;
+  if(st.pts.length === 1){
+    const a = st.pts[0], w = inkWidth(st, a.p);
+    ictx.fillStyle = st.c || THEME.pen;
+    ictx.beginPath(); ictx.arc(a.x*s, a.y*s, w/2, 0, 6.2832); ictx.fill();
+  }
+  for(let i=1;i<st.pts.length;i++){
+    const a=st.pts[i-1], b=st.pts[i];
+    ictx.lineWidth = inkWidth(st, b.p);
+    ictx.beginPath(); ictx.moveTo(a.x*s,a.y*s); ictx.lineTo(b.x*s,b.y*s); ictx.stroke();
+  }
+  ictx.globalCompositeOperation='source-over';
 }
 function redrawInk(){
   if(IS.on && !IS.bound){ isRedrawInk(S.page); return; }
@@ -6444,10 +8242,10 @@ function redrawInk(){
   for(let k=0;k<list.length;k++){
     const st=list[k];
     ictx.globalCompositeOperation = st.mode==='erase' ? 'destination-out' : 'source-over';
-    ictx.strokeStyle = THEME.pen;
+    ictx.strokeStyle = st.c || THEME.pen;
     for(let i=1;i<st.pts.length;i++){
       const a=st.pts[i-1], b=st.pts[i];
-      ictx.lineWidth = st.mode==='erase' ? 20 : (1.4 + b.p*3.2);
+      ictx.lineWidth = inkWidth(st, b.p);
       ictx.beginPath(); ictx.moveTo(a.x*s,a.y*s); ictx.lineTo(b.x*s,b.y*s); ictx.stroke();
     }
   }
@@ -6483,8 +8281,11 @@ function wordAt(clientX, clientY, reach, includeSkip){
   }
   return hit;
 }
+/* The pen used to start the voice every time its nib touched down between
+   strokes. When the thing in your hand is a stylus that is not a feature, it is
+   an ambush — so nothing here speaks unless Read aloud has been switched on. */
 function tapWord(clientX, clientY){
-  if(S.focusRead) return;                 // focused reading: a tap is just a tap
+  if(!S.speak) return;
   const g = wordAt(clientX, clientY, 50, false);
   if(g>=0) startAt(g);
 }
@@ -6498,6 +8299,7 @@ function tapWord(clientX, clientY){
 ============================================================================ */
 function markRuns(){ return S.hl || []; }
 function paintMarks(preview, noClear){
+  if(TURBO.on && !preview){ TURBO.pend.marks = true; return; }
   if(IS.on && !IS.bound){ isPaintAll(preview); return; }
   if(!noClear){
     mctx.save(); mctx.setTransform(1,0,0,1,0,0);
@@ -6505,19 +8307,68 @@ function paintMarks(preview, noClear){
   }
   if(!S.book) return;
   const s=S.scale;
-  const draw=function(a,b,strong){
-    const lo=Math.min(a,b), hi=Math.max(a,b);
-    mctx.fillStyle = THEME.mark;
-    mctx.globalAlpha = strong ? 0.55 : 0.42;
+  /* Saved marks sit at full strength. A mark you have painted but not yet kept
+     is drawn lighter and underscored with a dashed rule: still perfectly
+     readable, but visibly provisional, so there is never a doubt about which
+     of your marks are actually in the book. */
+  /* A real highlighter does not lift at every space. Painting each word box on
+     its own left a comb of gaps across the line, which reads as a row of tags
+     rather than one swept stroke — so the boxes are gathered into lines first
+     and each line is laid down as a single band. */
+  const bandsFor=function(lo,hi){
+    const boxes=[];
     for(let g=lo; g<=hi; g++){
       const w=wbox(g);
       if(!w || w.page!==S.page) continue;
-      mctx.fillRect(w.x*s-1, w.y*s-0.5, w.w*s+2, w.h*s+1);
+      boxes.push(w);
+    }
+    if(!boxes.length) return [];
+    boxes.sort(function(p,q){ return (p.y-q.y) || (p.x-q.x); });
+    const lines=[];
+    let cur=null;
+    for(let i=0;i<boxes.length;i++){
+      const w=boxes[i];
+      if(cur && Math.abs(w.y-cur.y) < cur.h*0.6){
+        cur.x2 = Math.max(cur.x2, w.x+w.w);
+        cur.x1 = Math.min(cur.x1, w.x);
+        cur.y  = Math.min(cur.y, w.y);
+        cur.h  = Math.max(cur.h, w.h);
+      }else{
+        cur = { x1:w.x, x2:w.x+w.w, y:w.y, h:w.h };
+        lines.push(cur);
+      }
+    }
+    return lines;
+  };
+  const draw=function(a,b,alpha,col,dash){
+    const lines = bandsFor(Math.min(a,b), Math.max(a,b));
+    if(!lines.length) return;
+    mctx.fillStyle = col || THEME.mark;
+    mctx.globalAlpha = alpha;
+    for(let i=0;i<lines.length;i++){
+      const L=lines[i];
+      mctx.fillRect(L.x1*s-2, L.y*s-1, (L.x2-L.x1)*s+4, L.h*s+2);
+    }
+    if(dash){
+      /* an unkept mark is underscored, so provisional is visible at a glance
+         and not only by how strong the wash is */
+      mctx.globalAlpha = 0.85;
+      mctx.strokeStyle = col || THEME.mark;
+      mctx.lineWidth = 2;
+      mctx.setLineDash([4,3]);
+      mctx.beginPath();
+      for(let i=0;i<lines.length;i++){
+        const L=lines[i], y=(L.y+L.h)*s+1;
+        mctx.moveTo(L.x1*s-2, y); mctx.lineTo(L.x2*s+2, y);
+      }
+      mctx.stroke();
+      mctx.setLineDash([]);
     }
     mctx.globalAlpha=1;
   };
-  markRuns().forEach(function(m){ if(m.page===S.page) draw(m.a, m.b, false); });
-  if(preview) draw(preview.a, preview.b, true);
+  markRuns().forEach(function(m){ if(m.page===S.page) draw(m.a, m.b, 0.52, m.c, false); });
+  (S.hlDraft||[]).forEach(function(m){ if(m.page===S.page) draw(m.a, m.b, 0.17, m.c, true); });
+  if(preview) draw(preview.a, preview.b, 0.55, S.hlColor, false);
 }
 
 let selAnchor=-1, selHead=-1, selId=null;
@@ -6543,10 +8394,28 @@ function endSelect(){
   for(let g=lo; g<=hi; g++){ const w=S.ribbon[g]; if(w && w.page===page && !w.skip) txt.push(w.text); }
   const text = txt.join(' ').replace(/\s+/g,' ').trim();
   if(!text){ paintMarks(); return; }
-  S.hl.push({ page:page, a:lo, b:hi, text:text, at:Date.now() });
-  saveMarks();
+  if(!S.hlDraft) S.hlDraft = [];
+  S.hlDraft.push({ page:page, a:lo, b:hi, text:text, at:Date.now(), c:S.hlColor });
+  saveDrafts();
   paintMarks();
-  toast('Highlight saved.');
+  if(!hlHintShown){
+    hlHintShown = true;
+    try{ localStorage.setItem('lumen:hlhint','1'); }catch(e){}
+    toast('Marked. Hold it to save it to your highlights.');
+  }
+}
+let hlHintShown = false;
+try{ hlHintShown = !!localStorage.getItem('lumen:hlhint'); }catch(e){}
+
+/* Unkept marks live with the book, not with the highlights, so a reload never
+   loses one and the highlights list never fills up with things you were only
+   pointing at. */
+let draftT = null;
+function saveDrafts(){
+  if(!S.book) return;
+  mirror.set('draft:'+S.book.id, S.hlDraft || []);
+  clearTimeout(draftT);
+  draftT = setTimeout(function(){ if(S.book) store.set('draft:'+S.book.id, S.hlDraft || []); }, 400);
 }
 
 $('#eraseBtn').onclick = function(){ S.penMode = (S.penMode==='erase')?'pen':'erase'; $('#eraseBtn').classList.toggle('on', S.penMode==='erase'); };
@@ -6981,6 +8850,7 @@ async function renderCoverFromDoc(doc){
   var cv=document.createElement('canvas');
   cv.width=Math.max(1,Math.round(vp.width)); cv.height=Math.max(1,Math.round(vp.height));
   await page.render({ canvasContext:cv.getContext('2d'), viewport:vp }).promise;
+  tintPaper(cv.getContext('2d'), cv);
   try{ return cv.toDataURL('image/jpeg',0.7); }catch(e){ return cv.toDataURL(); }
 }
 async function ensureCover(bk){
@@ -7051,7 +8921,21 @@ function setDone(bk, done){
 function bkPage(bk){ if(bk===S.book) return S.page; return (bk.pos && bk.pos.page) || 0; }
 
 /* ---- navigation ---- */
-function showHome(){ if(S.book){ noteAnchor(); savePosNow(); } stopPageClock(); focusClockShow(false); $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
+function refreshStorageLine(){
+  const el = document.getElementById('bkStorage');
+  if(!el) return;
+  checkStorage(false).then(function(){ el.textContent = storageLine(); }).catch(function(){});
+}
+function showHome(){ if(S.book){ noteAnchor(); savePosNow(); }
+  document.body.classList.remove('chrome-on');
+  if(window.rdHlPopClose) rdHlPopClose();
+  $$('.toolbar').forEach(function(b){ b.classList.remove('show'); });
+  $('#sizePop').classList.remove('show'); $('#rdZoom').classList.remove('show');
+  document.body.classList.remove('drawing','pinching','zoomed');
+  const zs=$('#zoomSnap'); if(zs) zs.classList.remove('show');
+  if(S.selMode) setSelectMode(false, true);
+  S.tool=null; S.penMode='pen'; $('#eraseBtn').classList.remove('on');
+  stopPageClock(); focusClockShow(false); $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
 function showReader(){ $('#home').classList.remove('show'); }
 async function openFromHome(bk){ showReader(); await openBook(bk); }
 function removeBook(bk){
@@ -7698,7 +9582,53 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
   hdrop.addEventListener('drop', function(e){ e.preventDefault(); if(e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 })();
 
+/* ---------------------------------------------------------------------------
+   PERSISTENT STORAGE
+   Everything NeoBook owns lives in the browser, and a browser is allowed to
+   throw that away when the tablet runs short of space. Asking to be marked
+   persistent costs one call and, on Android Chrome, is usually granted silently
+   on the strength of how the app is already used. It is asked once ever, the
+   answer is remembered, and nothing is shown unless it is looked for.
+--------------------------------------------------------------------------- */
+const STORAGE = { persisted:null, usage:0, quota:0, asked:false };
+async function checkStorage(ask){
+  if(!navigator.storage) return STORAGE;
+  try{
+    if(navigator.storage.persisted) STORAGE.persisted = await navigator.storage.persisted();
+  }catch(e){}
+  if(ask && STORAGE.persisted === false && navigator.storage.persist){
+    let already = false;
+    try{ already = !!localStorage.getItem('lumen:persistAsked'); }catch(e){}
+    if(!already){
+      try{ localStorage.setItem('lumen:persistAsked','1'); }catch(e){}
+      STORAGE.asked = true;
+      try{ STORAGE.persisted = await navigator.storage.persist(); }catch(e){}
+    }
+  }
+  try{
+    if(navigator.storage.estimate){
+      const est = await navigator.storage.estimate();
+      STORAGE.usage = est.usage || 0;
+      STORAGE.quota = est.quota || 0;
+    }
+  }catch(e){}
+  return STORAGE;
+}
+function storageLine(){
+  const mb = function(b){ return b >= 1073741824 ? (b/1073741824).toFixed(2)+' GB' : Math.round(b/1048576)+' MB'; };
+  if(!navigator.storage) return 'This browser does not report storage limits.';
+  const pct = STORAGE.quota ? ((STORAGE.usage/STORAGE.quota)*100).toFixed(1)+'%' : '—';
+  return (STORAGE.persisted === true
+            ? 'Storage is persistent — the browser will not evict your library to reclaim space.'
+            : STORAGE.persisted === false
+              ? 'Storage is not persistent yet. The browser may clear it if the tablet runs short of space, so keep a backup.'
+              : 'Persistence unknown on this browser.')
+         + '\n' + mb(STORAGE.usage) + ' used of ' + (STORAGE.quota ? mb(STORAGE.quota) : 'an unknown quota') + ' (' + pct + ').';
+}
+
 (async function boot(){
+  document.body.classList.add('focusread');
+  checkStorage(true).catch(function(){});
   let s = mirror.get('settings');
   try{ if(!s) s = await store.get('settings'); }catch(e){}
   if(s){
@@ -7746,6 +9676,595 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
   else setEngine('device');
 
   showHome();      // open on the reading library; Continue Reading resumes the last book
+})();
+
+
+/* ============================================================================
+   READING · v5
+   Same screen, rebuilt for latency. What changed and why:
+
+   · Chrome that sits over the page no longer uses backdrop-filter. A blurred
+     surface has to re-read and re-blur whatever is underneath it on every frame
+     that content changes — and the ink canvas changes on every stylus sample.
+     Solid chrome costs nothing to keep on screen while you draw.
+   · The pinch scales one flat snapshot rather than five stacked canvases at 2x
+     device pixels, and it writes that transform once per animation frame rather
+     than once per touch sample.
+   · The eraser ring is positioned by transform alone, on the same frame clock.
+     It used to read its own size back out of the DOM on every move, which forces
+     the browser to stop and lay the page out mid-stroke.
+   · Speech is behind a switch. It used to start whenever a word was touched,
+     which is intolerable when the thing in your hand is a pen.
+============================================================================ */
+(function(){
+
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;width:100mm;height:0;pointer-events:none';
+  document.body.appendChild(probe);
+  const PX_MM = (probe.offsetWidth/100) || 3.7795;
+  probe.parentNode.removeChild(probe);
+  window.PX_PER_MM = PX_MM;
+
+  const buzz = function(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} };
+  const root = document.documentElement;
+
+  const RD_DEF = { penColor:'#E02424', penW:2.3, eraseMM:20, eraseMode:'area',
+                   hlColor:'#FFE08A', zoomLock:false, speak:false };
+  function rdLoad(){
+    let o=null; try{ o = mirror.get('rdset'); }catch(e){}
+    o = o || {};
+    S.penColor  = o.penColor || RD_DEF.penColor;
+    S.penW      = +o.penW    || RD_DEF.penW;
+    S.eraseMM   = +o.eraseMM || RD_DEF.eraseMM;
+    S.eraseMode = o.eraseMode|| RD_DEF.eraseMode;
+    S.hlColor   = o.hlColor  || RD_DEF.hlColor;
+    S.zoomLock  = !!o.zoomLock;
+    S.lockX     = null;        // pinned to wherever this session opens the page
+    S.speak     = !!o.speak;
+  }
+  function rdSave(){
+    const o = { penColor:S.penColor, penW:S.penW, eraseMM:S.eraseMM, eraseMode:S.eraseMode,
+                hlColor:S.hlColor, zoomLock:S.zoomLock, speak:S.speak };
+    mirror.set('rdset', o); store.set('rdset', o);
+  }
+  rdLoad();
+  function paintTints(){
+    root.style.setProperty('--pen-c', S.penColor);
+    root.style.setProperty('--hl-c',  S.hlColor);
+  }
+  paintTints();
+
+  /* ══ 1 · controls layer ══════════════════════════════════════════════════ */
+  let chromeT = null;
+  function chromeShow(on){
+    document.body.classList.toggle('chrome-on', !!on);
+    clearTimeout(chromeT);
+    if(on) chromeT = setTimeout(function(){ document.body.classList.remove('chrome-on'); }, 5000);
+  }
+  function chromeKeep(){ if(document.body.classList.contains('chrome-on')) chromeShow(true); }
+  window.rdChromeShow = chromeShow;
+  document.getElementById('rdCtl').addEventListener('pointerdown', chromeKeep, true);
+
+  /* ══ 2 · menu ════════════════════════════════════════════════════════════ */
+  const menu = $('#rdMenu'), scrim = $('#rdScrim'), burger = $('#rdMenuBtn');
+  function menuOpen(on){
+    menu.classList.toggle('show', !!on);
+    scrim.classList.toggle('show', !!on);
+    burger.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if(on){ rdSync(); chromeShow(false); barsClose(); }
+  }
+  burger.onclick = function(){ menuOpen(!menu.classList.contains('show')); };
+  scrim.onclick  = function(){ menuOpen(false); };
+  function fold(id, on){ const el = $(id); if(el) el.classList.toggle('open', !!on); }
+  const fire = function(sel,type){ const el=$(sel); if(el) el.dispatchEvent(new Event(type,{bubbles:true})); };
+  const tap  = function(sel){ const el=$(sel); if(el) el.click(); };
+
+  /* ---- the speech switch ------------------------------------------------
+     This is the whole answer to "it starts talking whenever I touch a
+     sentence". Off, nothing you do with a finger or a nib can start the
+     voice; the page is just a page. */
+  function setSpeak(on, quiet){
+    S.speak = !!on;
+    if(!S.speak){ try{ if(S.playing) pause(); }catch(e){} }
+    rdSave(); rdSync();
+    if(!quiet) toast(S.speak ? 'Read aloud on — hold a word to read from there.'
+                             : 'Read aloud off — the page will stay quiet.');
+  }
+  window.rdSpeakOn = function(){ return !!S.speak; };
+  $('#mSpeak').onclick = function(){ setSpeak(!S.speak); };
+
+  $('#mFitText').onclick = function(){ setFitText(!FT.on); };
+  $('#mVoice').onclick   = function(){ fold('#sVoice', !$('#sVoice').classList.contains('open')); };
+  $('#mFollow').onclick  = function(){ tap('#followBtn');  rdSync(); };
+  $('#mHlStyle').onclick = function(){ tap('#hlStyleBtn'); rdSync(); };
+  $('#mBionic').onclick  = function(){ tap('#bionicBtn');  setTimeout(rdSync,30); };
+  $('#mInf').onclick     = function(){ tap('#infBtn');     setTimeout(rdSync,60); };
+  $('#mFunnel').onclick  = function(){ tap('#funnelBtn');  setTimeout(rdSync,60); };
+  $('#mTele').onclick    = function(){ tap('#teleBtn');    rdSync(); };
+  $('#mSr').onclick      = function(){ tap('#srBtn');      rdSync(); };
+  $('#mTheme').onclick   = function(){ fold('#sTheme', !$('#sTheme').classList.contains('open')); };
+  $('#mEngine').onclick  = function(){ menuOpen(false); tap('#voiceBtn'); };
+  $('#mExit').onclick    = function(){ menuOpen(false); showHome(); };
+
+  $('#mTeleLvl').addEventListener('click', function(e){
+    const b=e.target.closest('button[data-v]'); if(!b) return;
+    $('#teleLvl').value=b.getAttribute('data-v'); fire('#teleLvl','change'); rdSync();
+  });
+  $('#mSrBreak').addEventListener('click', function(e){
+    const b=e.target.closest('button[data-v]'); if(!b) return;
+    $('#srBreak').value=b.getAttribute('data-v'); fire('#srBreak','change'); rdSync();
+  });
+  $('#mThemeSeg').addEventListener('click', function(e){
+    const b=e.target.closest('button[data-v]'); if(!b) return;
+    setDark(b.getAttribute('data-v')==='dark');
+    if(S.book) (IS.on ? isLayout(true) : renderPage(S.page));
+    rdSync();
+  });
+  $('#mShadeSeg').addEventListener('click', function(e){
+    const b=e.target.closest('button[data-v]'); if(!b) return;
+    setDarkVar(b.getAttribute('data-v')); rdSync();
+  });
+  $('#mWpm').addEventListener('input', function(e){
+    $('#srWpm').value=e.target.value; fire('#srWpm','input');
+    $('#mWpmV').textContent=e.target.value+' wpm';
+  });
+  $('#mRate').addEventListener('input', function(e){
+    $('#speed').value=e.target.value; fire('#speed','input');
+    $('#mRateV').textContent=(+e.target.value).toFixed(2)+'×';
+    $('#rdRate').textContent=(+e.target.value).toFixed(2)+'×';
+  });
+  $('#mNar').addEventListener('change', function(e){ $('#voiceNar').value=e.target.value; fire('#voiceNar','change'); rdSync(); });
+  $('#mDlg').addEventListener('change', function(e){ $('#voiceDlg').value=e.target.value; fire('#voiceDlg','change'); rdSync(); });
+
+  function segOn(w,v){ $$(w+' button[data-v]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-v')===v); }); }
+  function cloneVoices(from,to){
+    const a=$(from), b=$(to);
+    if(!a||!b) return;
+    if(a.options.length!==b.options.length) b.innerHTML=a.innerHTML;
+    b.value=a.value;
+  }
+
+  function rdSync(){
+    const on = function(sel){ const e=$(sel); return !!(e&&e.classList.contains('on')); };
+    $('#mSpeak').classList.toggle('on', !!S.speak);
+    $('#mSpeakSub').textContent = S.speak ? 'On — hold a word to read from there'
+                                          : 'Off — touching the page never speaks';
+    const wave=$('#mSpeakWave'); if(wave) wave.style.opacity = S.speak ? '1' : '.25';
+
+    $('#mFitText').classList.toggle('on', !!FT.on);
+    $('#mFitSub').textContent = FT.on
+      ? ('Column fills the width · ' + Math.round(S.zoom*100) + '%')
+      : (FT.ok === false && S.book ? 'No steady text column in this book'
+                                   : 'Fill the width with the column, not the paper');
+    $('#mFollow').classList.toggle('on', on('#followBtn'));
+    $('#mTele').classList.toggle('on', on('#teleBtn'));
+    $('#mSr').classList.toggle('on', on('#srBtn'));
+    $('#mBionic').classList.toggle('on', !!S.bionic);
+    $('#mInf').classList.toggle('on', !!IS.on);
+    $('#mFunnel').classList.toggle('on', !!FN.on);
+    fold('#sTele', on('#teleBtn'));
+    fold('#sSr',   on('#srBtn'));
+    segOn('#mTeleLvl', $('#teleLvl').value);
+    segOn('#mSrBreak', $('#srBreak').value);
+    $('#mWpm').value=$('#srWpm').value;
+    $('#mWpmV').textContent=$('#srWpm').value+' wpm';
+    $('#mTeleSub').textContent = ($('#teleStat').textContent || 'Only the load-bearing words');
+
+    const block=(S.hlStyle==='block');
+    $('#mHlStyleIco').textContent = block?'▮':'▁';
+    $('#mHlStyleLab').textContent = block?'Block — a wash behind the word':'Underline — a rule beneath it';
+
+    $('#mRate').value=S.rate;
+    $('#mRateV').textContent=S.rate.toFixed(2)+'×';
+    $('#rdRate').textContent=S.rate.toFixed(2)+'×';
+    cloneVoices('#voiceNar','#mNar'); cloneVoices('#voiceDlg','#mDlg');
+    const vn=(S.narVoice&&S.narVoice.name)?S.narVoice.name.replace(/\s*\(.*$/,''):($('#engineBadge').textContent||'Device');
+    $('#mVoiceSub').textContent = vn+' · '+S.rate.toFixed(2)+'×';
+
+    segOn('#mThemeSeg', S.dark?'dark':'light');
+    segOn('#mShadeSeg', S.darkVar);
+    $('#mShadeSeg').style.display = S.dark?'':'none';
+    $('#mThemeSub').textContent = S.dark ? ('Dark · '+(S.darkVar==='graphite'?'Graphite':'Midnight')) : 'Light';
+    $('#mThemeSun').style.display = S.dark?'none':'';
+    $('#mThemeMoon').style.display = S.dark?'':'none';
+
+    toolSync(); syncPlay(); zSync(); paintTints();
+  }
+  window.rdSync = rdSync;
+
+  /* ══ 3 · transport ═══════════════════════════════════════════════════════ */
+  const play=$('#play'), rdPlay=$('#rdPlay'), rdPlayLab=$('#rdPlayLab'), rdPlayIcon=$('#rdPlayIcon');
+  const ICON_PLAY  = 'M0 0.6v10.8L9.4 6 0 0.6Z';
+  const ICON_PAUSE = 'M0 0.6h3.2v10.8H0zM6.2 0.6h3.2v10.8H6.2z';
+  function syncPlay(){
+    const playing = (play.textContent === '❚❚');
+    rdPlayIcon.firstElementChild.setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
+    rdPlayLab.textContent = !S.speak ? 'Read aloud' : (playing ? 'Pause' : 'Play');
+    rdPlay.classList.toggle('off', !S.speak);
+    rdPlay.setAttribute('aria-label', rdPlayLab.textContent);
+    $('#rdBack').disabled = $('#rdFwd').disabled = !S.speak || play.disabled;
+  }
+  try{ new MutationObserver(syncPlay).observe(play,{ childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:['disabled'] }); }catch(e){}
+
+  rdPlay.onclick = function(){
+    chromeKeep();
+    if(!S.speak){ setSpeak(true, true); toast('Read aloud on.'); syncPlay(); return; }
+    tap('#play');
+  };
+  $('#rdBack').onclick = function(){ chromeKeep(); if(S.speak) tap('#prevSent'); };
+  $('#rdFwd').onclick  = function(){ chromeKeep(); if(S.speak) tap('#nextSent'); };
+  $('#rdRate').onclick = function(){ chromeKeep(); menuOpen(true); fold('#sVoice',true); };
+  $('#rdPrevPg').onclick = function(){ chromeKeep(); const b=$('#pgPrev'); if(b.onclick) b.onclick(); };
+  $('#rdNextPg').onclick = function(){ chromeKeep(); const b=$('#pgNext'); if(b.onclick) b.onclick(); };
+
+  /* ══ 4 · the three tools ═════════════════════════════════════════════════ */
+  const penBar=$('#penBar'), hlBar=$('#hlBar'), erBar=$('#erBar');
+  const PEN_COLORS=['#E02424','#1B1B1A','#2563EB','#15803D','#5B4BD6'];
+  const HL_COLORS =['#FFE08A','#B7E4A0','#A8DDF0','#C9BCF5','#F7B7C8'];
+
+  function barsClose(){
+    [penBar,hlBar,erBar].forEach(function(b){ b.classList.remove('show'); });
+    sizePopClose();
+  }
+  function toolSync(){
+    $('#rdPenBtn').classList.toggle('on', S.tool==='pen');
+    $('#rdHlBtn').classList.toggle('on',  S.tool==='hl');
+    $('#rdErBtn').classList.toggle('on',  S.tool==='er');
+    [['#rdPenBtn','pen'],['#rdHlBtn','hl'],['#rdErBtn','er']].forEach(function(p){
+      $(p[0]).setAttribute('aria-pressed', S.tool===p[1] ? 'true':'false');
+    });
+    nibSync();
+  }
+  /* One tool at a time. Tapping the tool you are already holding opens its
+     settings — so the common act stays one tap and the rare act stays one more,
+     which is what keeps the rail down to three small chips. */
+  function setTool(which){
+    const same = (S.tool === which);
+    if(which !== 'hl' && S.selMode) setSelectMode(false, true);
+    if(which === 'er'){ S.penMode='erase'; $('#eraseBtn').classList.add('on'); }
+    else { S.penMode='pen'; $('#eraseBtn').classList.remove('on'); }
+    if(which === 'hl' && !S.selMode) setSelectMode(true, true);
+    S.tool = which;
+    barsClose();
+    if(same){
+      (which==='pen'?penBar:which==='hl'?hlBar:erBar).classList.add('show');
+    }
+    toolSync();
+  }
+  function clearTool(){
+    if(S.selMode) setSelectMode(false, true);
+    S.penMode='pen'; $('#eraseBtn').classList.remove('on');
+    S.tool=null; barsClose(); toolSync();
+  }
+  S.tool = null;
+  $('#rdPenBtn').onclick = function(){ S.tool==='pen' && penBar.classList.contains('show') ? clearTool() : setTool('pen'); };
+  $('#rdHlBtn').onclick  = function(){ S.tool==='hl'  && hlBar.classList.contains('show')  ? clearTool() : setTool('hl');  };
+  $('#rdErBtn').onclick  = function(){ S.tool==='er'  && erBar.classList.contains('show')  ? clearTool() : setTool('er');  };
+
+  function buildSwatches(host, colors, get, set){
+    host.innerHTML='';
+    colors.forEach(function(c){
+      const b=elx('button','sw'); b.style.background=c; b.setAttribute('data-c',c); b.setAttribute('aria-label',c);
+      host.appendChild(b);
+    });
+    const cu=elx('button','sw'); cu.setAttribute('data-custom','1');
+    cu.style.background='conic-gradient(#f44,#fd4,#4d4,#4df,#44f,#f4d,#f44)';
+    cu.setAttribute('aria-label','Custom colour'); host.appendChild(cu);
+    host.addEventListener('click', function(e){
+      const b=e.target.closest('button.sw'); if(!b) return;
+      if(b.getAttribute('data-custom')){ openColorPop(b,get,set); return; }
+      set(b.getAttribute('data-c')); markSwatch(host,get()); paintTints(); rdSave();
+    });
+    markSwatch(host,get());
+  }
+  function markSwatch(host,val){
+    $$('#'+host.id+' button.sw').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-c')===val); });
+    const cu=host.querySelector('button.sw[data-custom]');
+    if(cu){
+      const known=Array.prototype.slice.call(host.querySelectorAll('button.sw[data-c]'))
+                   .some(function(b){ return b.getAttribute('data-c')===val; });
+      cu.classList.toggle('on', !known);
+      if(!known) cu.style.background=val;
+    }
+  }
+  function getPenC(){ return S.penColor; }
+  buildSwatches($('#penSwatches'), PEN_COLORS, getPenC, function(v){ S.penColor=v; });
+  buildSwatches($('#hlSwatches'),  HL_COLORS,  function(){ return S.hlColor; }, function(v){ S.hlColor=v; paintMarks(); });
+
+  function nibSync(){
+    $$('#penBar .nib').forEach(function(b){ b.classList.toggle('on', Math.abs(+b.getAttribute('data-pw')-S.penW)<0.05); });
+    const ps=$('#penSizeBtn'); if(ps) ps.textContent = S.penW.toFixed(1)+' mm';
+    const es=$('#erSizeBtn');  if(es) es.textContent = S.eraseMM+' mm';
+    const em=$('#erModeBtn');  if(em) em.textContent = S.eraseMode==='stroke' ? 'Whole strokes' : 'By area';
+    const host=$('#erPresets');
+    if(host && !host.dataset.built){
+      host.dataset.built='1';
+      [2,5,20].forEach(function(v){
+        const b=elx('button','tbtn'); b.textContent=v+' mm'; b.setAttribute('data-mm',v);
+        b.onclick=function(){ S.eraseMM=v; ringSize(); nibSync(); rdSave(); };
+        host.appendChild(b);
+      });
+    }
+    if(host) $$('#erPresets .tbtn').forEach(function(b){ b.classList.toggle('on', +b.getAttribute('data-mm')===S.eraseMM); });
+  }
+  $('#penBar').addEventListener('click', function(e){
+    const n=e.target.closest('.nib'); if(!n) return;
+    S.penW=+n.getAttribute('data-pw'); nibSync(); rdSave();
+  });
+  $('#penSizeBtn').onclick = function(){ openSizePop(this,'pen'); };
+  $('#erSizeBtn').onclick  = function(){ openSizePop(this,'erase'); };
+  $('#erModeBtn').onclick  = function(){
+    S.eraseMode = (S.eraseMode==='stroke')?'area':'stroke'; nibSync(); rdSave();
+  };
+  $('#undoBtn2').onclick = function(){ tap('#undoBtn'); };
+  function clearPage(){
+    const n=(S.strokes[S.page]||[]).length;
+    if(!n){ toast('Nothing drawn on this page.'); return; }
+    const keep=(S.strokes[S.page]||[]).slice();
+    tap('#clearBtn');
+    toast('Cleared '+n+' stroke'+(n===1?'':'s')+'.', 'Undo', function(){
+      S.strokes[S.page]=keep; redrawInk(); scheduleInk();
+    });
+  }
+  $('#clearPgBtn').onclick = clearPage;
+  $('#clearPgBtn2').onclick = clearPage;
+
+  /* ---- one popper, three jobs ------------------------------------------- */
+  const pop=$('#sizePop');
+  let popKind=null, popGet=null, popSet=null;
+  function place(el, anchor, dy){
+    const bar=anchor.closest('.toolbar');
+    const r=(bar||anchor).getBoundingClientRect(), a=anchor.getBoundingClientRect();
+    el.style.visibility='hidden'; el.classList.add('show');
+    const w=el.offsetWidth, h=el.offsetHeight;
+    let x,y;
+    if(bar){ x=r.left-w-(dy||10); if(x<10) x=r.right+(dy||10); y=a.top+a.height/2-h/2; }
+    else   { x=a.left+a.width/2-w/2; y=a.top-h-(dy||10); if(y<10) y=a.bottom+(dy||10); }
+    el.style.left=Math.round(clamp(x,10,innerWidth-w-10))+'px';
+    el.style.top =Math.round(clamp(y,10,innerHeight-h-10))+'px';
+    el.style.visibility='';
+  }
+  function sizePopClose(){ pop.classList.remove('show'); popKind=null; }
+  function openSizePop(anchor, kind){
+    popKind=kind;
+    $('#sizePopHexRow').style.display='none';
+    $('#sizePopHexRow2').style.display='none';
+    $('#sizePopRange').style.display='';
+    $('#sizePopPresets').style.display='';
+    const isEr=(kind==='erase');
+    $('#sizePopName').textContent = isEr?'Eraser size':'Pen size';
+    const val = isEr?S.eraseMM:S.penW, rng=$('#sizePopRange');
+    rng.min = isEr?2:0.5; rng.max = isEr?40:12; rng.step=0.1; rng.value=val;
+    $('#sizePopVal').textContent=(+val).toFixed(1)+' mm';
+    const host=$('#sizePopPresets'); host.innerHTML='';
+    (isEr?[2,5,20]:[1,2.3,4.5]).forEach(function(v){
+      const b=elx('button','tbtn'); b.textContent=v+' mm';
+      b.classList.toggle('on', Math.abs(v-val)<0.05);
+      b.onclick=function(){ rng.value=v; rng.dispatchEvent(new Event('input',{bubbles:true})); };
+      host.appendChild(b);
+    });
+    place(pop, anchor, 10);
+  }
+  $('#sizePopRange').addEventListener('input', function(e){
+    const v=Math.round(+e.target.value*10)/10;
+    $('#sizePopVal').textContent=v.toFixed(1)+' mm';
+    if(popKind==='erase'){ S.eraseMM=v; ringSize(); }
+    else if(popKind==='pen'){ S.penW=v; }
+    $$('#sizePopPresets .tbtn').forEach(function(b){ b.classList.toggle('on', b.textContent===v+' mm'); });
+    nibSync(); rdSave();
+  });
+  function openColorPop(anchor,get,set){
+    popKind='color'; popGet=get; popSet=set;
+    $('#sizePopName').textContent='Custom colour';
+    $('#sizePopVal').textContent='';
+    $('#sizePopRange').style.display='none';
+    $('#sizePopPresets').style.display='none';
+    $('#sizePopHexRow').style.display='';
+    $('#sizePopHexRow2').style.display='';
+    const cur=get();
+    $('#sizePopHex').value=cur.toUpperCase();
+    $('#sizePopPreview').style.background=cur;
+    place(pop,anchor,10);
+  }
+  function hsl2hex(h){
+    const f=function(n){
+      const k=(n+h/30)%12, a=0.42;
+      const c=0.62-a*Math.max(-1,Math.min(k-3,Math.min(9-k,1)));
+      return Math.round(255*c).toString(16).padStart(2,'0');
+    };
+    return ('#'+f(0)+f(8)+f(4)).toUpperCase();
+  }
+  function applyCustom(hex){
+    $('#sizePopPreview').style.background=hex;
+    popSet(hex);
+    markSwatch(popGet===getPenC ? $('#penSwatches') : $('#hlSwatches'), hex);
+    paintTints(); rdSave();
+  }
+  $('#sizePopHue').addEventListener('input', function(e){
+    if(popKind!=='color') return;
+    const hex=hsl2hex(+e.target.value); $('#sizePopHex').value=hex; applyCustom(hex);
+  });
+  $('#sizePopHex').addEventListener('input', function(e){
+    if(popKind!=='color') return;
+    let v=e.target.value.trim(); if(v[0]!=='#') v='#'+v;
+    if(!/^#[0-9a-fA-F]{6}$/.test(v)) return;
+    applyCustom(v.toUpperCase());
+  });
+
+  /* Dismissal runs on capture, so it must cost nothing for a stylus — the pen
+     path is the one place in the app where a few microseconds are visible. */
+  document.addEventListener('pointerdown', function(e){
+    if(e.pointerType === 'pen') return;
+    const t=e.target;
+    if(pop.classList.contains('show') && !t.closest('#sizePop') && !t.closest('.tbtn') && !t.closest('.sw')) sizePopClose();
+    if((penBar.classList.contains('show')||hlBar.classList.contains('show')||erBar.classList.contains('show')) &&
+       !t.closest('.toolbar') && !t.closest('#rdTools') && !t.closest('#sizePop')) barsClose();
+    if(hlPop.classList.contains('show') && !t.closest('#hl-pop') && !t.closest('#hlPop')) hlPopClose();
+  }, true);
+
+  /* ---- the eraser ring: transform only, once per frame ------------------ */
+  const ring=$('#rdRing');
+  let ringD=0, ringX=0, ringY=0, ringRaf=null;
+  function ringSize(){
+    ringD = Math.max(10, S.eraseMM*PX_MM);
+    ring.style.width = ringD+'px'; ring.style.height = ringD+'px';
+  }
+  ringSize();
+  function ringFrame(){
+    ringRaf=null;
+    ring.style.transform='translate3d('+(ringX-ringD/2)+'px,'+(ringY-ringD/2)+'px,0)';
+  }
+  window.ringShow=function(x,y){
+    ringX=x; ringY=y;
+    if(!ring.classList.contains('show')){ ringFrame(); ring.classList.add('show'); return; }
+    if(!ringRaf) ringRaf=requestAnimationFrame(ringFrame);
+  };
+  window.ringHide=function(){
+    if(ringRaf){ cancelAnimationFrame(ringRaf); ringRaf=null; }
+    ring.classList.remove('show');
+  };
+
+  /* ══ 5 · zoom ════════════════════════════════════════════════════════════ */
+  const zoomHud=$('#rdZoom'), zPct=$('#zPct');
+  let zoomT=null;
+  function zoomHudShow(on){
+    zoomHud.classList.toggle('show', !!on);
+    clearTimeout(zoomT);
+    if(on) zoomT=setTimeout(function(){ zoomHud.classList.remove('show'); }, 2600);
+  }
+  window.rdZoomHud=zoomHudShow;
+  function zSync(){
+    zPct.textContent = (FT.on ? 'Fit ' : '') + Math.round(S.zoom*100)+'%';
+    $('#zLock').classList.toggle('on', S.zoomLock);
+    $('#zLock').setAttribute('aria-pressed', S.zoomLock?'true':'false');
+    const sh=$('#zShackle');
+    if(sh) sh.setAttribute('d', S.zoomLock ? 'M8 10.5V7.6a4 4 0 0 1 8 0v2.9' : 'M8 10.5V7.6a4 4 0 0 1 7.4-2');
+    document.body.classList.toggle('zoomed', S.zoom>1.001);
+  }
+  window.zSync=zSync;
+  window.rdSetZoom=function(z, keep){
+    if(!S.book) return Promise.resolve();
+    z=clamp(z,0.6,3);
+    /* choosing a zoom by hand means leaving the fitted mode, not overriding it */
+    if(FT.on && Math.abs(z - S.zoom) > 0.005){
+      FT.on = false; document.body.classList.remove('fittext');
+      if(window.rdSync) setTimeout(rdSync, 0);
+    }
+    S.zoom=z; zSync(); zoomHudShow(true);
+    if(IS.on){ isLayout(true); return Promise.resolve(); }
+    const frame=$('#pageframe'), v=$('#viewer');
+    return renderPage(S.page).then(function(){
+      if(keep){
+        const r=frame.getBoundingClientRect();
+        v.scrollTop  += (r.top  + keep.fy*r.height) - keep.y;
+        if(!S.zoomLock) v.scrollLeft += (r.left + keep.fx*r.width ) - keep.x;
+        inkRect=null;
+      }else if(typeof ftCentre === 'function') ftCentre();
+      if(S.zoomLock && S.lockX !== null) v.scrollLeft = S.lockX;
+    });
+  };
+  /* A tap resets the zoom; a long press opens the pen read-out. It lives on the
+     smallest, least-used control in the app on purpose — it is a workshop tool,
+     not a feature. window.penDiag(true) does the same from a console. */
+  let zHold = null, zHeld = false;
+  zPct.addEventListener('pointerdown', function(){
+    zHeld = false;
+    clearTimeout(zHold);
+    zHold = setTimeout(function(){
+      zHeld = true;
+      if(window.penDiag) penDiag();
+    }, 900);
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(t){
+    zPct.addEventListener(t, function(){ clearTimeout(zHold); });
+  });
+  zPct.onclick = function(){
+    if(zHeld){ zHeld = false; return; }
+    zoomHudShow(true);
+    if(S.zoomLock){ toast('Zoom is locked.'); return; }
+    rdSetZoom(Math.abs(S.zoom-1)<0.02 ? 1.5 : 1);
+  };
+  $('#zLock').onclick=function(){
+    S.zoomLock=!S.zoomLock;
+    S.lockX = S.zoomLock ? $('#viewer').scrollLeft : null;
+    rdSave(); zSync(); zoomHudShow(true);
+    toast(S.zoomLock ? 'Zoom locked at '+Math.round(S.zoom*100)+'%.' : 'Zoom unlocked — pinch to resize.');
+  };
+  zoomHud.addEventListener('pointerdown', function(){ zoomHudShow(true); }, true);
+
+  /* ══ 6 · hold a highlight ════════════════════════════════════════════════ */
+  const hlPop=$('#hlPop');
+  let hlPopRef=null;
+  window.rdRunAt=function(cx,cy){
+    const g=wordAt(cx,cy,40,false);
+    if(g<0) return null;
+    const D=S.hlDraft||[], K=S.hl||[];
+    for(let i=0;i<D.length;i++) if(g>=Math.min(D[i].a,D[i].b)&&g<=Math.max(D[i].a,D[i].b)) return {m:D[i],i:i,draft:true};
+    for(let i=0;i<K.length;i++) if(g>=Math.min(K[i].a,K[i].b)&&g<=Math.max(K[i].a,K[i].b)) return {m:K[i],i:i,draft:false};
+    return null;
+  };
+  window.rdHlPop=function(ref,x,y){
+    hlPopRef=ref;
+    const save=$('#hlPopSave');
+    save.disabled=!ref.draft;
+    save.lastChild.nodeValue = ref.draft?'Save':'Saved';
+    hlPop.classList.add('show');
+    const w=hlPop.offsetWidth, h=hlPop.offsetHeight;
+    let ty=y-h-14; if(ty<10) ty=y+18;
+    hlPop.style.left=Math.round(clamp(x-w/2,10,innerWidth-w-10))+'px';
+    hlPop.style.top =Math.round(clamp(ty,10,innerHeight-h-10))+'px';
+  };
+  function hlPopClose(){ hlPop.classList.remove('show'); hlPopRef=null; }
+  window.rdHlPopClose=hlPopClose;
+  $('#hlPopSave').onclick=function(){
+    if(!hlPopRef||!hlPopRef.draft) return;
+    const m=hlPopRef.m;
+    S.hlDraft.splice(hlPopRef.i,1); S.hl.push(m);
+    saveMarks(); saveDrafts(); paintMarks(); hlPopClose();
+    toast('Saved to your highlights.');
+  };
+  $('#hlPopDel').onclick=function(){
+    if(!hlPopRef) return;
+    const list=hlPopRef.draft?S.hlDraft:S.hl;
+    const gone=list.splice(hlPopRef.i,1)[0];
+    if(hlPopRef.draft) saveDrafts(); else saveMarks();
+    paintMarks(); hlPopClose();
+    toast('Removed.','Undo',function(){
+      list.push(gone);
+      if(list===S.hlDraft) saveDrafts(); else saveMarks();
+      paintMarks();
+    });
+  };
+
+  /* ══ 7 · keys ════════════════════════════════════════════════════════════ */
+  document.addEventListener('keydown', function(e){
+    const tn=e.target.tagName;
+    if(tn==='SELECT'||tn==='INPUT'||tn==='TEXTAREA') return;
+    if(e.code==='Escape'){ menuOpen(false); hlPopClose(); barsClose(); }
+    if(e.code==='KeyM'){ e.preventDefault(); menuOpen(!menu.classList.contains('show')); }
+  });
+
+  /* ══ 8 · settle ══════════════════════════════════════════════════════════ */
+  setTimeout(rdSync, 350);
+  setTimeout(rdSync, 2200);
+  /* Rotating changes the fitted width, so the zoom read-out and the horizontal
+     scroll bounds both have to be recomputed once the new layout has landed. */
+  window.addEventListener('resize', function(){ setTimeout(function(){
+    /* the fitted zoom is a function of viewport width, so rotating changes it */
+    if(FT.on && S.book){ S.zoom = ftZoom(); zSync();
+      (IS.on ? Promise.resolve(isLayout(true)) : renderPage(S.page)).then(function(){ ftCentre(); }); }
+    zSync(); recentre();
+  }, 300); });
+  window.addEventListener('orientationchange', function(){ setTimeout(function(){ zSync(); recentre(); }, 360); });
+  function recentre(){
+    const v=$('#viewer'); if(!v) return;
+    if(S.zoomLock && S.lockX !== null){ v.scrollLeft = S.lockX; return; }
+    const over = v.scrollWidth - v.clientWidth;
+    if(over > 1) v.scrollLeft = clamp(v.scrollLeft, 0, over);
+    else v.scrollLeft = 0;
+  }
+  window.rdRecentre = recentre;
+
 })();
 
 /* ============================================================================
@@ -7992,6 +10511,7 @@ if($('#railHomeBtn')) $('#railHomeBtn').onclick = showHome;
   /* ---- wiring ------------------------------------------------------------- */
   function openBackup(){
     bkStatus(false);
+    if(typeof refreshStorageLine === 'function') refreshStorageLine();
     document.getElementById('backupSheet').classList.add('show');
     if(typeof homeMenuAutoClose === 'function') homeMenuAutoClose();
   }
