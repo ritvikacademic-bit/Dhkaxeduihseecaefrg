@@ -7760,7 +7760,7 @@ let cur=null, penId=null, penDown=null, penMoved2=0;
      · PRESSURE  — the M-Pen reports 2048 steps; past PEN.press it is a rub.
      · HOLD      — 150 ms with the nib parked inside PEN.slop pixels.
 --------------------------------------------------------------------------- */
-const PEN = { press:0.90, holdMs:700, slop:7, slop2:49 };
+const PEN = { press:0.80, holdMs:500, slop:7, slop2:49 };
 let holdT=null, lastPenX=0, lastPenY=0;
 
 /* Vibration is a syscall. It is worth having when the eraser takes over,
