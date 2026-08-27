@@ -218,6 +218,9 @@
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
           background:var(--ink); color:#fff; padding:10px 16px; border-radius:10px; font-size:13px;
           opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:50; max-width:88vw; }
+  /* The edit strip owns the bottom edge in Cover Flow; a message about editing
+     that lands on top of the edit buttons is worse than no message. */
+  #home.cf.editing ~ .toast, body:has(#home.cf.editing) .toast{ bottom:64px; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
   .toast button{ background:none; border:0; color:var(--mark); font-weight:600; margin-left:12px; cursor:pointer; }
 
@@ -1056,6 +1059,149 @@
     body.chrome-on .rd-transport, .hl-pop.show{ animation:none !important; }
   }
 
+
+  /* ==========================================================================
+     LIBRARY THEME 2  ·  COVER FLOW
+     A one-to-one port of the reference component. Every number below comes
+     straight from it: rotate 44°, depth .6, perspective ×3, falloff .56,
+     fade .1, gap .05, card clamp(148px, 22vw, 260px), radius 16px,
+     title 15px/600, subtitle 13px, meta 12px. Nothing has been "improved".
+     What is added is only what a library needs and a carousel of album art
+     does not: a progress rail under each cover, a state dot beside the name,
+     and a hold-to-act layer.
+     ========================================================================== */
+  #home.cf .homemain{ padding:0; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+
+  /* Named cfp, not cf: the home screen already wears `.cf` as its theme flag,
+     so a bare `.cf {}` rule lands on both. Everything this block sets — the
+     touch-action, the cursor, user-select:none — was quietly being applied to
+     the whole library screen as well. */
+  .cfp{
+    --cf-card: 210px;        /* a starting guess only — cfFit measures and overwrites it */
+    --cf-ratio: 1.37;        /* book, not album */
+    --cf-pad: 22px;          /* breathing room above and below the ring */
+    --cf-green:#2e9e63; --cf-amber:#e0a71f; --cf-blue:#7ec8f0;
+    flex:1; min-height:0; display:flex; flex-direction:column; justify-content:center;
+    background:var(--wash); position:relative; overflow:hidden;
+    /* the whole panel is the dial, not just the covers */
+    touch-action:pan-y; cursor:grab;
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+  }
+  .cfp.grabbing{ cursor:grabbing; }
+  /* Edit mode parks its controls along the bottom edge; hold that space open so
+     nothing has to be scrolled to or hunted for. */
+  #home.editing .cfp{ padding-bottom:44px; }
+
+  /* the shelf line floats above the ring rather than pushing it down: the
+     covers should sit in the middle of the screen at every screen height. */
+  .cf-top{ position:absolute; top:0; left:0; right:0; z-index:2;
+           display:flex; align-items:center; gap:10px; padding:16px 22px 0; }
+  @media (max-width:1000px){ .cf-top{ padding:18px 18px 0 62px; } }
+  .cf-top h2{ margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--ink); }
+  .cf-top .n{ font-size:12px; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+  .cf-top .sp{ flex:1; }
+
+  /* the lens */
+  .cf-frame{
+    position:relative; flex:none; display:flex; align-items:center;
+    overflow:hidden; outline:none;
+    perspective:calc(var(--cf-card) * 3);
+    touch-action:pan-y;                     /* sideways is ours, the page keeps up/down */
+    padding:var(--cf-pad) 0;                /* keeps the drop shadows clear of the clip */
+  }
+  .cf-frame:focus-visible{ box-shadow:inset 0 0 0 2px var(--bolt); border-radius:12px; }
+  .cf-track{
+    position:relative; width:100%;
+    height:calc(var(--cf-card) * var(--cf-ratio) + 22px);   /* cover + progress rail */
+    transform-style:preserve-3d;
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+  }
+
+  .cf-card{
+    position:absolute; left:50%; top:0; width:var(--cf-card);
+    will-change:transform, opacity; backface-visibility:hidden;
+  }
+  .cf-shot{
+    position:relative; width:100%; aspect-ratio:1 / var(--cf-ratio);
+    border-radius:16px; overflow:hidden; background:var(--line);
+    box-shadow:0 20px 25px -5px rgba(0,0,0,.16), 0 8px 10px -6px rgba(0,0,0,.14);
+  }
+  .cf-shot img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+                -webkit-user-drag:none; user-select:none; }
+  .cf-fb{ position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center;
+          gap:6px; padding:15px 14px; background:linear-gradient(155deg,#fbfbfa,#e9e7e2); }
+  .cf-fb b{ font-size:14px; font-weight:700; line-height:1.25; color:var(--ink);
+            display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
+  .cf-fb span{ font-size:11px; color:var(--ink-soft); }
+
+  /* the progress rail — just under the cover's footer, quiet on purpose:
+     colour is the dot's job, so the rail only ever reports a number. */
+  .cf-bar{ display:flex; align-items:center; gap:7px; height:14px; margin-top:8px; padding:0 2px; }
+  /* Read at an angle a rail is just a stray line, so it belongs to the covers
+     you are actually looking at and fades out with the rest of the ring. */
+  .cf-bar .tr{ flex:1; height:3px; border-radius:99px; background:rgba(27,27,26,.12); overflow:hidden; }
+  .cf-bar .tr i{ display:block; height:100%; border-radius:99px; background:var(--ink-soft);
+                 transition:width .3s ease; }
+  .cf-bar b{ font-size:10px; font-weight:600; color:var(--ink-faint); font-variant-numeric:tabular-nums;
+             letter-spacing:.01em; min-width:24px; text-align:right; }
+  body.dark .cf-bar .tr{ background:rgba(255,255,255,.16); }
+
+  /* hold a cover and it offers the only two things you can do to a book
+     you are not reading: finish it, or get rid of it. */
+  .cf-acts{ position:absolute; inset:0; z-index:6; display:none; align-items:center; justify-content:center;
+            gap:16px; background:rgba(18,18,17,.46); }
+  .cf-card.acting .cf-acts{ display:flex; animation:cfActs .16s cubic-bezier(.32,.72,0,1) both; }
+  @keyframes cfActs{ from{ opacity:0 } to{ opacity:1 } }
+  .cf-act{ width:48px; height:48px; border-radius:50%; border:0; padding:0; cursor:pointer;
+           display:grid; place-items:center; background:#fff; box-shadow:0 8px 20px rgba(0,0,0,.3); }
+  .cf-act:active{ transform:scale(.93); }
+  .cf-act svg{ width:22px; height:22px; display:block; }
+  .cf-act.ok{ color:var(--cf-green); }
+  .cf-act.no{ color:#c8322b; }
+
+  /* the caption */
+  .cf-cap{ flex:none; display:flex; flex-direction:column; align-items:center;
+           padding:0 24px 12px; text-align:center; }
+  .cf-cap.in{ animation:cfFade .3s ease both; }
+  @keyframes cfFade{ from{ opacity:0 } to{ opacity:1 } }
+  .cf-t{ margin:8px 0 0; font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--ink);
+         display:flex; align-items:center; gap:8px; max-width:min(92vw,520px); }
+  .cf-t span.nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cf-s{ margin:4px 0 0; font-size:13px; color:var(--ink-faint); }
+  .cf-meta{ margin:var(--cf-metatop, 18px) 0 0; width:100%; max-width:230px; font-size:12px; }
+  .cf-meta > div{ display:flex; justify-content:space-between; padding:var(--cf-metapad, 5px) 0; gap:14px; }
+  .cf-meta dt{ color:var(--ink-faint); white-space:nowrap; }
+  .cf-meta dd{ margin:0; font-weight:500; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* the state dot — green tick finished, amber hourglass part-read, blue new */
+  .cf-dot{ width:15px; height:15px; border-radius:50%; flex:none; display:grid; place-items:center; }
+  .cf-dot svg{ width:11px; height:11px; display:block; color:#fff; }
+  .cf-dot.done{ background:var(--cf-green); }
+  .cf-dot.prog{ background:var(--cf-amber); }
+  .cf-dot.new { background:var(--cf-blue); }
+
+  /* Edit mode, in the theme's own language. Pinned to the bottom edge of the
+     panel rather than stacked under the caption: in landscape the stack runs
+     off the screen, and a control you cannot reach is not a control. */
+  .cf-edit{ display:none; gap:8px; flex-wrap:nowrap; justify-content:center;
+            position:absolute; left:0; right:0; bottom:8px; z-index:55;
+            padding:0 12px; }
+  #home.editing .cf-edit{ display:flex; }
+  .cf-eb{ border:1px solid var(--line-2); background:var(--paper); color:var(--ink-soft);
+          border-radius:8px; padding:7px 13px; font-size:12px; cursor:pointer; font-family:inherit;
+          box-shadow:0 1px 3px rgba(0,0,0,.06); white-space:nowrap; touch-action:manipulation; }
+  .cf-eb:active{ background:var(--wash); color:var(--ink); }
+  body.dark .cf-eb{ box-shadow:none; }
+
+  .cf-empty{ flex:1; display:grid; place-items:center; color:var(--ink-faint); font-size:14px;
+             line-height:1.7; text-align:center; padding:0 24px; }
+
+  @media (prefers-reduced-motion:reduce){
+    .cf-cap.in{ animation:none; }
+    .cf-card.acting .cf-acts{ animation:none; }
+    .cf-bar .tr i{ transition:none; }
+  }
+
 </style>
 
 <!-- ===================== HOME · reading library ===================== -->
@@ -1072,6 +1218,11 @@
         <button id="navHlAll" class="hsublink">All highlights</button>
       </div>
       <button id="navStats" class="hnavitem"><span class="ic">📈</span> Stats</button>
+      <button id="navThemes" class="hnavitem"><span class="ic">◨</span> Themes</button>
+      <div id="themeNav" class="hsublist" style="display:none">
+        <button id="navThm1" class="hsublink">Theme 1 (original)</button>
+        <button id="navThm2" class="hsublink">Theme 2</button>
+      </div>
       <button id="editBtn" class="hnavitem"><span class="ic">⚙</span> Edit</button>
       <button id="backupBtn" class="hnavitem"><span class="ic">⇅</span> Backup</button>
       <button id="addBtnM" class="hnavitem addm"><span class="ic">+</span> Add</button>
@@ -2385,7 +2536,8 @@ const S = {
   focusRead:true, stats:null, dark:false, darkVar:'midnight', bionic:false, inf:false, funnel:false, dpr:1,
   homeNav:'library', homeGenre:'all',
   themes:null,
-  edit:false, genreNames:null, customGenres:null
+  edit:false, genreNames:null, customGenres:null,
+  libTheme:'classic', themeNavOpen:false
 };
 
 const MAX_CHUNK = 170;
@@ -3614,6 +3766,8 @@ async function ingest(file){
   const body = sampleFromPages(pages);
   var genre = classifyGenre(realTitle, body);           // the true title, plus a wide sample of the text
   bk.genre = genre; bk.title = realTitle;
+  const bib = await biblioOf(doc, pages);              // the byline and the copyright year
+  bk.author = bib.author; bk.year = bib.year; bk.__bib = true;
 
   /* The page-by-page word map of a long book is tens of megabytes. Writing it as
      one record means one giant structured clone, which is what chokes a 4 GB
@@ -3627,6 +3781,7 @@ async function ingest(file){
   }
   store.set('card:'+id, { name:file.name, title:realTitle, numPages:doc.numPages,
                           totalWords:total, genre:genre, paged:true, scanned: total<12,
+                          author:bib.author, year:bib.year,
                           kind: isEpubBook ? 'epub' : '' });
   if(isEpubBook){
     bk.kind = 'epub';
@@ -3692,6 +3847,9 @@ async function addFiles(list){
     }
   }
   renderLibrary();
+  /* Theme 2 turns the ring to whatever you just brought in, rather than
+     leaving you on whichever cover happened to be in front. */
+  if(last && S.libTheme==='cf'){ try{ CF.wantId = last.id; }catch(e){} }
   if($('#home').classList.contains('show')){ renderHome(); }
   else if(last) openBook(last);
 }
@@ -4033,7 +4191,10 @@ async function restoreLibrary(){
       const pos = mirror.get('pos:'+id) || (await store.get('pos:'+id));
       S.library.push({ id:id, name:card.name, title:card.title||'', doc:null, numPages:card.numPages,
                        pages:null, totalWords:card.totalWords, pos:pos||null,
-                       genre:card.genre||'', done:!!card.done, kind:card.kind||'' });
+                       genre:card.genre||'', done:!!card.done, kind:card.kind||'',
+                       author:card.author||'', year:card.year||0,
+                       coverLocked: !!card.coverLocked,
+                       __bib: !!card.author });
     }catch(e){}
   }
   if(S.library.length) renderLibrary();
@@ -8756,6 +8917,263 @@ async function realTitleOf(doc, pages, fileName){
   }
   return (fileName||'').replace(/\.(pdf|epub)$/i,'');
 }
+
+/* ---------------------------------------------------------------------------
+   Who wrote it, and when.
+
+   A PDF almost never volunteers this cleanly. The /Author field is right maybe
+   half the time and is "Microsoft Word" the other half, and there is no
+   publication-year field at all — only the date the file was produced, which
+   for a 1965 novel scanned in 2011 says 2011. So we read the book the way a
+   person would: the name under the title on the cover, and the oldest year on
+   the copyright page.
+   --------------------------------------------------------------------------- */
+
+/* Words carry x, y and h but no line grouping — rebuild the lines. */
+function bibLines(words){
+  if(!words || !words.length) return [];
+  var lines=[], cur=null, i;
+  var ws = words.slice().sort(function(a,b){ return (a.y-b.y)||(a.x-b.x); });
+  for(i=0;i<ws.length;i++){
+    var w = ws[i]; if(!w.text) continue;
+    var h = w.h || 12;
+    if(cur && Math.abs(w.y - cur.y) <= h*0.7){ cur.words.push(w); cur.h = Math.max(cur.h, h); }
+    else { cur = { y:w.y, h:h, words:[w] }; lines.push(cur); }
+  }
+  var out=[];
+  for(i=0;i<lines.length;i++){
+    var t = lines[i].words.map(function(w){ return w.text; }).join(' ').replace(/\s+/g,' ').trim();
+    if(t) out.push({ y:lines[i].y, h:lines[i].h, t:t });
+  }
+  return out;
+}
+
+/* The names typesetters leave behind that are not the author. */
+var BIB_JUNK = /(microsoft|word|excel|powerpoint|acrobat|adobe|indesign|quark|pagemaker|framemaker|latex|pdftex|dvips|ghostscript|distiller|calibre|scanner|scansoft|abbyy|omnipage|printer|admin(istrator)?|owner|^user$|^guest$|^unknown$|^untitled$|^none$|^n\/?a$|^default$|library|^pc$|^hp$|^dell$)/i;
+
+function bibAuthorClean(sv){
+  var t = String(sv||'').replace(/\s+/g,' ').trim();
+  t = t.replace(/^(by|written\s+by|author|authors)\s*[:\-\u2013]?\s*/i,'').trim();
+  t = t.replace(/[,;:.\u2013\u2014\-]\s*$/,'').trim();
+  if(!t) return '';
+  if(t.length < 3 || t.length > 64) return '';
+  if(!/[A-Za-z\u00C0-\u024F]/.test(t)) return '';
+  if(BIB_JUNK.test(t)) return '';
+  if(/\.(pdf|epub|docx?|txt|indd|qxd)\b/i.test(t)) return '';
+  if(/[@\/\\]|https?:/i.test(t)) return '';
+  if((t.match(/\d/g)||[]).length > 2) return '';
+  if(t === t.toLowerCase() && /\s/.test(t)) return '';   // "final draft copy"
+  return t;
+}
+
+/* Capitalised words that belong to a book rather than to a person. "Third
+   Edition" is title case and two words long, which is exactly the shape of a
+   name — the only thing separating them is knowing what the words mean. */
+var BIB_NOTNAME = /\b(edition|editions|revised|updated|expanded|abridged|unabridged|illustrated|annotated|adapted|translated|translation|volume|vol|book|books|part|chapter|section|series|edition|printing|reprint|impression|press|publishing|publishers?|publications?|publisher|university|college|institute|academy|library|imprint|foreword|preface|prologue|introduction|afterword|epilogue|appendix|glossary|index|contents|bestseller|bestselling|edition|anniversary|companion|handbook|workbook|manual|guide|primer|reader|casebook|textbook|copyright|rights|reserved|inc|ltd|llc|gmbh|edition)\b/i;
+
+/* And the words that open a book's subtitle, never a person's name. */
+var BIB_NOTFIRST = /^(a|an|the|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|new|newly|latest|complete|completely|ultimate|official|special|deluxe|classic|essential|international|global|national|american|british|indian|student|teacher|instructor|how|why|what|when|where|who|your|my|our|their|his|her|its|this|that|these|those|with|from|for|and|or|but|not|no|more|most|less|least|best|worst|free|full|final|only|just|all|every|each|some|many|much)\b/i;
+
+/* Two to five words, every one of them capitalised — the shape a byline has. */
+function bibNameShaped(t){
+  if(BIB_NOTNAME.test(t)) return false;
+  if(BIB_NOTFIRST.test(t)) return false;
+  if(/[:;\u2013\u2014]/.test(t)) return false;      /* a subtitle, not a name */
+  var parts = t.replace(/[.,]/g,'').split(/\s+/).filter(Boolean);
+  if(parts.length < 2 || parts.length > 5) return false;
+  for(var i=0;i<parts.length;i++){
+    var p = parts[i];
+    if(/^[A-Z\u00C0-\u00DE][a-z\u00DF-\u00FF\u2019'\-]+$/.test(p)) continue;   // Grenier
+    if(/^[A-Z\u00C0-\u00DE]{2,}$/.test(p)) continue;                          // GRENIER
+    if(/^[A-Z]\.?$/.test(p)) continue;                                        // J.
+    if(/^(de|van|von|del|della|da|di|du|la|le|bin|ibn|al|and|&|jr|sr|ii|iii)$/i.test(p)) continue;
+    return false;
+  }
+  return true;
+}
+
+/* The byline on a title page: an explicit "by ..." if there is one, otherwise
+   the first name-shaped line sitting below the title in mid-size type. */
+function bibAuthorFromPage(words){
+  var L = bibLines(words); if(!L.length) return '';
+  var maxH = 0, i, a;
+  for(i=0;i<L.length;i++) if(L[i].h > maxH) maxH = L[i].h;
+  for(i=0;i<L.length;i++){
+    var m = /^by\s+(.{2,64})$/i.exec(L[i].t);
+    if(m){ a = bibAuthorClean(m[1]); if(a) return a; }
+  }
+  var titleY = -1;
+  for(i=0;i<L.length;i++) if(L[i].h >= maxH*0.82) titleY = L[i].y;   // the last, lowest title line
+
+  /* A cover reads title, then subtitle, then byline, top to bottom, and a
+     subtitle in title case looks exactly like a name to a machine — "Eight
+     Elegant Ideas" passes every test a person's name passes. What separates
+     them is position, not spelling: the byline is the last of them. So collect
+     every candidate and keep the lowest, rather than stopping at the first. */
+  var best = '';
+  for(i=0;i<L.length;i++){
+    var l = L[i];
+    if(l.h >= maxH*0.82) continue;                    // that is the title
+    if(l.h <  maxH*0.28) continue;                    // that is the fine print
+    if(titleY >= 0 && l.y <= titleY) continue;        // bylines sit under the title
+    if(l.t.length > 48) continue;
+    if(!bibNameShaped(l.t)) continue;
+    a = bibAuthorClean(l.t); if(a) best = a;          // keep going; lower wins
+  }
+  return best;
+}
+
+/* The copyright page names the rights holder, and for most trade books that is
+   the author: "Copyright (c) 2004 by Dan Kennedy". It is the single most
+   reliable byline in the whole file, because it is a legal statement rather
+   than a design decision. */
+function bibAuthorFromCopyright(txt){
+  if(!txt) return '';
+  var pats = [
+    /(?:\u00a9|\(c\)|copyright)\s*(?:\u00a9\s*)?(?:19|20)\d{2}(?:\s*,\s*(?:19|20)\d{2})*\s+by\s+([^.;\n\u2022|]{3,60})/i,
+    /copyright\s+by\s+([^.;\n\u2022|]{3,60})/i,
+    /(?:\u00a9|\(c\))\s*(?:19|20)\d{2}\s+([A-Z\u00C0-\u00DE][^.;\n\u2022|]{2,58})/,
+    /text\s+copyright\s*(?:\u00a9)?\s*(?:19|20)\d{2}\s+by\s+([^.;\n\u2022|]{3,60})/i
+  ];
+  for(var i=0;i<pats.length;i++){
+    var m = pats[i].exec(txt);
+    if(!m) continue;
+    /* "Dan Kennedy and Associates, Inc." -> stop at the company */
+    var raw = m[1].split(/\s+(?:and\s+)?(?:all\s+rights|published|printed|first)\b/i)[0];
+    /* "Dan Kennedy and Associates, Inc." is a company standing in for a person;
+       the person is the part in front of it. */
+    raw = raw.replace(/\s+(and|&)\s+(associates|partners|company|sons|co)\b.*$/i,'');
+    raw = raw.replace(/\b(inc|ltd|llc|gmbh|plc|co|corp|company|press|publishing|publishers?)\b.*$/i,'').trim();
+    raw = raw.replace(/[,;]\s*$/,'').trim();
+    var a = bibAuthorClean(raw);
+    if(a && bibNameShaped(a)) return a;
+  }
+  return '';
+}
+
+/* A copyright page lists every printing. The first edition is the smallest year. */
+function bibYearFromText(txt){
+  if(!txt) return 0;
+  var cap = new Date().getFullYear() + 1, found = [], m;
+  var re = /(?:\u00a9|\(c\)|copyright|copyrighted|first\s+published|first\s+printed|first\s+edition|originally\s+published|published|publication|printed|edition|impression|reprinted)[^0-9]{0,48}?((?:1[4-9]|20)\d{2})/gi;
+  while((m = re.exec(txt))){ var y = +m[1]; if(y >= 1450 && y <= cap) found.push(y); }
+  if(!found.length) return 0;
+  found.sort(function(a,b){ return a-b; });
+  return found[0];
+}
+
+/* Last resort: the date the file itself was made. Better than a dash. */
+function bibYearFromInfo(info){
+  var d = info && (info.CreationDate || info.ModDate);
+  if(!d) return 0;
+  var m = /((?:1[4-9]|20)\d{2})/.exec(String(d));
+  if(!m) return 0;
+  var y = +m[1], cap = new Date().getFullYear() + 1;
+  return (y >= 1450 && y <= cap) ? y : 0;
+}
+
+/* The front matter — cover, title page, copyright page — as one flat string. */
+function bibFrontText(pages, howMany){
+  var out = [], lim = Math.min(pages ? pages.length : 0, howMany || 8);
+  for(var p=0;p<lim;p++){
+    var ws = (pages[p] && pages[p].words) || [];
+    for(var i=0;i<ws.length;i++) if(ws[i].text) out.push(ws[i].text);
+  }
+  return out.join(' ');
+}
+
+/* Everything above, in the order we trust it. */
+async function biblioOf(doc, pages){
+  var info = {};
+  try{ var md = await doc.getMetadata(); if(md && md.info) info = md.info; }catch(e){}
+  var front  = bibFrontText(pages, 8);
+  var author = bibAuthorClean(info.Author || '');
+  if(author && !bibNameShaped(author)) author = '';     /* "Third Edition" is not a person */
+  if(!author) author = bibAuthorFromCopyright(front);
+  if(!author && pages && pages.length){
+    author = bibAuthorFromPage(pages[0].words) ||
+             (pages[1] ? bibAuthorFromPage(pages[1].words) : '') ||
+             (pages[2] ? bibAuthorFromPage(pages[2].words) : '');
+  }
+  var year = bibYearFromText(front) || bibYearFromInfo(info);
+  return { author: author || '', year: year || 0 };
+}
+
+/* Books shelved before this version have no author or year on their card. Work
+   it out once, from the pages already in the store, and cache it so the shelf
+   never has to think about it again. */
+async function ensureBiblio(bk){
+  /* An author the old parser got wrong — "Third Edition" and friends — is worse
+     than none, so let one pass throw those back into the pool. */
+  if(bk.author && !bibNameShaped(bk.author)){ bk.author = ''; bk.__bib = false; }
+  if(bk.__bib) return bk;
+  bk.__bib = true;
+  var card = null;
+  try{ card = await store.get('card:'+bk.id); }catch(e){}
+  if(card && card.author && !card.authorLocked && !bibNameShaped(card.author)) card.author = '';
+  if(card && (card.author || card.year)){
+    if(bk.author == null || bk.author === '') bk.author = card.author || '';
+    if(!bk.year) bk.year = card.year || 0;
+    if(bk.author) return bk;
+  }
+  if(card && (card.authorLocked || card.yearLocked)){    // set by hand; never overrule
+    bk.author = card.author || ''; bk.year = card.year || 0; return bk;
+  }
+
+  var pages = bk.pages;
+  if(!pages || !pages.length){
+    pages = [];
+    for(var i=0;i<8;i++){
+      var pg = null;
+      try{ pg = await store.get('pg:'+bk.id+':'+i); }catch(e){}
+      if(!pg) break;
+      pages.push(pg);
+    }
+    if(!pages.length){ try{ pages = await loadPages(bk); }catch(e){ pages = null; } }
+  }
+
+  var author = '', year = 0;
+  if(bk.doc){
+    try{ var b = await biblioOf(bk.doc, pages); author = b.author; year = b.year; }catch(e){}
+  }
+  if(pages && pages.length){
+    var front = bibFrontText(pages, 8);
+    if(!author) author = bibAuthorFromCopyright(front);
+    if(!author) author = bibAuthorFromPage(pages[0].words) ||
+                         (pages[1] ? bibAuthorFromPage(pages[1].words) : '') ||
+                         (pages[2] ? bibAuthorFromPage(pages[2].words) : '');
+    if(!year)   year   = bibYearFromText(front);
+  }
+  bk.author = author; bk.year = year;
+  try{
+    var c = card || { name:bk.name, numPages:bk.numPages, totalWords:bk.totalWords };
+    c.author = author; c.year = year;
+    store.set('card:'+bk.id, c);
+  }catch(e){}
+  return bk;
+}
+
+/* When the guess is wrong, one prompt fixes both, for good. */
+function editBiblio(bk){
+  var a = window.prompt('Author of \u201c'+bookTitle(bk)+'\u201d', bk.author || '');
+  if(a === null) return;
+  var y = window.prompt('Year first published', bk.year ? String(bk.year) : '');
+  if(y === null) return;
+  a = String(a).replace(/\s+/g,' ').trim();
+  y = String(y).replace(/[^0-9]/g,'').slice(0,4);
+  bk.author = a;
+  bk.year   = y ? parseInt(y,10) : 0;
+  bk.__bib  = true;
+  store.get('card:'+bk.id).then(function(c){
+    c = c || { name:bk.name, numPages:bk.numPages, totalWords:bk.totalWords };
+    c.author = bk.author; c.year = bk.year;
+    c.authorLocked = true; c.yearLocked = true;
+    store.set('card:'+bk.id, c);
+  }).catch(function(){});
+  if(typeof cfCaption === 'function') cfCaption();
+  toast('Saved.');
+}
+
 function classifyGenre(title, body){
   var titleToks = genTokens(title);
   var bodyToks  = genTokens(body).slice(0, 2500);
@@ -8842,16 +9260,13 @@ async function ensureGenre(bk){
 }
 
 /* ---- cover art: render page 1 to a small JPEG, cache it forever ---- */
+/* The shelf thumbnail. 640px is roughly twice what a 148px card resolves on
+   this screen, which is the point where more pixels stop being visible. The
+   sharper copy the ring wants is a separate, on-demand render — see
+   ensureCoverHQ, further down. */
 async function renderCoverFromDoc(doc){
-  var page=await doc.getPage(1);
-  var vp1=page.getViewport({scale:1});
-  var scale=Math.min(2, 300/(vp1.width||300));
-  var vp=page.getViewport({scale:scale});
-  var cv=document.createElement('canvas');
-  cv.width=Math.max(1,Math.round(vp.width)); cv.height=Math.max(1,Math.round(vp.height));
-  await page.render({ canvasContext:cv.getContext('2d'), viewport:vp }).promise;
-  tintPaper(cv.getContext('2d'), cv);
-  try{ return cv.toDataURL('image/jpeg',0.7); }catch(e){ return cv.toDataURL(); }
+  var url = await renderCoverAt(doc, 640);
+  return url || null;
 }
 async function ensureCover(bk){
   if(bk.cover) return bk.cover;
@@ -8901,7 +9316,7 @@ async function fillCovers(cards){
 
 /* ---- progress helpers ---- */
 function delBookKeys(bk){
-  ['meta:','card:','bytes:','ink:','pos:','marks:','cover:','img:','readstats:','eimg:'].forEach(function(pfx){ store.del(pfx+bk.id); });
+  ['meta:','card:','bytes:','ink:','pos:','marks:','cover:','coverhq:','img:','readstats:','eimg:'].forEach(function(pfx){ store.del(pfx+bk.id); });
   mirror.del('pos:'+bk.id);
   store.del('fnh:'+bk.id);
   for(var i=0;i<(bk.numPages||0);i++){ store.del('pg:'+bk.id+':'+i); store.del('ink:'+bk.id+':'+i); }
@@ -8937,7 +9352,7 @@ function showHome(){ if(S.book){ noteAnchor(); savePosNow(); }
   S.tool=null; S.penMode='pen'; $('#eraseBtn').classList.remove('on');
   stopPageClock(); focusClockShow(false); $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
 function showReader(){ $('#home').classList.remove('show'); }
-async function openFromHome(bk){ showReader(); await openBook(bk); }
+async function openFromHome(bk){ try{ CF.wantId = bk.id; }catch(e){} showReader(); await openBook(bk); }
 function removeBook(bk){
   S.library = S.library.filter(function(b){ return b!==bk; });
   delBookKeys(bk);
@@ -9152,6 +9567,10 @@ function setHomeNavUI(){
   $('#navHlAll').classList.toggle('on', S.hlView==='all');
   var ns=$('#navStats'); if(ns) ns.classList.toggle('on', S.homeNav==='stats');
   var nr=$('#navRead');  if(nr) nr.classList.toggle('on', S.homeNav==='readlist');
+  var nt=$('#navThemes'); if(nt) nt.classList.toggle('on', !!S.themeNavOpen);
+  var tn=$('#themeNav');  if(tn) tn.style.display = S.themeNavOpen ? '' : 'none';
+  var t1=$('#navThm1');   if(t1) t1.classList.toggle('on', S.libTheme!=='cf');
+  var t2=$('#navThm2');   if(t2) t2.classList.toggle('on', S.libTheme==='cf');
 }
 function buildGenreNav(){
   var nav=$('#genreNav'); nav.innerHTML='';
@@ -9274,7 +9693,11 @@ function setEditMode(on){
   S.edit = !!on;
   $('#editBtn').classList.toggle('on', S.edit);
   $('#home').classList.toggle('editing', S.edit);
-  if(S.edit) toast('Edit mode — rename, re-cover, or drag books onto a shelf.');
+  /* the edit strip takes a bottom band, so the ring gets one less */
+  if(CF.wrap && CF.wrap.isConnected){ cfMeasure(); cfPaint(); }
+  if(S.edit) toast(S.libTheme==='cf'
+      ? 'Edit mode — rename, re-cover, or move the book in focus to another shelf.'
+      : 'Edit mode — rename, re-cover, or drag books onto a shelf.');
   renderHome();
 }
 
@@ -9305,7 +9728,13 @@ function changeCover(bk){
       var url = await coverFromFile(f);
       if(!url){ toast('Could not read that file.'); return; }
       bk.cover = url;
+      bk.coverLocked = true;
       store.set('cover:'+bk.id, url);
+      /* The ring prefers its own sharp re-render of page one, and that copy
+         outranks bk.cover everywhere it is drawn. Clear it, or your picture is
+         set correctly and never once seen. */
+      try{ cfHQ.delete(bk.id); }catch(e){}
+      try{ store.del('coverhq:'+bk.id); }catch(e){}
       patchCard(bk, { coverLocked:true });
       renderHome();
       toast('Cover updated.');
@@ -9457,6 +9886,8 @@ async function renderHome(){
   buildGenreNav(); setHomeNavUI();
 
   var main=$('#homeMain'); main.innerHTML='';
+  /* Theme 2 owns the whole pane; every other view keeps the original one. */
+  $('#home').classList.toggle('cf', S.libTheme==='cf' && S.homeNav==='library');
 
   if(S.homeNav==='hl'){
     var hh=makeHhead('Notes & Highlights', '');
@@ -9478,6 +9909,8 @@ async function renderHome(){
     buildReadingPage(main);
     return;
   }
+
+  if(S.libTheme==='cf'){ buildCoverflow(main); return; }
 
   var head = makeHhead('Your Library', S.library.length+' book'+(S.library.length!==1?'s':''));
   if(S.edit){
@@ -9548,6 +9981,9 @@ $('#navStats').onclick   = function(){ S.homeNav='stats'; setHomeNavUI(); render
 $('#navRead').onclick   = function(){ S.homeNav='readlist'; setHomeNavUI(); renderHome(); homeMenuAutoClose(); };
 if($('#hlAddBtn')) $('#hlAddBtn').onclick = openNoteModal;
 $('#editBtn').onclick    = function(){ setEditMode(!S.edit); homeMenuAutoClose(); };
+$('#navThemes').onclick  = function(){ S.themeNavOpen = !S.themeNavOpen; setHomeNavUI(); };
+$('#navThm1').onclick    = function(){ setLibTheme('classic'); homeMenuAutoClose(); };
+$('#navThm2').onclick    = function(){ setLibTheme('cf'); homeMenuAutoClose(); };
 $('#addBtnM').onclick    = function(){ $('#file').click(); };
 
 /* ---------- the library menu is a drawer ----------
@@ -9626,6 +10062,637 @@ function storageLine(){
          + '\n' + mb(STORAGE.usage) + ' used of ' + (STORAGE.quota ? mb(STORAGE.quota) : 'an unknown quota') + ' (' + pct + ').';
 }
 
+
+/* ============================================================================
+   LIBRARY THEMES
+   The library has always had one look. It now has two, and the choice is a
+   setting like any other: written the moment it changes, read back at boot,
+   applied to whatever is on screen without a reload.
+
+   Theme 1 is the original — shelves, a grid, nothing moved.
+   Theme 2 is Cover Flow: one ring of covers, one in focus. It is a straight
+   port of the reference component, kept to its own numbers.
+============================================================================ */
+function libThemeSave(){
+  try{ mirror.set('libtheme', S.libTheme); store.set('libtheme', S.libTheme); }catch(e){}
+}
+function libThemeLoad(){
+  var t=null;
+  try{ t = mirror.get('libtheme'); }catch(e){}
+  S.libTheme = (t==='cf') ? 'cf' : 'classic';
+}
+function setLibTheme(t){
+  t = (t==='cf') ? 'cf' : 'classic';
+  if(S.libTheme===t){ setHomeNavUI(); return; }
+  S.libTheme = t;
+  libThemeSave();
+  CF.wantId = null;                       /* a new theme opens where the library opens */
+  S.homeNav = 'library';
+  setHomeNavUI(); renderHome();
+  toast(t==='cf' ? 'Theme 2 — Cover Flow.' : 'Theme 1 — the original shelves.');
+}
+
+/* ============================================================================
+   COVER ART AT THE TABLET'S OWN RESOLUTION
+   A cover is drawn twice. Once small, when the book is added, so a shelf can
+   fill instantly. Then once properly — at the pixel count this screen can
+   actually resolve — the first time that book takes the centre of the ring,
+   and that one is kept. The library sharpens itself as you browse it, and
+   never spends a second rendering a page you have not looked at.
+============================================================================ */
+var CF_HQ_W = (function(){
+  var dpr = Math.min(3, window.devicePixelRatio || 1);
+  /* the widest a card can ever be is the reference clamp ceiling (260px);
+     twice the device pixels behind it is past the point of visible return. */
+  return Math.max(720, Math.min(1440, Math.round(260 * dpr * 2)));
+})();
+var cfHQ = new Map();                     /* id -> data URL, kept small on purpose */
+var cfHQBusy = false;
+function cfHQPut(id, url){
+  cfHQ.set(id, url);
+  while(cfHQ.size > 4){ var k = cfHQ.keys().next().value; cfHQ.delete(k); }
+}
+async function renderCoverAt(doc, W){
+  var page = await doc.getPage(1);
+  var vp1  = page.getViewport({ scale:1 });
+  var scale= Math.min(6, W/(vp1.width||W));
+  var vp   = page.getViewport({ scale:scale });
+  var cv   = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(vp.width));
+  cv.height= Math.max(1, Math.round(vp.height));
+  var ctx  = cv.getContext('2d');
+  await page.render({ canvasContext:ctx, viewport:vp }).promise;
+  /* No paper tint here. Warming a page of black text on white is what makes it
+     readable; doing it to a book jacket just drains the jacket. */
+  var out = null;
+  try{ out = cv.toDataURL('image/jpeg', 0.9); }catch(e){}
+  cv.width = cv.height = 0;               /* give the bitmap back now, not at GC's leisure */
+  return out;
+}
+/* the same document hunt ensureCover does, factored out so both can use it */
+async function cfDoc(bk){
+  if(bk.doc) return { doc:bk.doc, temp:false };
+  try{
+    if(bk.kind === 'epub'){
+      var pg0=null, ei=null;
+      try{ pg0 = await store.get('pg:'+bk.id+':0'); }catch(e){}
+      try{ ei  = await store.get('eimg:'+bk.id); }catch(e){}
+      if(pg0) return { doc: epubDocFromSaved([pg0], [ (ei && ei[0]) || [] ], {},
+                        function(){ return store.get('bytes:'+bk.id); }), temp:true };
+    }
+    var bytes = await store.get('bytes:'+bk.id);
+    if(!bytes) return null;
+    return { doc: await pdfjsLib.getDocument({ data:bytes.slice(0) }).promise, temp:true };
+  }catch(e){ return null; }
+}
+/* Every cover rendered before this build was multiplied with the reading
+   page's paper tint. That is baked into the JPEG, so the only cure is to throw
+   them out and draw them again. Runs once, ever, and never touches a cover you
+   chose yourself. */
+async function cfRefreshCovers(){
+  var gen = null;
+  try{ gen = await store.get('covergen'); }catch(e){}
+  if(gen === 2) return;
+  var keys = [];
+  try{ keys = await store.keys(); }catch(e){ return; }
+  var locked = {};
+  S.library.forEach(function(b){ if(b.coverLocked) locked[b.id] = 1; });
+  for(var i=0;i<keys.length;i++){
+    var k = keys[i]; if(typeof k !== 'string') continue;
+    var id = k.indexOf('coverhq:')===0 ? k.slice(8)
+           : k.indexOf('cover:')===0   ? k.slice(6) : null;
+    if(id === null || locked[id]) continue;
+    try{ await store.del(k); }catch(e){}
+  }
+  S.library.forEach(function(b){ if(!b.coverLocked) b.cover = null; });
+  try{ cfHQ.clear(); }catch(e){}
+  try{ store.set('covergen', 2); }catch(e){}
+}
+
+async function ensureCoverHQ(bk){
+  /* A cover you picked is the cover. Never render page one over the top of it. */
+  if(bk.coverLocked) return bk.cover || null;
+  if(cfHQ.has(bk.id)) return cfHQ.get(bk.id);
+  try{ var c = await store.get('coverhq:'+bk.id); if(c){ cfHQPut(bk.id, c); return c; } }catch(e){}
+  if(cfHQBusy) return null;               /* one page render at a time on a 4 GB tablet */
+  cfHQBusy = true;
+  var d = null;
+  try{
+    d = await cfDoc(bk);
+    if(!d) return null;
+    var url = await renderCoverAt(d.doc, CF_HQ_W);
+    if(url){ cfHQPut(bk.id, url); try{ store.set('coverhq:'+bk.id, url); }catch(e){} }
+    return url;
+  }catch(e){ return null; }
+  finally{
+    if(d && d.temp){ try{ d.doc.destroy(); }catch(e){} }
+    cfHQBusy = false;
+  }
+}
+
+/* ============================================================================
+   COVER FLOW
+   Ported from the reference component and kept to its numbers. The one thing
+   changed is what is on screen at once: a library is not twelve album sleeves,
+   it is two hundred books, so the ring is drawn through a fixed pool of cards
+   that are re-pointed as it turns. Nineteen nodes, whatever the shelf holds.
+============================================================================ */
+var CF = {
+  rotate:44, depth:.6, persp:3, falloff:.56, fade:.1, gap:.05, loop:true, wrap:null, card:0,
+  books:[], pool:[], count:0, base:null,
+  pos:0, target:0, w:0, raf:null, sel:0,
+  drag:null, hold:null, held:false, acting:null,
+  frame:null, track:null, cap:null, ro:null, wantId:null, queue:[], busy:false
+};
+
+function cfMod(n, m){ return ((n % m) + m) % m; }
+
+function cfBooks(){
+  var g = S.homeGenre, list = S.library.slice();
+  if(g === 'done')      list = list.filter(function(b){ return b.done; });
+  else if(g !== 'all')  list = list.filter(function(b){ return (b.genre||'General') === g; });
+  /* Reading first, newest touched at the front; then the untouched; then the
+     finished. The ring you land on is the one you were in the middle of. */
+  function rank(b){ return b.done ? 2 : (bkPct(b) > 0.005 ? 0 : 1); }
+  list.sort(function(a,b){
+    var ra=rank(a), rb=rank(b);
+    if(ra !== rb) return ra - rb;
+    if(ra === 0) return ((b.pos&&b.pos.at)||0) - ((a.pos&&a.pos.at)||0);
+    return bookTitle(a).localeCompare(bookTitle(b));
+  });
+  return list;
+}
+
+function cfState(bk){
+  if(bk.done) return 'done';
+  return bkPct(bk) > 0.005 ? 'prog' : 'new';
+}
+var CF_GLYPH = {
+  done:'<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.6 6.25 4.85 8.5 9.4 3.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  prog:'<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 2.1h5M3.5 9.9h5M4.1 2.1c0 2.05 1.9 2.55 1.9 3.9 0 1.35-1.9 1.85-1.9 3.9M7.9 2.1c0 2.05-1.9 2.55-1.9 3.9 0 1.35 1.9 1.85 1.9 3.9" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  new :'<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="2.2" fill="currentColor"/></svg>'
+};
+var CF_WORD = { done:'Completed', prog:'In progress', new:'New' };
+
+/* ---- covers, one book at a time ---- */
+function cfQueueCover(bk){
+  if(bk.cover || CF.queue.indexOf(bk) >= 0) return;
+  CF.queue.push(bk); cfPump();
+}
+async function cfPump(){
+  if(CF.busy || !CF.queue.length) return;
+  CF.busy = true;
+  var bk = CF.queue.shift();
+  try{ var url = await ensureCover(bk); if(url) cfPaintCovers(); }catch(e){}
+  CF.busy = false;
+  if(CF.queue.length) setTimeout(cfPump, 0);
+}
+function cfPaintCovers(){
+  CF.pool.forEach(function(s){
+    var bk = s.bk; if(!bk) return;
+    var want = cfHQ.get(bk.id) || bk.cover;
+    if(want && s.img.getAttribute('src') !== want){
+      s.img.src = want; s.img.style.display = '';
+      s.fb.style.display = 'none';
+    }
+  });
+}
+
+/* ---- build ---- */
+function buildCoverflow(main){
+  CF.books = cfBooks();
+  CF.count = CF.books.length;
+  CF.queue = [];
+
+  var wrap = elx('div','cfp');
+  CF.wrap = wrap;
+
+  if(!CF.count){
+    var e = elx('div','cf-empty');
+    e.innerHTML = S.homeGenre==='all'
+      ? 'Your library is empty.<br>Add a PDF or EPUB from the menu to begin.'
+      : 'Nothing on this shelf yet.';
+    wrap.appendChild(e); main.appendChild(wrap);
+    CF.frame = CF.track = CF.cap = null; CF.pool = [];
+    return;
+  }
+
+  var frame = elx('div','cf-frame'); frame.tabIndex = 0;
+  frame.setAttribute('role','region');
+  frame.setAttribute('aria-roledescription','carousel');
+  frame.setAttribute('aria-label','Library covers');
+  var track = elx('div','cf-track');
+  frame.appendChild(track); wrap.appendChild(frame);
+
+  var cap = elx('div','cf-cap'); wrap.appendChild(cap);
+  main.appendChild(wrap);
+
+  CF.frame = frame; CF.track = track; CF.cap = cap;
+
+  /* a fixed pool: at fade .1 a card nine out is at a tenth opacity and far
+     enough back to be a smudge, so nineteen is the whole visible ring. */
+  var size = Math.min(CF.count, 19);
+  var half = Math.floor(size/2);
+  CF.pool = [];
+  for(var i=0;i<size;i++){
+    var k = i - half;
+    var card = elx('div','cf-card');
+    var shot = elx('div','cf-shot');
+    var img  = new Image(); img.decoding='async'; img.alt=''; img.draggable=false;
+    img.style.display='none';
+    var fb   = elx('div','cf-fb'); fb.innerHTML = '<b></b><span></span>';
+    var acts = elx('div','cf-acts');
+    shot.appendChild(img); shot.appendChild(fb); shot.appendChild(acts);
+    var bar  = elx('div','cf-bar');
+    bar.innerHTML = '<span class="tr"><i></i></span><b></b>';
+    card.appendChild(shot); card.appendChild(bar);
+    card.setAttribute('role','group');
+    card.setAttribute('aria-roledescription','slide');
+    track.appendChild(card);
+    CF.pool.push({ k:k, el:card, img:img, fb:fb, acts:acts, bar:bar,
+                   fill:bar.querySelector('i'), pct:bar.querySelector('b'), bk:null });
+  }
+
+  /* land where we were: the same book if it is still here, else the front */
+  var start = 0;
+  if(CF.wantId){
+    for(var j=0;j<CF.count;j++) if(CF.books[j].id === CF.wantId){ start = j; break; }
+  }
+  CF.pos = CF.target = start; CF.base = null; CF.sel = start;
+  CF.wantId = CF.books[start].id;
+
+  cfWire(frame);
+  cfMeasure();
+  cfAssign(true);
+  cfPaint();
+  cfCaption();
+  /* The first fit had nothing to measure — the caption was still empty. Now it
+     is not, so take the real number and settle. */
+  requestAnimationFrame(function(){
+    if(!CF.wrap || !CF.wrap.isConnected) return;
+    cfMeasure(); cfPaint();
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   Sizing the ring to the screen it is actually on.
+
+   The old code picked the card off a media query — 22vw held upright, 32vh
+   lying down, with a 640px height breakpoint deciding which. A 10-inch tablet
+   in landscape lands just past that breakpoint, so it took the width rule, and
+   a card sized off the width of a wide screen is far taller than a short one
+   has room for. The panel centres its contents and clips what will not fit, so
+   the overflow was split top and bottom: the covers lost their tops, the edit
+   row fell off underneath.
+
+   Measuring is the fix. Take the height the panel really has, subtract what the
+   caption really needs, and let the card be whatever is left. Width still caps
+   it, so a tall narrow screen cannot make a cover wider than a third of it.
+   --------------------------------------------------------------------------- */
+function cfFit(){
+  var wrap = CF.wrap, cap = CF.cap;
+  if(!wrap || !wrap.isConnected) return;
+  var H = wrap.clientHeight, W = wrap.clientWidth;
+  if(!H || !W) return;
+
+  var editing = document.getElementById('home');
+  editing = !!(editing && editing.classList.contains('editing'));
+
+  /* Room is tight lying down and plentiful upright, so the caption gives some
+     back before the covers start losing theirs. */
+  var tight = H < 620;
+  var metaTop = tight ? 10 : 18;
+  var metaPad = tight ? 3  : 5;
+  var pad     = tight ? 14 : 22;                 /* clearance for the drop shadows */
+  wrap.style.setProperty('--cf-metatop', metaTop + 'px');
+  wrap.style.setProperty('--cf-metapad', metaPad + 'px');
+  wrap.style.setProperty('--cf-pad', pad + 'px');
+
+  /* title + subtitle + three rows + the caption's own padding */
+  var capH = 8 + 20 + 4 + 18 + metaTop + 3*(2*metaPad + 16) + 12;
+  if(cap && cap.offsetHeight) capH = Math.max(capH, cap.offsetHeight);
+
+  var avail = H - capH - 2*pad - (editing ? 44 : 0) - 6;
+  var byHeight = (avail - 22) / 1.37;            /* 22px is the progress rail */
+
+  /* Width has the last word, or a tall narrow screen would give you one cover
+     and two slivers. Upright there is width to spare and the covers can be
+     generous; lying down they have to leave room for their neighbours. */
+  var portrait = H > W;
+  var byWidth  = Math.min(288, W * (portrait ? 0.42 : 0.30));
+  var card = Math.round(Math.max(112, Math.min(byHeight, byWidth)));
+
+  wrap.style.setProperty('--cf-card', card + 'px');
+  CF.card = card;
+}
+
+function cfMeasure(){
+  cfFit();
+  var s = CF.pool[0];
+  if(!s) return;
+  var w = s.el.offsetWidth;
+  if(w) CF.w = w;
+  else if(CF.card) CF.w = CF.card;
+}
+
+/* point every slot at the book it should be showing right now */
+function cfAssign(force){
+  var base = Math.round(CF.pos);
+  if(!force && base === CF.base) return;
+  CF.base = base;
+  CF.pool.forEach(function(s){
+    var idx = cfMod(base + s.k, CF.count);
+    var bk  = CF.books[idx];
+    s.idx = idx;
+    if(s.bk === bk) return;
+    s.bk = bk;
+    s.el.setAttribute('aria-label', (idx+1)+' of '+CF.count);
+    s.el.classList.remove('acting');
+
+    var url = cfHQ.get(bk.id) || bk.cover;
+    if(url){ s.img.src = url; s.img.style.display=''; s.fb.style.display='none'; }
+    else{
+      s.img.removeAttribute('src'); s.img.style.display='none'; s.fb.style.display='';
+      s.fb.querySelector('b').textContent = bookTitle(bk);
+      s.fb.querySelector('span').textContent = (bk.numPages||'?') + ' pages';
+      cfQueueCover(bk);
+    }
+    var p = Math.round(bkPct(bk)*100);
+    if(bk.done) p = 100;
+    s.fill.style.width = Math.max(0, Math.min(100, p)) + '%';
+    s.pct.textContent  = p > 0 ? p + '%' : '';
+  });
+  if(CF.acting){ CF.acting.classList.remove('acting'); CF.acting = null; }
+}
+
+/* straight out of the reference: fold, ease the rake off, recede, fade */
+function cfPaint(){
+  var width = CF.w; if(!width) return;
+  var pitch = width * (1 + CF.gap);
+  var pos   = CF.pos, count = CF.count;
+
+  CF.pool.forEach(function(s){
+    var offset   = (CF.base + s.k) - pos;
+    var distance = Math.abs(offset);
+    var ramp     = Math.pow(distance, CF.falloff);
+    var tilt     = Math.min(CF.rotate * ramp, 82) * Math.sign(offset);
+
+    s.el.style.transform =
+      'translateX(calc(-50% + ' + (offset * pitch) + 'px)) ' +
+      'translateZ(' + (-CF.depth * width * ramp) + 'px) rotateY(' + (-tilt) + 'deg)';
+
+    var edge = CF.loop ? Math.min(1, Math.max(0, count/2 - distance)) : 1;
+    s.el.style.opacity = String(Math.max(0, 1 - CF.fade * distance) * edge);
+    s.el.style.zIndex  = String(100 - Math.round(distance));
+    s.bar.style.opacity = String(Math.max(0, 1 - 0.85 * distance));
+    /* a card faded to a smudge should not be catching taps meant for the air */
+    s.el.style.pointerEvents = distance < 2.6 ? 'auto' : 'none';
+  });
+}
+
+function cfSettle(target){
+  if(CF.raf !== null){ cancelAnimationFrame(CF.raf); CF.raf = null; }
+  CF.target = target;
+  cfSelect(cfMod(Math.round(target), CF.count));
+  var slow = window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(slow){ CF.pos = target; cfAssign(); cfPaint(); return; }
+  var step = function(){
+    var remaining = target - CF.pos;
+    if(Math.abs(remaining) < 0.0004){
+      CF.pos = target; cfAssign(); cfPaint(); CF.raf = null; return;
+    }
+    CF.pos += remaining * 0.16;
+    cfAssign(); cfPaint();
+    CF.raf = requestAnimationFrame(step);
+  };
+  CF.raf = requestAnimationFrame(step);
+}
+function cfNudge(by){ cfSettle(Math.round(CF.target) + by); }
+
+function cfSelect(i){
+  if(i === CF.sel && CF.cap && CF.cap.childNodes.length) return;
+  CF.sel = i;
+  CF.wantId = CF.books[i] ? CF.books[i].id : null;
+  cfCaption();
+}
+
+/* ---- the caption, to the reference's type scale ---- */
+function cfCaption(){
+  var cap = CF.cap; if(!cap) return;
+  var bk = CF.books[CF.sel]; if(!bk) return;
+  var st = cfState(bk), pct = Math.round(bkPct(bk)*100);
+  if(bk.done) pct = 100;
+
+  cap.innerHTML = '';
+  cap.classList.remove('in'); void cap.offsetWidth; cap.classList.add('in');
+
+  var t = elx('p','cf-t');
+  var dot = elx('span','cf-dot '+st);
+  dot.innerHTML = CF_GLYPH[st];
+  dot.title = CF_WORD[st];
+  var nm = elx('span','nm'); nm.textContent = bookTitle(bk);
+  t.appendChild(dot); t.appendChild(nm);
+
+  var s = elx('p','cf-s'); s.textContent = CF_WORD[st];
+
+  var dl = elx('dl','cf-meta'), cell = {};
+  [['Year',   bk.year   ? String(bk.year) : '—'],
+   ['Author', bk.author ? bk.author       : '—'],
+   ['Pages',  String(bk.numPages || '—')]].forEach(function(r){
+    var row = elx('div');
+    var dt = document.createElement('dt'); dt.textContent = r[0];
+    var dd = document.createElement('dd'); dd.textContent = r[1]; dd.title = r[1];
+    row.appendChild(dt); row.appendChild(dd); dl.appendChild(row);
+    cell[r[0]] = dd;
+  });
+
+  /* An older book has no byline on its card yet. Work it out in the background
+     and slot the answer into the two cells — no second animation, no flicker. */
+  if(!bk.__bib){
+    ensureBiblio(bk).then(function(){
+      if(CF.books[CF.sel] !== bk || !cell.Year.isConnected) return;
+      cell.Year.textContent   = bk.year   ? String(bk.year) : '—';
+      cell.Author.textContent = bk.author ? bk.author       : '—';
+      cell.Year.title = cell.Year.textContent;
+      cell.Author.title = cell.Author.textContent;
+    }).catch(function(){});
+  }
+
+  cap.appendChild(t); cap.appendChild(s); cap.appendChild(dl);
+
+  /* Edit is a mode, not a screen — it reaches the theme you are actually in */
+  var ed = elx('div','cf-edit');
+  [['Rename', function(){ renameBook(bk); }],
+   ['Details', function(){ editBiblio(bk); }],
+   ['Cover',  function(){ changeCover(bk); }],
+   ['Shelf',  function(){ cfMoveShelf(bk); }]].forEach(function(r){
+    var b = elx('button','cf-eb'); b.type='button'; b.textContent = r[0];
+    b.onclick = function(ev){ ev.stopPropagation(); r[1](); };
+    ed.appendChild(b);
+  });
+  cap.appendChild(ed);
+
+  /* the book in focus earns its proper cover */
+  ensureCoverHQ(bk).then(function(url){
+    if(url && CF.books[CF.sel] === bk) cfPaintCovers();
+  }).catch(function(){});
+}
+
+function cfMoveShelf(bk){
+  var all = genreList();
+  var msg = 'Move "'+bookTitle(bk)+'" to which shelf?\n\n'
+          + all.map(function(g,i){ return (i+1)+'. '+genreLabel(g); }).join('\n')
+          + '\n\nType a number, or a new shelf name.';
+  var ans = window.prompt(msg, String(all.indexOf(bk.genre||'General')+1 || 1));
+  if(ans === null) return;
+  ans = ans.trim(); if(!ans) return;
+  var g;
+  if(/^\d+$/.test(ans)){
+    var i = parseInt(ans,10) - 1;
+    if(i < 0 || i >= all.length) return;
+    g = all[i];
+  }else{
+    g = ans;
+    if(all.indexOf(g) < 0){ S.customGenres = S.customGenres || []; S.customGenres.push(g); saveGenreState(); }
+  }
+  CF.wantId = bk.id;
+  moveBookToGenre(bk, g);
+}
+
+/* ---- hold a cover ---- */
+function cfActsOpen(slot){
+  if(CF.acting) CF.acting.classList.remove('acting');
+  var bk = slot.bk; if(!bk) return;
+  slot.acts.innerHTML = '';
+  var ok = elx('button','cf-act ok'); ok.type='button';
+  ok.setAttribute('aria-label', bk.done ? 'Mark as unread' : 'Mark as completed');
+  ok.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.6 9.4 17.5 19.5 6.9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  ok.onclick = function(ev){ ev.stopPropagation(); cfActsClose(); CF.wantId = bk.id; setDone(bk, !bk.done); };
+  var no = elx('button','cf-act no'); no.type='button';
+  no.setAttribute('aria-label','Remove from library');
+  no.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
+  no.onclick = function(ev){
+    ev.stopPropagation(); cfActsClose();
+    if(!window.confirm('Remove "'+bookTitle(bk)+'" from your library?\nThe file and everything in it goes with it.')) return;
+    CF.wantId = null; removeBook(bk);
+  };
+  slot.acts.appendChild(ok); slot.acts.appendChild(no);
+  slot.el.classList.add('acting');
+  CF.acting = slot.el;
+  try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
+}
+function cfActsClose(){
+  if(CF.acting){ CF.acting.classList.remove('acting'); CF.acting = null; }
+}
+
+/* ---- drag, flick, tap, hold, keys ---- */
+function cfWire(frame){
+  var HOLD = 480, SLOP = 8;
+
+  /* The covers are the obvious place to swipe, but they are a strip across the
+     middle of a mostly empty panel. Everything below them — the caption, the
+     white — turns the ring too. Only the buttons keep their own taps. */
+  var dial = CF.wrap || frame;
+
+  function slotAt(target){
+    var el = target && target.closest ? target.closest('.cf-card') : null;
+    if(!el) return null;
+    for(var i=0;i<CF.pool.length;i++) if(CF.pool[i].el === el) return CF.pool[i];
+    return null;
+  }
+  function clearHold(){ if(CF.hold){ clearTimeout(CF.hold); CF.hold = null; } }
+
+  dial.addEventListener('pointerdown', function(e){
+    if(e.target.closest && e.target.closest('.cf-act, .cf-eb, button, a, input, select')) return;
+    if(CF.raf !== null){ cancelAnimationFrame(CF.raf); CF.raf = null; }
+    try{ dial.setPointerCapture(e.pointerId); }catch(_){}
+    dial.classList.add('grabbing');
+    CF.target = CF.pos;
+    CF.held = false;
+    var slot = slotAt(e.target);
+    CF.drag = { id:e.pointerId, x:e.clientX, y:e.clientY, pos:CF.pos, v:0,
+                t:performance.now(), moved:0, slot:slot };
+    if(CF.acting && (!slot || slot.el !== CF.acting)) cfActsClose();
+    clearHold();
+    if(slot) CF.hold = setTimeout(function(){
+      CF.hold = null; CF.held = true; cfActsOpen(slot);
+    }, HOLD);
+  });
+
+  dial.addEventListener('pointermove', function(e){
+    var d = CF.drag; if(!d || d.id !== e.pointerId) return;
+    var dx = e.clientX - d.x;
+    d.moved = Math.max(d.moved, Math.hypot(dx, e.clientY - d.y));
+    if(d.moved > SLOP) clearHold();
+    if(CF.held) return;
+
+    var pitch = CF.w * (1 + CF.gap); if(!pitch) return;
+    var now = performance.now(), previous = CF.pos;
+    CF.pos = d.pos - dx / pitch;
+    d.v = ((CF.pos - previous) / Math.max(now - d.t, 1)) * 1000;   /* cards a second */
+    d.t = now;
+    cfSelect(cfMod(Math.round(CF.pos), CF.count));
+    cfAssign(); cfPaint();
+  });
+
+  function end(e){
+    var d = CF.drag; if(!d || d.id !== e.pointerId) return;
+    CF.drag = null; clearHold(); dial.classList.remove('grabbing');
+    if(CF.held){ CF.held = false; return; }
+
+    if(d.moved <= SLOP){
+      if(CF.acting){ cfActsClose(); return; }
+      if(d.slot){
+        if(d.slot.idx === CF.sel) openFromHome(d.slot.bk);       /* the one in focus opens */
+        else cfSettle(CF.base + d.slot.k);                        /* the rest come forward */
+      }
+      return;
+    }
+    var carried = Math.max(-2, Math.min(2, d.v * 0.18));          /* let a flick carry, but not far */
+    cfSettle(Math.round(CF.pos + carried));
+  }
+  dial.addEventListener('pointerup', end);
+  dial.addEventListener('pointercancel', function(e){
+    var d = CF.drag; if(!d || d.id !== e.pointerId) return;
+    CF.drag = null; clearHold(); CF.held = false;
+    dial.classList.remove('grabbing');
+    cfSettle(Math.round(CF.pos));
+  });
+
+  frame.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowLeft'){ e.preventDefault(); cfNudge(-1); }
+    else if(e.key === 'ArrowRight'){ e.preventDefault(); cfNudge(1); }
+    else if(e.key === 'Enter' || e.key === ' '){
+      e.preventDefault();
+      var bk = CF.books[CF.sel]; if(bk) openFromHome(bk);
+    }
+    else if(e.key === 'Escape'){ cfActsClose(); }
+  });
+
+  /* Auto-rotate: the card is the only measurement, so re-reading it is the
+     whole response to a new screen shape. */
+  if(CF.ro) try{ CF.ro.disconnect(); }catch(_){}
+  if(window.ResizeObserver){
+    var settle = null;
+    CF.ro = new ResizeObserver(function(){
+      /* Mali-T830 does not want a relayout per animation frame while the
+         address bar slides away — coalesce the burst into one. */
+      if(settle) return;
+      settle = requestAnimationFrame(function(){ settle = null; cfMeasure(); cfPaint(); });
+    });
+    CF.ro.observe(CF.wrap || frame);
+  }
+}
+window.addEventListener('orientationchange', function(){
+  /* EMUI reports the turn before it has finished making it; measure twice. */
+  setTimeout(function(){ if(CF.frame && CF.frame.isConnected){ cfMeasure(); cfPaint(); } }, 260);
+  setTimeout(function(){ if(CF.frame && CF.frame.isConnected){ cfMeasure(); cfPaint(); } }, 620);
+});
+window.addEventListener('resize', function(){
+  if(CF.frame && CF.frame.isConnected){ cfMeasure(); cfPaint(); }
+});
+
+
 (async function boot(){
   document.body.classList.add('focusread');
   checkStorage(true).catch(function(){});
@@ -9667,7 +10734,10 @@ function storageLine(){
     }, 1800);
   }
 
+  libThemeLoad();
+  try{ if(S.libTheme!=='cf'){ var lt = await store.get('libtheme'); if(lt==='cf') S.libTheme='cf'; } }catch(e){}
   try{ await restoreLibrary(); }catch(e){}
+  try{ await cfRefreshCovers(); }catch(e){}
   if(!window.pdfjsLib) toast('Could not load the PDF engine — check your connection once, then reload.');
 
   const eng = (s && s.engine) || 'device';
