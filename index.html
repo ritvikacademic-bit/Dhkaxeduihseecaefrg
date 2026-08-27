@@ -1078,7 +1078,7 @@
      the whole library screen as well. */
   .cfp{
     --cf-card: 210px;        /* a starting guess only — cfFit measures and overwrites it */
-    --cf-ratio: 1.37;        /* book, not album */
+    --cf-ratio: 1.5;        /* book, not album */
     --cf-pad: 22px;          /* breathing room above and below the ring */
     --cf-green:#2e9e63; --cf-amber:#e0a71f; --cf-blue:#7ec8f0;
     flex:1; min-height:0; display:flex; flex-direction:column; justify-content:center;
@@ -10198,7 +10198,7 @@ async function ensureCoverHQ(bk){
    that are re-pointed as it turns. Nineteen nodes, whatever the shelf holds.
 ============================================================================ */
 var CF = {
-  rotate:44, depth:.6, persp:3, falloff:.56, fade:.1, gap:.05, loop:true, wrap:null, card:0,
+  rotate:44, depth:.6, persp:3, falloff:.56, fade:.1, gap:-.04, loop:true, wrap:null, card:0,
   books:[], pool:[], count:0, base:null,
   pos:0, target:0, w:0, raf:null, sel:0,
   drag:null, hold:null, held:false, acting:null,
@@ -10373,13 +10373,13 @@ function cfFit(){
   if(cap && cap.offsetHeight) capH = Math.max(capH, cap.offsetHeight);
 
   var avail = H - capH - 2*pad - (editing ? 44 : 0) - 6;
-  var byHeight = (avail - 22) / 1.37;            /* 22px is the progress rail */
+  var byHeight = (avail - 22) / 1.5;            /* 22px is the progress rail */
 
   /* Width has the last word, or a tall narrow screen would give you one cover
      and two slivers. Upright there is width to spare and the covers can be
      generous; lying down they have to leave room for their neighbours. */
   var portrait = H > W;
-  var byWidth  = Math.min(288, W * (portrait ? 0.42 : 0.30));
+  var byWidth  = Math.min(288, W * (portrait ? 0.34 : 0.30));
   var card = Math.round(Math.max(112, Math.min(byHeight, byWidth)));
 
   wrap.style.setProperty('--cf-card', card + 'px');
