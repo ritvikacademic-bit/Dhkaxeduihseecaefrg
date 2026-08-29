@@ -43,9 +43,15 @@
     --sans: "Geist","Geist Sans",ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   *{ box-sizing:border-box; }
+  /* Every font-size in this file is rem, so one number here scales the whole
+     interface. The Text size row in the reading menu writes it; rdSave keeps
+     it. The viewport still forbids pinch-zoom because the reader runs its own
+     pinch handler on the page — that restriction should never have cost the
+     interface its text scaling too. */
+  html{ font-size:100%; }
   html,body{ height:100%; }
   body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
-        font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
+        font-size:0.875rem; line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden;
         -webkit-tap-highlight-color:transparent; }
   button{ font-family:inherit; }
 
@@ -53,53 +59,53 @@
 
   .rail{ border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:var(--paper); }
   .brand{ padding:22px 20px 16px; display:flex; align-items:baseline; gap:10px; border-bottom:1px solid var(--line); }
-  .brand h1{ margin:0; font-size:19px; letter-spacing:-.02em; font-weight:600; }
+  .brand h1{ margin:0; font-size:1.3125rem; letter-spacing:-.02em; font-weight:600; }
   .logo{ width:22px; height:auto; display:block; color:var(--brand); flex:0 0 auto; }
   .brand .logo{ align-self:center; }
   .hbrand .logo{ width:24px; align-self:center; }
-  .brand small{ color:var(--ink-faint); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; }
+  .brand small{ color:var(--ink-faint); font-size:0.6875rem; letter-spacing:.04em; text-transform:uppercase; }
   .drop{ margin:16px; padding:22px 16px; border:1.5px dashed var(--line-2); border-radius:var(--radius);
          text-align:center; color:var(--ink-soft); cursor:pointer; }
   .drop.hot{ border-color:var(--mark-edge); background:var(--wash); }
   .drop b{ color:var(--ink); font-weight:600; display:block; margin-bottom:4px; }
-  .drop span{ font-size:12.5px; }
+  .drop span{ font-size:0.78125rem; }
   .lib{ overflow:auto; padding:4px 12px 16px; min-height:0; }
-  .lib h2{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); margin:10px 8px 6px; font-weight:600; }
+  .lib h2{ font-size:0.6875rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); margin:10px 8px 6px; font-weight:600; }
   .book{ display:flex; gap:10px; align-items:center; padding:10px; border-radius:10px; cursor:pointer; border:1px solid transparent; }
   .book.active{ background:var(--wash); border-color:var(--line-2); }
   .book .sq{ width:34px; height:44px; border-radius:5px; background:linear-gradient(160deg,#fafaf9,#eceae6);
              border:1px solid var(--line-2); flex:0 0 auto; position:relative; overflow:hidden; }
   .book .sq i{ position:absolute; left:0; bottom:0; width:100%; background:var(--mark-edge); display:block; }
   .book .meta{ min-width:0; flex:1; }
-  .book .t{ font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .book .s{ font-size:11.5px; color:var(--ink-faint); }
-  .book .x{ border:0; background:none; color:var(--ink-faint); font-size:16px; cursor:pointer; padding:4px 6px; }
+  .book .t{ font-size:0.875rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .book .s{ font-size:0.6875rem; color:var(--ink-faint); }
+  .book .x{ border:0; background:none; color:var(--ink-faint); font-size:1.0625rem; cursor:pointer; padding:4px 6px; }
 
   .main{ display:flex; flex-direction:column; min-width:0; min-height:0; }
   .topbar{ display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap;
            overflow:hidden; max-height:180px; transition:max-height .28s ease, opacity .2s ease, padding .28s ease; }
   .topbar.tucked{ max-height:0; opacity:0; padding-top:0; padding-bottom:0; border-bottom-color:transparent; pointer-events:none; }
   .peek{ position:fixed; top:8px; left:50%; z-index:36; border:1px solid var(--line-2);
-         background:rgba(255,255,255,.94); border-radius:99px; padding:6px 14px; font-size:12.5px;
+         background:rgba(255,255,255,.94); border-radius:99px; padding:6px 14px; font-size:0.78125rem;
          color:var(--ink-soft); cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,.10);
          opacity:0; transform:translateX(-50%) translateY(-44px); pointer-events:none;
          transition:opacity .2s ease, transform .2s ease; -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); }
   .peek.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
   .peek:active{ background:var(--wash); }
-  .title-now{ font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:230px; }
+  .title-now{ font-size:0.875rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:230px; }
   .title-now small{ color:var(--ink-faint); font-weight:500; }
   .spacer{ flex:1; }
   .ctl{ display:flex; align-items:center; gap:8px; }
   .seg{ display:inline-flex; border:1px solid var(--line-2); border-radius:10px; overflow:hidden; }
-  .seg button{ border:0; background:var(--paper); padding:8px 11px; color:var(--ink-soft); cursor:pointer; font-size:13px; }
+  .seg button{ border:0; background:var(--paper); padding:8px 11px; color:var(--ink-soft); cursor:pointer; font-size:0.78125rem; }
   .seg button+button{ border-left:1px solid var(--line-2); }
   .seg button.on{ background:var(--pen); color:#fff; }
   .play{ width:46px; height:46px; border-radius:50%; border:1px solid var(--line-2); background:var(--ink); color:#fff;
-         cursor:pointer; font-size:16px; display:grid; place-items:center; }
+         cursor:pointer; font-size:1.0625rem; display:grid; place-items:center; }
   .play:disabled{ opacity:.4; cursor:default; }
   select,.pill{ appearance:none; border:1px solid var(--line-2); background:var(--paper); padding:8px 10px;
-                border-radius:10px; font-size:13px; color:var(--ink); cursor:pointer; max-width:190px; }
-  label.small{ font-size:11px; color:var(--ink-faint); }
+                border-radius:10px; font-size:0.78125rem; color:var(--ink); cursor:pointer; max-width:190px; }
+  label.small{ font-size:0.6875rem; color:var(--ink-faint); }
   .speedwrap{ display:flex; align-items:center; gap:9px; }
   .speedwrap input[type=range]{ width:110px; accent-color:var(--ink); }
   .speedwrap .val{ font-variant-numeric:tabular-nums; font-weight:600; width:40px; text-align:right; }
@@ -111,40 +117,40 @@
   /* left rail: Library / Highlights toggle */
   .railtabs{ display:flex; gap:6px; margin:14px 12px 4px; }
   .railtabs button{ flex:1; border:1px solid var(--line-2); background:var(--paper); color:var(--ink-soft);
-                    padding:8px 10px; border-radius:10px; font-size:12.5px; cursor:pointer; }
+                    padding:8px 10px; border-radius:10px; font-size:0.78125rem; cursor:pointer; }
   .railtabs button.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
   .hlpane{ overflow:auto; padding:6px 12px 20px; min-height:0; }
   .hlbook{ border:1px solid var(--line); border-radius:12px; margin:8px 0; overflow:hidden; background:var(--paper); }
   .hlbook > .head{ display:flex; align-items:center; gap:9px; padding:11px 12px; cursor:pointer; }
   .hlbook > .head .sw{ width:10px; height:14px; border-radius:2px; background:var(--mark); box-shadow:0 0 0 1px var(--mark-edge); flex:0 0 auto; }
-  .hlbook > .head .nm{ flex:1; min-width:0; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .hlbook > .head .ct{ font-size:11px; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
-  .hlbook > .head .cv{ color:var(--ink-faint); font-size:11px; transition:transform .18s ease; }
+  .hlbook > .head .nm{ flex:1; min-width:0; font-size:0.78125rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hlbook > .head .ct{ font-size:0.6875rem; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+  .hlbook > .head .cv{ color:var(--ink-faint); font-size:0.6875rem; transition:transform .18s ease; }
   .hlbook.open > .head .cv{ transform:rotate(90deg); }
   .hlbook .items{ display:none; padding:2px 8px 8px; }
   .hlbook.open .items{ display:block; }
   .hlitem{ display:flex; gap:8px; align-items:flex-start; padding:8px 8px 8px 10px; border-radius:8px; cursor:pointer;
            border-left:2px solid var(--mark-edge); margin:4px 2px; background:var(--wash); }
   .hlitem:hover{ background:#f0efec; }
-  .hlitem .tx{ flex:1; min-width:0; font-size:12.5px; line-height:1.45; color:var(--ink);
+  .hlitem .tx{ flex:1; min-width:0; font-size:0.78125rem; line-height:1.45; color:var(--ink);
                white-space:pre-wrap; word-break:break-word; }
-  .hlitem .pg{ font-size:10.5px; color:var(--ink-faint); margin-top:3px; }
-  .hlitem .del{ border:0; background:none; color:var(--ink-faint); font-size:15px; cursor:pointer; padding:0 2px; line-height:1; flex:0 0 auto; }
+  .hlitem .pg{ font-size:0.6875rem; color:var(--ink-faint); margin-top:3px; }
+  .hlitem .del{ border:0; background:none; color:var(--ink-faint); font-size:0.875rem; cursor:pointer; padding:0 2px; line-height:1; flex:0 0 auto; }
   .hlitem .del:hover{ color:var(--pen); }
-  .hlnone{ color:var(--ink-faint); font-size:12.5px; text-align:center; padding:26px 16px; line-height:1.6; }
+  .hlnone{ color:var(--ink-faint); font-size:0.78125rem; text-align:center; padding:26px 16px; line-height:1.6; }
   .mini{ border:1px solid var(--line-2); background:var(--paper); color:var(--ink-soft); border-radius:8px;
-         padding:5px 10px; font-size:12px; cursor:pointer; }
+         padding:5px 10px; font-size:0.78125rem; cursor:pointer; }
   .mini:hover{ background:var(--wash); color:var(--ink); }
   .hlpanehead{ display:flex; align-items:center; justify-content:space-between; gap:8px;
                padding:8px 6px 4px; margin:2px 6px; }
   .hlseg{ display:inline-flex; border:1px solid var(--line-2); border-radius:9px; overflow:hidden; }
-  .hlseg button{ border:0; background:var(--paper); color:var(--ink-soft); padding:6px 11px; font-size:12px; cursor:pointer; }
+  .hlseg button{ border:0; background:var(--paper); color:var(--ink-soft); padding:6px 11px; font-size:0.78125rem; cursor:pointer; }
   .hlseg button+button{ border-left:1px solid var(--line-2); }
   .hlseg button.on{ background:var(--ink); color:#fff; }
-  .hlitem .bk{ display:inline-block; font-size:10.5px; color:var(--ink-soft); background:var(--paper);
+  .hlitem .bk{ display:inline-block; font-size:0.6875rem; color:var(--ink-soft); background:var(--paper);
                border:1px solid var(--line-2); border-radius:99px; padding:1px 8px; margin-top:5px; }
   .hlbook.theme > .head .sw{ background:var(--bolt); box-shadow:0 0 0 1px var(--bolt); border-radius:3px; }
-  .hlpanehead span{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  .hlpanehead span{ font-size:0.6875rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
   .sheetfull .box{ width:min(1080px,96vw); max-height:92vh; height:92vh; padding:18px 20px; display:flex; flex-direction:column; }
   .fullhead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex:0 0 auto; }
   .fullhead h3{ margin:0; }
@@ -152,13 +158,13 @@
   .fulllist .hlbook{ break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 14px; }
   .fulllist .hlitem .tx{ }
   .iconbtn{ display:none; width:42px; height:42px; border:1px solid var(--line-2); border-radius:10px;
-            background:var(--paper); color:var(--ink); font-size:18px; cursor:pointer; place-items:center; }
+            background:var(--paper); color:var(--ink); font-size:1.0625rem; cursor:pointer; place-items:center; }
   .backdrop{ position:fixed; inset:0; background:rgba(20,20,19,.32); opacity:0; pointer-events:none; transition:opacity .2s; z-index:38; }
   .backdrop.show{ opacity:1; pointer-events:auto; }
   .divider{ width:1px; height:26px; background:var(--line); }
   .progress{ height:3px; background:var(--line); }
   .progress i{ display:block; height:100%; width:0; background:var(--mark-edge); }
-  .badge{ font-size:11px; padding:4px 8px; border-radius:99px; border:1px solid var(--line-2); color:var(--ink-soft); white-space:nowrap; }
+  .badge{ font-size:0.6875rem; padding:4px 8px; border-radius:99px; border:1px solid var(--line-2); color:var(--ink-soft); white-space:nowrap; }
   .badge.neural{ border-color:#bfe0cd; background:#f2fbf6; color:var(--ok); }
 
   .stage{ flex:1; display:flex; min-height:0; }
@@ -183,40 +189,40 @@
   canvas.ink{ cursor:crosshair; touch-action:none; }
 
   .pagebar{ display:flex; align-items:center; justify-content:center; gap:10px; padding:9px;
-            border-top:1px solid var(--line); color:var(--ink-soft); font-size:13px; flex-wrap:wrap; }
+            border-top:1px solid var(--line); color:var(--ink-soft); font-size:0.78125rem; flex-wrap:wrap; }
   .pagebar button{ border:1px solid var(--line-2); background:var(--paper); border-radius:8px; padding:7px 12px; cursor:pointer; }
   .pagebar select{ padding:7px 10px; }
   .pagebar .num{ font-variant-numeric:tabular-nums; min-width:150px; text-align:center; }
   .pagebar .tport{ display:inline-flex; align-items:center; gap:6px; }
-  .pagebar .tbtn{ padding:6px 9px; font-size:13px; color:var(--ink-soft); }
+  .pagebar .tbtn{ padding:6px 9px; font-size:0.78125rem; color:var(--ink-soft); }
   .pagebar .miniplay{ width:34px; height:34px; padding:0; border-radius:50%; border:1px solid var(--ink);
-                      background:var(--ink); color:#fff; font-size:12px; display:inline-grid; place-items:center; cursor:pointer; }
+                      background:var(--ink); color:#fff; font-size:0.78125rem; display:inline-grid; place-items:center; cursor:pointer; }
   .pagebar .miniplay:disabled{ opacity:.4; cursor:default; }
   .pagebar .spd{ display:inline-flex; align-items:center; gap:7px; }
   .pagebar .spd input[type=range]{ width:92px; accent-color:var(--ink); vertical-align:middle; }
-  .pagebar .spd .v{ font-size:11.5px; font-variant-numeric:tabular-nums; min-width:40px; color:var(--ink-soft); }
+  .pagebar .spd .v{ font-size:0.6875rem; font-variant-numeric:tabular-nums; min-width:40px; color:var(--ink-soft); }
   .pbsep{ width:1px; height:24px; background:var(--line); display:inline-block; margin:0 2px; }
   #followBtn.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
   #teleBtn.on{ background:var(--bolt); color:#fff; border-color:var(--bolt); }
   #teleLvl{ display:none; } #teleLvl.on{ display:inline-block; }
-  #teleStat{ font-size:11.5px; color:var(--bolt); display:none; }
+  #teleStat{ font-size:0.6875rem; color:var(--bolt); display:none; }
   #teleStat.on{ display:inline; }
   #srBtn.on{ background:var(--bolt); color:#fff; border-color:var(--bolt); }
   #srWpm{ display:none; width:128px; accent-color:var(--bolt); vertical-align:middle; }
   #srWpm.on{ display:inline-block; }
-  #srVal{ display:none; font-size:11.5px; color:var(--bolt); font-variant-numeric:tabular-nums; min-width:64px; }
+  #srVal{ display:none; font-size:0.6875rem; color:var(--bolt); font-variant-numeric:tabular-nums; min-width:64px; }
   #srVal.on{ display:inline-block; }
   #srBreak{ display:none; }
   #srBreak.on{ display:inline-block; }
 
   .empty{ flex:1; display:grid; place-items:center; text-align:center; color:var(--ink-faint); padding:20px; }
   .empty .card{ max-width:470px; }
-  .empty h3{ color:var(--ink); font-weight:600; margin:0 0 8px; font-size:18px; }
-  .hint{ font-size:12px; color:var(--ink-faint); }
+  .empty h3{ color:var(--ink); font-weight:600; margin:0 0 8px; font-size:1.0625rem; }
+  .hint{ font-size:0.78125rem; color:var(--ink-faint); }
   .hint .r{ color:var(--pen); font-weight:600; }
 
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
-          background:var(--ink); color:#fff; padding:10px 16px; border-radius:10px; font-size:13px;
+          background:var(--ink); color:#fff; padding:10px 16px; border-radius:10px; font-size:0.78125rem;
           opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:50; max-width:88vw; }
   /* The edit strip owns the bottom edge in Cover Flow; a message about editing
      that lands on top of the edit buttons is worse than no message. */
@@ -227,33 +233,33 @@
   .sheet{ position:fixed; inset:0; background:rgba(20,20,19,.4); display:none; place-items:center; z-index:60; padding:18px; }
   .sheet.show{ display:grid; }
   .sheet .box{ background:#fff; border-radius:16px; padding:20px; width:min(560px,94vw); max-height:88vh; overflow:auto; }
-  .sheet h3{ margin:0 0 4px; font-size:17px; }
-  .sheet p{ font-size:13px; color:var(--ink-soft); margin:6px 0 12px; }
+  .sheet h3{ margin:0 0 4px; font-size:1.0625rem; }
+  .sheet p{ font-size:0.78125rem; color:var(--ink-soft); margin:6px 0 12px; }
   .sheet input[type=text],.sheet input[type=url]{ width:100%; padding:11px 12px; border:1px solid var(--line-2);
-        border-radius:10px; font-size:14px; font-family:inherit; }
+        border-radius:10px; font-size:0.875rem; font-family:inherit; }
   .sheet select{ width:100%; max-width:none; }
   .sheet .row{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-  .sheet .row button{ border:1px solid var(--line-2); background:var(--paper); border-radius:10px; padding:10px 14px; cursor:pointer; font-size:14px; }
+  .sheet .row button{ border:1px solid var(--line-2); background:var(--paper); border-radius:10px; padding:10px 14px; cursor:pointer; font-size:0.875rem; }
   .sheet .row button.primary{ background:var(--ink); color:#fff; border-color:var(--ink); }
   .sheet .bkrow{ border:1px solid var(--line-2); border-radius:12px; padding:12px; margin-top:6px; }
-  .sheet .bkrow label{ display:flex; align-items:center; gap:9px; font-size:14px; cursor:pointer; }
+  .sheet .bkrow label{ display:flex; align-items:center; gap:9px; font-size:0.875rem; cursor:pointer; }
   .sheet .bkrow input[type=checkbox]{ width:18px; height:18px; flex:0 0 auto; }
-  .sheet .bkrow small{ display:block; margin-top:7px; font-size:12px; line-height:1.5; color:var(--ink-soft); }
-  .sheet .bkstatus{ margin-top:12px; font-size:13px; line-height:1.5; border:1px solid var(--line-2);
+  .sheet .bkrow small{ display:block; margin-top:7px; font-size:0.78125rem; line-height:1.5; color:var(--ink-soft); }
+  .sheet .bkstatus{ margin-top:12px; font-size:0.78125rem; line-height:1.5; border:1px solid var(--line-2);
                     border-radius:10px; padding:10px 12px; word-break:break-word; }
   .sheet .bkstatus b{ font-weight:600; }
   .tabs{ display:flex; gap:6px; border-bottom:1px solid var(--line); margin:14px 0 16px; }
-  .tabs button{ border:0; background:none; padding:10px 12px; font-size:13.5px; color:var(--ink-faint); cursor:pointer;
+  .tabs button{ border:0; background:none; padding:10px 12px; font-size:0.875rem; color:var(--ink-faint); cursor:pointer;
                 border-bottom:2px solid transparent; margin-bottom:-1px; }
   .tabs button.on{ color:var(--ink); font-weight:600; border-bottom-color:var(--ink); }
   .pane{ display:none; } .pane.on{ display:block; }
-  .warn{ font-size:12px; background:#fff8e6; border:1px solid #f0dfae; color:#6b5a25; padding:10px 12px; border-radius:10px; }
-  .good{ font-size:12px; background:#f2fbf6; border:1px solid #bfe0cd; color:#2c5c44; padding:10px 12px; border-radius:10px; }
+  .warn{ font-size:0.78125rem; background:#fff8e6; border:1px solid #f0dfae; color:#6b5a25; padding:10px 12px; border-radius:10px; }
+  .good{ font-size:0.78125rem; background:#f2fbf6; border:1px solid #bfe0cd; color:#2c5c44; padding:10px 12px; border-radius:10px; }
   .bar{ height:6px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:10px; display:none; }
   .bar.show{ display:block; }
   .bar i{ display:block; height:100%; width:0; background:var(--ink); transition:width .15s; }
-  .kv{ font-size:12px; color:var(--ink-faint); margin-top:6px; }
-  code{ background:var(--wash); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:12px; }
+  .kv{ font-size:0.78125rem; color:var(--ink-faint); margin-top:6px; }
+  code{ background:var(--wash); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:0.78125rem; }
 
   @media (max-width:1000px){
     .app{ grid-template-columns:1fr; }
@@ -265,8 +271,8 @@
     .topbar{ gap:8px; padding:8px 10px; }
   }
   @media (pointer:coarse){
-    .seg button{ padding:11px 14px; font-size:14px; }
-    select,.pill{ padding:11px 12px; font-size:14px; }
+    .seg button{ padding:11px 14px; font-size:0.875rem; }
+    select,.pill{ padding:11px 12px; font-size:0.875rem; }
     .pagebar button{ padding:10px 15px; }
     .speedwrap input[type=range]{ width:130px; height:26px; }
     #srWpm{ height:26px; }
@@ -286,7 +292,7 @@
              writing-mode:vertical-rl; text-orientation:mixed;
              border:1px solid var(--line-2); border-right:0; border-radius:10px 0 0 10px;
              background:rgba(255,255,255,.92); color:var(--ink-soft);
-             font-size:11px; letter-spacing:.03em; padding:12px 6px; cursor:pointer;
+             font-size:0.6875rem; letter-spacing:.03em; padding:12px 6px; cursor:pointer;
              box-shadow:0 3px 14px rgba(0,0,0,.10);
              -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   .focusbtn.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
@@ -301,7 +307,7 @@
   .floatpg{ position:fixed !important; bottom:14px; z-index:45;
             border:1px solid var(--line-2); border-radius:10px;
             background:rgba(255,255,255,.94); color:var(--ink);
-            font-size:14px; padding:10px 16px; cursor:pointer;
+            font-size:0.875rem; padding:10px 16px; cursor:pointer;
             box-shadow:0 4px 16px rgba(0,0,0,.12);
             -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); }
   .floatpg.atleft { left:14px; }
@@ -313,10 +319,10 @@
                align-items:center; gap:6px; padding:4px 8px 4px 5px; border-radius:99px;
                border:1px solid var(--line-2); background:rgba(255,255,255,.92);
                box-shadow:0 3px 12px rgba(0,0,0,.10); font-variant-numeric:tabular-nums;
-               font-size:12.5px; color:var(--ink-soft);
+               font-size:0.78125rem; color:var(--ink-soft);
                -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   body.focusread .focusclock.on{ display:flex; }
-  .focusclock button{ border:0; background:none; cursor:pointer; font-size:11px;
+  .focusclock button{ border:0; background:none; cursor:pointer; font-size:0.6875rem;
                       color:var(--ink-soft); padding:2px 3px; line-height:1; border-radius:6px; }
   .focusclock button:active{ background:var(--wash); }
   .focusclock.paused{ color:var(--ink-faint); }
@@ -324,34 +330,34 @@
 
   /* the little info line under the progress bar */
   .statsstrip{ display:flex; align-items:center; gap:8px; padding:3px 16px 0; }
-  .statsinfo{ border:0; background:none; cursor:pointer; font-size:14px; color:var(--ink-faint);
+  .statsinfo{ border:0; background:none; cursor:pointer; font-size:0.875rem; color:var(--ink-faint);
               padding:2px 4px; border-radius:6px; line-height:1; }
   .statsinfo:active{ background:var(--wash); }
-  .statsline{ font-size:11.5px; color:var(--ink-faint); font-variant-numeric:tabular-nums;
+  .statsline{ font-size:0.6875rem; color:var(--ink-faint); font-variant-numeric:tabular-nums;
               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   .sheet textarea{ width:100%; padding:11px 12px; border:1px solid var(--line-2); border-radius:10px;
-                   font-size:14px; font-family:inherit; resize:vertical; min-height:120px; box-sizing:border-box; }
+                   font-size:0.875rem; font-family:inherit; resize:vertical; min-height:120px; box-sizing:border-box; }
 
   /* stats read-outs */
   .statgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:6px 0 4px; }
   .statcard{ border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--paper); }
-  .statcard .k{ font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); }
-  .statcard .v{ font-size:20px; font-weight:600; margin-top:3px; font-variant-numeric:tabular-nums; }
-  .statcard .u{ font-size:11px; color:var(--ink-faint); }
-  .statnote{ font-size:12px; color:var(--ink-faint); margin-top:10px; }
+  .statcard .k{ font-size:0.6875rem; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); }
+  .statcard .v{ font-size:1.3125rem; font-weight:600; margin-top:3px; font-variant-numeric:tabular-nums; }
+  .statcard .u{ font-size:0.6875rem; color:var(--ink-faint); }
+  .statnote{ font-size:0.78125rem; color:var(--ink-faint); margin-top:10px; }
   .chartcard{ border:1px solid var(--line); border-radius:12px; padding:14px; background:var(--paper); margin:12px 0; }
-  .chartcard h4{ margin:0 0 2px; font-size:13px; font-weight:600; }
-  .chartcard .sub{ font-size:11px; color:var(--ink-faint); margin-bottom:8px; }
+  .chartcard h4{ margin:0 0 2px; font-size:0.78125rem; font-weight:600; }
+  .chartcard .sub{ font-size:0.6875rem; color:var(--ink-faint); margin-bottom:8px; }
   .chartcard svg{ width:100%; height:auto; display:block; }
   .statbooks{ margin-top:10px; }
-  .statrow{ display:flex; align-items:center; gap:10px; padding:8px 2px; border-top:1px solid var(--line); font-size:13px; }
+  .statrow{ display:flex; align-items:center; gap:10px; padding:8px 2px; border-top:1px solid var(--line); font-size:0.78125rem; }
   .statrow:first-child{ border-top:0; }
   .statrow .nm{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .statrow .mini{ font-size:11.5px; color:var(--ink-faint); font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .statsempty{ font-size:13px; color:var(--ink-faint); padding:20px 4px; }
+  .statrow .mini{ font-size:0.6875rem; color:var(--ink-faint); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .statsempty{ font-size:0.78125rem; color:var(--ink-faint); padding:20px 4px; }
   .addnote{ border:1px solid var(--line-2); background:var(--paper); border-radius:9px;
-            padding:7px 12px; font-size:12.5px; cursor:pointer; color:var(--ink); }
+            padding:7px 12px; font-size:0.78125rem; cursor:pointer; color:var(--ink); }
   .addnote:active{ background:var(--wash); }
 
   /* ==========================================================================
@@ -418,7 +424,7 @@
   .infbtn{ position:fixed; top:200px; left:10px; z-index:44; width:32px; height:32px;
            border-radius:9px; border:1px solid var(--line-2); background:rgba(255,255,255,.92);
            color:var(--ink-soft); display:none; place-items:center; cursor:pointer;
-           font-size:17px; line-height:1; padding:0; backdrop-filter:blur(6px); }
+           font-size:1.0625rem; line-height:1; padding:0; backdrop-filter:blur(6px); }
   body.focusread .infbtn{ display:grid; }
   body.infscroll .viewer{ overflow-x:auto; }
 
@@ -452,7 +458,7 @@
   .focusprog i{ display:block; height:100%; width:0; background:var(--ink-soft);
                 opacity:.30; transition:width .22s linear; }
   .focuspgn{ position:fixed; right:11px; bottom:9px; z-index:46; display:none;
-             font-size:10.5px; line-height:1; color:var(--ink-soft); opacity:.32;
+             font-size:0.6875rem; line-height:1; color:var(--ink-soft); opacity:.32;
              font-variant-numeric:tabular-nums; letter-spacing:.03em; pointer-events:none;
              user-select:none; }
   body.focusread .focusprog, body.focusread .focuspgn{ display:block; }
@@ -474,7 +480,7 @@
   .bionicbtn{ position:fixed; top:160px; left:10px; z-index:44; width:32px; height:32px;
               border:1px solid var(--line-2); border-radius:9px; background:rgba(255,255,255,.95);
               color:var(--ink); cursor:pointer; display:none; place-items:center; padding:0;
-              font-family:inherit; font-size:13px; line-height:1; letter-spacing:-.01em;
+              font-family:inherit; font-size:0.78125rem; line-height:1; letter-spacing:-.01em;
               box-shadow:0 3px 14px rgba(0,0,0,.10);
               -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   body.focusread .bionicbtn{ display:grid; }
@@ -492,7 +498,7 @@
   .darkvarbtn{ position:fixed; top:110px; left:10px; z-index:44; width:42px; height:42px;
                border:1px solid var(--line-2); border-radius:12px; background:rgba(255,255,255,.95);
                color:var(--ink); cursor:pointer; display:none; place-items:center; padding:0;
-               font-size:17px; line-height:1; box-shadow:0 3px 14px rgba(0,0,0,.10);
+               font-size:1.0625rem; line-height:1; box-shadow:0 3px 14px rgba(0,0,0,.10);
                -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   body.focusread.dark .darkvarbtn{ display:grid; }
   #home.show ~ .darkvarbtn{ display:none !important; }
@@ -507,15 +513,15 @@
   #home.show ~ .darkvarmenu{ display:none !important; }
   .darkvarmenu button{ display:flex; align-items:center; gap:9px; width:100%; text-align:left;
                        border:0; background:none; color:var(--ink); cursor:pointer;
-                       padding:8px 10px; border-radius:9px; font:inherit; font-size:13px; }
+                       padding:8px 10px; border-radius:9px; font:inherit; font-size:0.78125rem; }
   .darkvarmenu button:active{ background:var(--wash); }
   .darkvarmenu button.on{ background:var(--wash); font-weight:600; }
   .darkvarmenu .sw{ width:20px; height:20px; border-radius:6px; flex:none;
                     border:1px solid var(--line-2); display:grid; place-items:center;
-                    font-size:11px; font-weight:700; }
+                    font-size:0.6875rem; font-weight:700; }
   .darkvarmenu .nm{ flex:1; white-space:nowrap; }
-  .darkvarmenu .tick{ font-size:12px; color:var(--ink-faint); width:12px; }
-  .darkvarmenu .hint{ font-size:11px; color:var(--ink-faint); padding:1px 10px 4px; }
+  .darkvarmenu .tick{ font-size:0.78125rem; color:var(--ink-faint); width:12px; }
+  .darkvarmenu .hint{ font-size:0.6875rem; color:var(--ink-faint); padding:1px 10px 4px; }
 
   /* the theme switch — parked directly under the library hamburger */
   .themebtn{ position:fixed; top:60px; left:10px; z-index:44; width:42px; height:42px;
@@ -549,36 +555,36 @@
   #home.show ~ .app{ display:none !important; }
   .homerail{ background:var(--paper); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
   .hbrand{ padding:22px 22px 18px; display:flex; align-items:baseline; gap:9px; }
-  .hbrand h1{ margin:0; font-size:20px; font-weight:600; letter-spacing:-.02em; }
+  .hbrand h1{ margin:0; font-size:1.3125rem; font-weight:600; letter-spacing:-.02em; }
 
   .hnav{ padding:6px 12px; display:flex; flex-direction:column; gap:2px; }
   .hnavitem{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none;
-             padding:11px 13px; border-radius:10px; font-size:14px; color:var(--ink-soft); cursor:pointer; font-weight:500; }
+             padding:11px 13px; border-radius:10px; font-size:0.875rem; color:var(--ink-soft); cursor:pointer; font-weight:500; }
   .hnavitem:hover{ background:var(--wash); }
   .hnavitem.on{ background:var(--wash); color:var(--ink); font-weight:600; }
-  .hnavitem .ic{ font-size:15px; width:18px; text-align:center; }
+  .hnavitem .ic{ font-size:0.875rem; width:18px; text-align:center; }
   .hsublist{ display:flex; flex-direction:column; gap:1px; margin:2px 0 6px 0; padding-left:8px; }
   .hsublink{ text-align:left; border:0; background:none; padding:7px 13px 7px 30px; border-radius:8px;
-             font-size:12.5px; color:var(--ink-faint); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+             font-size:0.78125rem; color:var(--ink-faint); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .hsublink:hover{ background:var(--wash); color:var(--ink-soft); }
   .hsublink.on{ color:var(--ink); font-weight:600; background:var(--wash); }
   .hrailfill{ flex:1; min-height:12px; }
   .hdrop{ margin:14px; padding:18px 14px; border:1.5px dashed var(--line-2); border-radius:var(--radius);
           text-align:center; color:var(--ink-soft); cursor:pointer; transition:border-color .15s, background .15s; }
   .hdrop.hot{ border-color:var(--sky); background:var(--sky-track); }
-  .hdrop b{ display:block; color:var(--ink); font-weight:600; font-size:14px; margin-bottom:3px; }
+  .hdrop b{ display:block; color:var(--ink); font-weight:600; font-size:0.875rem; margin-bottom:3px; }
   .addm{ display:none; }
-  .hdrop span{ font-size:12px; }
+  .hdrop span{ font-size:0.78125rem; }
 
   .homemain{ overflow-y:auto; overflow-x:hidden; padding:26px 34px 60px; min-height:0; }
   .hhead{ display:flex; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:8px; }
-  .hhead h2{ margin:0; font-size:26px; font-weight:600; letter-spacing:-.02em; }
-  .hhead .hcount{ font-size:13px; color:var(--ink-faint); padding-bottom:4px; }
+  .hhead h2{ margin:0; font-size:1.75rem; font-weight:600; letter-spacing:-.02em; }
+  .hhead .hcount{ font-size:0.78125rem; color:var(--ink-faint); padding-bottom:4px; }
   .shelf{ margin-top:34px; }
   .shelf:first-of-type{ margin-top:21px; }
   .shelfhead{ display:flex; align-items:baseline; gap:10px; margin:0 0 15px; }
-  .shelfhead h3{ margin:0; font-size:15px; font-weight:600; letter-spacing:.01em; }
-  .shelfhead .n{ font-size:12px; color:var(--ink-faint); }
+  .shelfhead h3{ margin:0; font-size:0.875rem; font-weight:600; letter-spacing:.01em; }
+  .shelfhead .n{ font-size:0.78125rem; color:var(--ink-faint); }
   .shelfhead.cont h3{ color:var(--sky-ink); }
   .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(148px,1fr)); gap:21px 21px; }
   .grid.big{ grid-template-columns:repeat(auto-fill, minmax(168px,1fr)); }
@@ -591,38 +597,38 @@
   .cover img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
   .cover .fallback{ position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center;
                     padding:14px 13px; gap:6px; }
-  .cover .fallback .ft{ font-size:14px; font-weight:700; line-height:1.25; color:var(--ink);
+  .cover .fallback .ft{ font-size:0.875rem; font-weight:700; line-height:1.25; color:var(--ink);
                         display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
-  .cover .fallback .fa{ font-size:11px; color:var(--ink-soft); }
+  .cover .fallback .fa{ font-size:0.6875rem; color:var(--ink-soft); }
   .cover .prog{ position:absolute; left:0; right:0; bottom:0; height:22px; background:linear-gradient(transparent, rgba(0,0,0,.34));
                 display:flex; align-items:flex-end; gap:6px; padding:0 7px 5px; }
   .cover .prog .track{ flex:1; height:5px; border-radius:99px; background:rgba(255,255,255,.55); overflow:hidden; }
   .cover .prog .track i{ display:block; height:100%; background:var(--sky); border-radius:99px; }
-  .cover .prog .pct{ font-size:10.5px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.5); font-variant-numeric:tabular-nums; }
-  .cardt{ margin:9px 2px 1px; font-size:13px; font-weight:600; line-height:1.3; color:var(--ink);
+  .cover .prog .pct{ font-size:0.6875rem; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.5); font-variant-numeric:tabular-nums; }
+  .cardt{ margin:9px 2px 1px; font-size:0.78125rem; font-weight:600; line-height:1.3; color:var(--ink);
           display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .cards{ margin:0 2px; font-size:11.5px; color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cards{ margin:0 2px; font-size:0.6875rem; color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cardx{ position:absolute; top:6px; right:6px; z-index:3; width:24px; height:24px; border-radius:50%;
-          border:0; background:rgba(20,20,19,.55); color:#fff; font-size:15px; cursor:pointer; display:none; place-items:center; }
+          border:0; background:rgba(20,20,19,.55); color:#fff; font-size:0.875rem; cursor:pointer; display:none; place-items:center; }
   .card:hover .cardx{ display:grid; }
   .carddone{ position:absolute; top:6px; left:6px; z-index:3; width:24px; height:24px; border-radius:50%;
-             border:0; background:rgba(20,20,19,.55); color:#fff; font-size:13px; cursor:pointer; display:none; place-items:center; }
+             border:0; background:rgba(20,20,19,.55); color:#fff; font-size:0.78125rem; cursor:pointer; display:none; place-items:center; }
   .card:hover .carddone{ display:grid; }
   .donetag{ position:absolute; top:8px; right:8px; z-index:2; background:var(--ok); color:#fff;
-            font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:99px; letter-spacing:.02em; }
+            font-size:0.6875rem; font-weight:700; padding:3px 8px; border-radius:99px; letter-spacing:.02em; }
   /* A finished book is still a book you liked the look of. The green ✓ Done
      badge is enough to mark it — no reason to fade the artwork to say so. */
   @media (pointer:coarse){ .cardx, .carddone{ display:grid; } }
-  .hempty{ color:var(--ink-faint); font-size:14px; text-align:center; padding:70px 20px; line-height:1.7; }
+  .hempty{ color:var(--ink-faint); font-size:0.875rem; text-align:center; padding:70px 20px; line-height:1.7; }
   /* edit mode */
   #editBtn.on{ background:var(--bolt); color:#fff; }
   #editBtn.on .ic{ color:#fff; }
   .cardedit{ position:absolute; bottom:6px; left:6px; z-index:4; width:26px; height:26px; border-radius:50%;
-             border:0; background:rgba(20,20,19,.62); color:#fff; font-size:13px; cursor:pointer; display:grid; place-items:center; }
+             border:0; background:rgba(20,20,19,.62); color:#fff; font-size:0.78125rem; cursor:pointer; display:grid; place-items:center; }
   .cardcover{ position:absolute; bottom:6px; right:6px; z-index:4; width:26px; height:26px; border-radius:50%;
-              border:0; background:rgba(20,20,19,.62); color:#fff; font-size:12px; cursor:pointer; display:grid; place-items:center; }
+              border:0; background:rgba(20,20,19,.62); color:#fff; font-size:0.78125rem; cursor:pointer; display:grid; place-items:center; }
   .shelfbtn{ border:1px solid var(--line-2); background:var(--paper); color:var(--ink-soft); border-radius:7px;
-             padding:3px 9px; font-size:11px; cursor:pointer; margin-left:8px; }
+             padding:3px 9px; font-size:0.6875rem; cursor:pointer; margin-left:8px; }
   .shelfbtn:hover{ background:var(--wash); color:var(--ink); }
   #home.editing .card{ cursor:grab; }
   #home.editing .card.dragging{ opacity:.45; }
@@ -637,7 +643,7 @@
   .rail .drop, .rail .railtabs, .rail .hlpane{ display:none !important; }
   .railhome{ margin:14px 16px 6px; }
   .railhome button{ width:100%; border:1px solid var(--line-2); background:var(--paper); color:var(--ink);
-                    border-radius:10px; padding:10px 12px; font-size:13.5px; cursor:pointer; font-weight:600; }
+                    border-radius:10px; padding:10px 12px; font-size:0.875rem; cursor:pointer; font-weight:600; }
   .railhome button:hover{ background:var(--wash); }
   #homeBtn{ display:inline-grid; }
 
@@ -646,7 +652,7 @@
      you pick something. The same vertical menu as the desktop — just on demand. */
   .homeburger{ position:fixed; top:10px; left:10px; z-index:44; width:42px; height:42px;
                border:1px solid var(--line-2); border-radius:12px; background:rgba(255,255,255,.95);
-               color:var(--ink); font-size:17px; cursor:pointer; display:none; place-items:center;
+               color:var(--ink); font-size:1.0625rem; cursor:pointer; display:none; place-items:center;
                box-shadow:0 3px 14px rgba(0,0,0,.10);
                -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
   .homeback{ position:fixed; inset:0; z-index:43; background:rgba(20,20,19,.34);
@@ -667,14 +673,14 @@
     /* inside the drawer everything stays the calm vertical list it is on desktop */
     .hbrand{ padding:20px 20px 14px; }
     .hnav{ padding:6px 12px; }
-    .hnavitem{ padding:12px 13px; font-size:14.5px; }
-    .hsublink{ padding:9px 13px 9px 30px; font-size:13px; }
+    .hnavitem{ padding:12px 13px; font-size:0.875rem; }
+    .hsublink{ padding:9px 13px 9px 30px; font-size:0.78125rem; }
     .hdrop{ margin:14px 12px 20px; }
     .addm{ display:none; }
     .hrailfill{ min-height:8px; }
 
     .homemain{ padding:64px 16px 60px; }     /* room for the button that opens the drawer */
-    .hhead h2{ font-size:21px; }
+    .hhead h2{ font-size:1.3125rem; }
   }
 
   /* ============ Reading List ============ */
@@ -682,37 +688,37 @@
   .rlbanner{ border:1px solid var(--line); border-radius:14px; padding:20px 22px;
              background:var(--wash); margin:18px 0 10px; }
   .rlbig{ display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
-  .rlbig b{ font-size:34px; font-weight:600; letter-spacing:-.02em; line-height:1; }
-  .rlbig span{ font-size:13px; color:var(--ink-soft); }
+  .rlbig b{ font-size:1.75rem; font-weight:600; letter-spacing:-.02em; line-height:1; }
+  .rlbig span{ font-size:0.78125rem; color:var(--ink-soft); }
   .rlbar{ height:9px; border-radius:99px; background:var(--line); overflow:hidden; }
   .rlbar i{ display:block; height:100%; border-radius:99px; background:var(--ink);
             transition:width .35s ease; }
-  .rlmeta{ margin-top:11px; font-size:12.5px; color:var(--ink-soft); }
+  .rlmeta{ margin-top:11px; font-size:0.78125rem; color:var(--ink-soft); }
 
   .rltools{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:14px 0 4px; }
   .rlbtn{ border:1px solid var(--line-2); background:var(--paper); color:var(--ink-soft);
-          border-radius:8px; padding:6px 11px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+          border-radius:8px; padding:6px 11px; font-size:0.78125rem; cursor:pointer; font-family:inherit; }
   .rlbtn:hover{ background:var(--wash); color:var(--ink); }
   .rlbtn.on{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
 
   .rlnext{ border:1px solid var(--line); border-left:3px solid var(--ink); border-radius:12px;
            padding:15px 18px; margin:16px 0 6px; }
-  .rlnext h4{ margin:0 0 10px; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  .rlnext h4{ margin:0 0 10px; font-size:0.6875rem; letter-spacing:.09em; text-transform:uppercase;
               color:var(--ink-faint); font-weight:600; }
-  .rlnextrow{ display:flex; align-items:baseline; gap:9px; padding:4px 0; font-size:14px; }
-  .rlnextrow .nn{ color:var(--ink-faint); font-size:12px; min-width:30px; }
-  .rlnextrow .na{ color:var(--ink-faint); font-size:12px; }
+  .rlnextrow{ display:flex; align-items:baseline; gap:9px; padding:4px 0; font-size:0.875rem; }
+  .rlnextrow .nn{ color:var(--ink-faint); font-size:0.78125rem; min-width:30px; }
+  .rlnextrow .na{ color:var(--ink-faint); font-size:0.78125rem; }
 
   .rlstage{ margin-top:26px; border-top:1px solid var(--line); padding-top:16px; }
   .rlshead{ display:flex; align-items:center; gap:12px; cursor:pointer; user-select:none; }
-  .rlshead .num{ font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  .rlshead .num{ font-size:0.6875rem; letter-spacing:.09em; text-transform:uppercase;
                  color:var(--ink-faint); font-weight:600; }
-  .rlshead h3{ margin:0; font-size:17px; font-weight:600; letter-spacing:-.01em; flex:1; }
-  .rlshead .cnt{ font-size:12px; color:var(--ink-faint); white-space:nowrap; }
-  .rlshead .caret{ color:var(--ink-faint); font-size:12px; width:14px; text-align:center;
+  .rlshead h3{ margin:0; font-size:1.0625rem; font-weight:600; letter-spacing:-.01em; flex:1; }
+  .rlshead .cnt{ font-size:0.78125rem; color:var(--ink-faint); white-space:nowrap; }
+  .rlshead .caret{ color:var(--ink-faint); font-size:0.78125rem; width:14px; text-align:center;
                    transition:transform .2s ease; }
   .rlstage.closed .caret{ transform:rotate(-90deg); }
-  .rlblurb{ font-size:13px; color:var(--ink-soft); margin:7px 0 12px; line-height:1.55; max-width:66ch; }
+  .rlblurb{ font-size:0.78125rem; color:var(--ink-soft); margin:7px 0 12px; line-height:1.55; max-width:66ch; }
   .rlsbar{ height:4px; border-radius:99px; background:var(--line); overflow:hidden; margin:0 0 14px; }
   .rlsbar i{ display:block; height:100%; background:var(--ink-soft); border-radius:99px;
              transition:width .3s ease; }
@@ -726,21 +732,21 @@
           border:1.5px solid var(--line-2); background:var(--paper); position:relative; }
   .rlrow.done .rlbox{ background:var(--ink); border-color:var(--ink); }
   .rlbox::after{ content:"\2713"; position:absolute; inset:0; display:flex; align-items:center;
-                 justify-content:center; font-size:11px; color:var(--paper); opacity:0; }
+                 justify-content:center; font-size:0.6875rem; color:var(--paper); opacity:0; }
   .rlrow.done .rlbox::after{ opacity:1; }
-  .rlnum{ flex:0 0 auto; min-width:30px; font-size:12px; color:var(--ink-faint); margin-top:2px;
+  .rlnum{ flex:0 0 auto; min-width:30px; font-size:0.78125rem; color:var(--ink-faint); margin-top:2px;
           font-variant-numeric:tabular-nums; }
   .rlbody{ min-width:0; flex:1; }
-  .rlt{ font-size:14.5px; line-height:1.4; }
+  .rlt{ font-size:0.875rem; line-height:1.4; }
   .rlrow.done .rlt{ color:var(--ink-faint); text-decoration:line-through; }
-  .rlsub{ font-size:12px; color:var(--ink-faint); margin-top:2px; }
-  .rlchip{ flex:0 0 auto; font-size:10.5px; color:var(--ink-faint); border:1px solid var(--line);
+  .rlsub{ font-size:0.78125rem; color:var(--ink-faint); margin-top:2px; }
+  .rlchip{ flex:0 0 auto; font-size:0.6875rem; color:var(--ink-faint); border:1px solid var(--line);
            border-radius:99px; padding:2px 8px; margin-top:2px; white-space:nowrap; }
-  .rlrow .inlib{ font-size:10.5px; color:var(--ink-soft); margin-left:6px; }
+  .rlrow .inlib{ font-size:0.6875rem; color:var(--ink-soft); margin-left:6px; }
 
   @media (max-width:900px){
     .rlchip{ display:none; }
-    .rlbig b{ font-size:28px; }
+    .rlbig b{ font-size:1.75rem; }
     .rlbanner{ padding:16px 16px; }
   }
 
@@ -804,7 +810,11 @@
   .scrollstrip{ margin-left:auto; margin-right:auto; }
   body.dark .pageframe{ background:#000; }
   body.zoomed .viewer{ overflow-x:auto; }
-  body.pinching .pageframe, body.pinching .scrollstrip{ visibility:hidden; }
+  /* The live layers may only be hidden once the flat copy is actually standing
+     in for them. Infinite scroll has no single frame to flatten, so snapPage()
+     declines — and hiding the strip anyway is what produced a blank screen
+     mid-pinch. The class is set by pzStart only when a snapshot was taken. */
+  body.pinching.pinchsnap .pageframe, body.pinching.pinchsnap .scrollstrip{ visibility:hidden; }
   body.pinching{ overscroll-behavior:none; }
 
   /* the flat stand-in: scaled during a pinch, held still during a stroke */
@@ -869,7 +879,7 @@
 
   .focusprog{ display:block !important; height:2px; }
   .focusprog i{ background:var(--ink-soft); opacity:.22; }
-  .focuspgn{ display:block !important; right:14px; bottom:11px; font-size:10.5px;
+  .focuspgn{ display:block !important; right:14px; bottom:11px; font-size:0.6875rem;
              opacity:.42; letter-spacing:.02em; }
 
   /* ══ controls layer ══════════════════════════════════════════════════════ */
@@ -880,7 +890,7 @@
   body.chrome-on .rd-ctl > *{ pointer-events:auto; }
 
   .rd-edge{ position:fixed; top:50%; width:26px; height:42px; border-radius:9px;
-            font-size:14px; color:var(--ink-soft); line-height:1;
+            font-size:0.875rem; color:var(--ink-soft); line-height:1;
             transform:translateY(-50%); }
   .rd-edge.l{ left:12px; }
   .rd-edge.r{ right:50px; }
@@ -890,16 +900,16 @@
                  display:flex; align-items:center; gap:7px; }
   body.chrome-on .rd-transport{ animation:rdUp .3s var(--ease-io) both; }
   @keyframes rdUp{ from{ opacity:0; transform:translateX(-50%) translateY(10px);} to{ opacity:1; transform:translateX(-50%) translateY(0);} }
-  .rd-transport .sm{ width:28px; height:28px; border-radius:999px; font-size:12px; color:var(--ink-soft); }
+  .rd-transport .sm{ width:28px; height:28px; border-radius:999px; font-size:0.78125rem; color:var(--ink-soft); }
   .rd-transport .sm:disabled{ opacity:.35; }
   .rd-transport .rate{ width:auto; height:28px; border-radius:999px; padding:0 10px;
-                       font-size:11px; font-variant-numeric:tabular-nums; color:var(--ink-soft); }
+                       font-size:0.6875rem; font-variant-numeric:tabular-nums; color:var(--ink-soft); }
 
   /* the play pill — black mark and black word on a white tablet */
   .play-pill{ display:inline-flex; align-items:center; gap:6px; height:28px;
               padding:0 12px 0 11px; border-radius:999px;
               border:1px solid var(--hair-2); background:#FFFFFF; color:#000000;
-              font:inherit; font-size:11.5px; font-weight:500; letter-spacing:-.005em;
+              font:inherit; font-size:0.6875rem; font-weight:500; letter-spacing:-.005em;
               cursor:pointer; box-shadow:var(--shadow-s); white-space:nowrap;
               transition:transform .1s ease-out; }
   .play-pill:active{ transform:scale(.94); }
@@ -910,9 +920,9 @@
   .focusclock{ display:none !important; }
   body.chrome-on .focusclock.on{ display:flex !important; top:12px; right:52px;
       background:var(--chip); border-color:var(--hair-2); box-shadow:var(--shadow-s);
-      font-size:10.5px; padding:4px 8px 4px 6px; opacity:.9;
+      font-size:0.6875rem; padding:4px 8px 4px 6px; opacity:.9;
       -webkit-backdrop-filter:none; backdrop-filter:none; }
-  .focusclock button{ font-size:7px !important; letter-spacing:-1px; opacity:.6; }
+  .focusclock button{ font-size:0.6875rem !important; letter-spacing:-1px; opacity:.6; }
 
   /* ══ zoom — the whole control is a readout and a padlock ═════════════════ */
   .rd-zoom{ position:fixed; left:12px; bottom:10px; z-index:37;
@@ -922,7 +932,7 @@
             box-shadow:var(--shadow-s); opacity:0; pointer-events:none;
             transition:opacity .18s var(--ease-io); }
   .rd-zoom.show, body.chrome-on .rd-zoom{ opacity:1; pointer-events:auto; }
-  .rd-zoom .pct{ font-size:10.5px; font-variant-numeric:tabular-nums; color:var(--ink);
+  .rd-zoom .pct{ font-size:0.6875rem; font-variant-numeric:tabular-nums; color:var(--ink);
                  letter-spacing:.01em; border:0; background:none; padding:0 3px 0 0;
                  cursor:pointer; font-family:inherit; line-height:1; }
   .rd-zoom .lk{ width:20px; height:20px; border-radius:999px; border:0; background:none;
@@ -950,15 +960,15 @@
 
   .mrow{ display:flex; align-items:center; gap:13px; width:100%; text-align:left;
          border:0; background:none; color:var(--ink); cursor:pointer; font:inherit;
-         font-size:14px; letter-spacing:-.006em; padding:9px 12px; border-radius:11px;
+         font-size:0.875rem; letter-spacing:-.006em; padding:9px 12px; border-radius:11px;
          transition:background .14s ease; }
   .mrow:active{ background:rgba(27,27,26,.07); }
   .mrow .ico{ width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center;
-              color:var(--ink-soft); font-size:16px; line-height:1; }
+              color:var(--ink-soft); font-size:1.0625rem; line-height:1; }
   .mrow .ico svg{ width:18px; height:18px; display:block; }
   .mrow .lab{ flex:1; min-width:0; }
   .mrow .lab b{ font-weight:500; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .mrow .lab span{ display:block; font-size:11px; color:var(--ink-faint); margin-top:0;
+  .mrow .lab span{ display:block; font-size:0.6875rem; color:var(--ink-faint); margin-top:0;
                    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mrow .dot{ width:7px; height:7px; border-radius:50%; background:transparent; flex:0 0 auto;
               transition:background .18s ease, box-shadow .18s ease; }
@@ -968,24 +978,59 @@
   .mrow.exit{ color:var(--danger); }
   .mrow.exit .ico{ color:var(--danger); }
   .mrow.exit:active{ background:rgba(192,57,43,.09); }
-  .mrule{ height:1px; background:var(--hair); margin:8px 14px; }
+  /* Eleven identical rows gave no clue which modes conflict and which compose.
+     .mrule was defined here and used zero times; it now separates four bands,
+     and .mgroup names each one so the row you want is findable. */
+  /* A hairline the width of the glass, and a grip you can actually catch. The
+     rule is pointer-events:none on purpose — a full-width drag target would be
+     a dead band straight across the page you are trying to write on. */
+  /* Chrome for Android animates its own bars away; anything sized to the old
+     height would be a strip short for the length of that animation. */
+  :fullscreen .app, :fullscreen #home{ height:100vh; height:100dvh; }
+  .fnrule{ position:fixed; left:0; right:0; z-index:33; height:0; display:none; }
+  body.funnelrule .fnrule{ display:block; }
+  .fnrule > i{ position:absolute; left:0; right:0; top:0; height:1px;
+               background:var(--ink); opacity:var(--fnrule-o, .55); pointer-events:none; }
+  .fnrule .grip{ position:absolute; right:10px; top:-14px; width:44px; height:28px;
+                 border:1px solid var(--hair-2); border-radius:999px; background:var(--chip);
+                 box-shadow:var(--shadow-s); cursor:grab; touch-action:none; padding:0;
+                 opacity:var(--fnrule-o, .55); }
+  .fnrule .grip::before{ content:''; position:absolute; left:12px; right:12px; top:50%;
+                         height:1px; margin-top:-3px; background:var(--ink-soft); }
+  .fnrule .grip::after{ content:''; position:absolute; left:12px; right:12px; top:50%;
+                        height:1px; margin-top:2px; background:var(--ink-soft); }
+  .fnrule.grabbing .grip{ cursor:grabbing; opacity:1; }
+  .fnruleop{ position:fixed; z-index:38; display:none; align-items:center; gap:9px;
+             padding:9px 12px; border-radius:14px; background:var(--chip);
+             border:1px solid var(--hair-2); box-shadow:var(--shadow-m); }
+  .fnruleop.show{ display:flex; }
+  .fnruleop .lb{ font-size:0.6875rem; color:var(--ink-soft); }
+  .fnruleop input[type=range]{ width:130px; height:26px; accent-color:var(--ink); }
+
+  .ersize{ display:flex; align-items:center; gap:10px; padding:2px 2px 0; }
+  .ersize input[type=range]{ flex:1; min-width:120px; height:26px; accent-color:var(--ink); }
+  .ersize .erval{ font-size:0.6875rem; font-variant-numeric:tabular-nums; color:var(--ink-soft);
+                  min-width:46px; text-align:right; white-space:nowrap; }
+  .mrule{ height:1px; background:var(--hair); margin:10px 14px 0; }
+  .mgroup{ font-size:0.6875rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+           color:var(--ink-faint); padding:10px 14px 2px; }
 
   .msub{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .28s var(--ease-io); }
   .msub > div{ overflow:hidden; min-height:0; }
   .msub.open{ grid-template-rows:1fr; }
   .msub .pad{ padding:2px 12px 12px 47px; display:flex; flex-direction:column; gap:9px; }
   .mseg{ display:flex; border:1px solid var(--hair-2); border-radius:10px; overflow:hidden; }
-  .mseg button{ flex:1; border:0; background:none; color:var(--ink-soft); font:inherit; font-size:12px;
+  .mseg button{ flex:1; border:0; background:none; color:var(--ink-soft); font:inherit; font-size:0.78125rem;
                 padding:8px 4px; cursor:pointer; white-space:nowrap; }
   .mseg button + button{ border-left:1px solid var(--hair-2); }
   .mseg button.on{ background:var(--ink); color:var(--paper-rd); }
-  .mfield{ display:flex; align-items:center; gap:9px; font-size:11.5px; color:var(--ink-faint); }
+  .mfield{ display:flex; align-items:center; gap:9px; font-size:0.6875rem; color:var(--ink-faint); }
   .mfield input[type=range]{ flex:1; accent-color:var(--ink); height:26px; }
   .mfield .v{ font-variant-numeric:tabular-nums; min-width:56px; text-align:right; color:var(--ink-soft); }
-  .msub select{ width:100%; max-width:none; font-size:12.5px; padding:8px 10px;
+  .msub select{ width:100%; max-width:none; font-size:0.78125rem; padding:8px 10px;
                 background:var(--paper-rd); border-color:var(--hair-2); }
   .mghost{ border:1px solid var(--hair-2); background:none; color:var(--ink-soft); font:inherit;
-           font-size:12px; padding:8px 10px; border-radius:10px; cursor:pointer; }
+           font-size:0.78125rem; padding:8px 10px; border-radius:10px; cursor:pointer; }
   .mghost:active{ background:rgba(27,27,26,.06); }
 
   /* ══ tool bars — solid, because they are open while the pen is moving ════ */
@@ -1007,26 +1052,26 @@
   .nib.on{ background:rgba(27,27,26,.09); }
   .nib.on i{ background:var(--ink); }
   .tbtn{ border:1px solid var(--hair-2); background:none; color:var(--ink-soft); cursor:pointer;
-         border-radius:9px; height:29px; padding:0 10px; font:inherit; font-size:11.5px;
+         border-radius:9px; height:29px; padding:0 10px; font:inherit; font-size:0.6875rem;
          display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
          transition:transform .1s ease-out, background .14s ease; }
   .tbtn:active{ transform:scale(.95); background:rgba(27,27,26,.07); }
   .tbtn.on{ background:var(--ink); color:var(--paper-rd); border-color:var(--ink); }
   .tbtn svg{ width:14px; height:14px; display:block; }
   .tbtn.wide{ width:100%; justify-content:center; }
-  .tnote{ font-size:10px; color:var(--ink-faint); letter-spacing:.02em; padding:0 2px; }
+  .tnote{ font-size:0.6875rem; color:var(--ink-faint); letter-spacing:.02em; padding:0 2px; }
 
   .sizepop{ position:fixed; z-index:38; display:none; flex-direction:column; gap:7px;
             padding:10px 12px; min-width:196px; border:1px solid var(--hair-2); border-radius:13px;
             background:var(--chip); box-shadow:var(--shadow-m); }
   .sizepop.show{ display:flex; }
-  .sizepop .hd{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-soft); }
+  .sizepop .hd{ display:flex; justify-content:space-between; font-size:0.6875rem; color:var(--ink-soft); }
   .sizepop .hd b{ font-weight:500; }
   .sizepop .hd .v{ font-variant-numeric:tabular-nums; color:var(--ink); }
   .sizepop input[type=range]{ width:100%; accent-color:var(--ink); height:26px; }
   .sizepop .hex{ display:flex; align-items:center; gap:7px; }
   .sizepop .hex input[type=text]{ flex:1; padding:7px 9px; border:1px solid var(--hair-2);
-        border-radius:9px; font:inherit; font-size:12px; text-transform:uppercase;
+        border-radius:9px; font:inherit; font-size:0.78125rem; text-transform:uppercase;
         background:var(--paper-rd); color:var(--ink); }
   .sizepop .hue{ width:100%; height:20px; border-radius:8px; border:1px solid var(--hair-2);
         appearance:none; -webkit-appearance:none; cursor:pointer;
@@ -1044,7 +1089,7 @@
   .hl-pop.show{ display:flex; animation:popIn .2s var(--ease-io) both; }
   @keyframes popIn{ from{ opacity:0; transform:scale(.92) translateY(4px);} to{ opacity:1; transform:scale(1) translateY(0);} }
   .hl-pop button{ border:0; background:none; color:var(--ink); cursor:pointer; font:inherit;
-                  font-size:12.5px; padding:8px 13px; border-radius:8px; display:flex;
+                  font-size:0.78125rem; padding:8px 13px; border-radius:8px; display:flex;
                   align-items:center; gap:6px; }
   .hl-pop button:active{ background:rgba(27,27,26,.08); }
   .hl-pop button.danger{ color:var(--danger); }
@@ -1097,8 +1142,8 @@
   .cf-top{ position:absolute; top:0; left:0; right:0; z-index:2;
            display:flex; align-items:center; gap:10px; padding:16px 22px 0; }
   @media (max-width:1000px){ .cf-top{ padding:18px 18px 0 62px; } }
-  .cf-top h2{ margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--ink); }
-  .cf-top .n{ font-size:12px; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+  .cf-top h2{ margin:0; font-size:0.875rem; font-weight:600; letter-spacing:-.01em; color:var(--ink); }
+  .cf-top .n{ font-size:0.78125rem; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
   .cf-top .sp{ flex:1; }
 
   /* the lens */
@@ -1130,9 +1175,9 @@
                 -webkit-user-drag:none; user-select:none; }
   .cf-fb{ position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center;
           gap:6px; padding:15px 14px; background:linear-gradient(155deg,#fbfbfa,#e9e7e2); }
-  .cf-fb b{ font-size:14px; font-weight:700; line-height:1.25; color:var(--ink);
+  .cf-fb b{ font-size:0.875rem; font-weight:700; line-height:1.25; color:var(--ink);
             display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
-  .cf-fb span{ font-size:11px; color:var(--ink-soft); }
+  .cf-fb span{ font-size:0.6875rem; color:var(--ink-soft); }
 
   /* the progress rail — just under the cover's footer, quiet on purpose:
      colour is the dot's job, so the rail only ever reports a number. */
@@ -1140,9 +1185,9 @@
   /* Read at an angle a rail is just a stray line, so it belongs to the covers
      you are actually looking at and fades out with the rest of the ring. */
   .cf-bar .tr{ flex:1; height:3px; border-radius:99px; background:rgba(27,27,26,.12); overflow:hidden; }
-  .cf-bar .tr i{ display:block; height:100%; border-radius:99px; background:var(--ink-soft);
+  .cf-bar .tr i{ display:block; height:100%; border-radius:99px; background:var(--sky);
                  transition:width .3s ease; }
-  .cf-bar b{ font-size:10px; font-weight:600; color:var(--ink-faint); font-variant-numeric:tabular-nums;
+  .cf-bar b{ font-size:0.6875rem; font-weight:600; color:var(--ink-faint); font-variant-numeric:tabular-nums;
              letter-spacing:.01em; min-width:24px; text-align:right; }
   body.dark .cf-bar .tr{ background:rgba(255,255,255,.16); }
 
@@ -1164,11 +1209,11 @@
            padding:0 24px 12px; text-align:center; }
   .cf-cap.in{ animation:cfFade .3s ease both; }
   @keyframes cfFade{ from{ opacity:0 } to{ opacity:1 } }
-  .cf-t{ margin:8px 0 0; font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--ink);
+  .cf-t{ margin:8px 0 0; font-size:0.875rem; font-weight:600; letter-spacing:-.01em; color:var(--ink);
          display:flex; align-items:center; gap:8px; max-width:min(92vw,520px); }
   .cf-t span.nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cf-s{ margin:4px 0 0; font-size:13px; color:var(--ink-faint); }
-  .cf-meta{ margin:var(--cf-metatop, 18px) 0 0; width:100%; max-width:230px; font-size:12px; }
+  .cf-s{ margin:4px 0 0; font-size:0.78125rem; color:var(--ink-faint); }
+  .cf-meta{ margin:var(--cf-metatop, 18px) 0 0; width:100%; max-width:230px; font-size:0.78125rem; }
   .cf-meta > div{ display:flex; justify-content:space-between; padding:var(--cf-metapad, 5px) 0; gap:14px; }
   .cf-meta dt{ color:var(--ink-faint); white-space:nowrap; }
   .cf-meta dd{ margin:0; font-weight:500; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -1188,12 +1233,12 @@
             padding:0 12px; }
   #home.editing .cf-edit{ display:flex; }
   .cf-eb{ border:1px solid var(--line-2); background:var(--paper); color:var(--ink-soft);
-          border-radius:8px; padding:7px 13px; font-size:12px; cursor:pointer; font-family:inherit;
+          border-radius:8px; padding:7px 13px; font-size:0.78125rem; cursor:pointer; font-family:inherit;
           box-shadow:0 1px 3px rgba(0,0,0,.06); white-space:nowrap; touch-action:manipulation; }
   .cf-eb:active{ background:var(--wash); color:var(--ink); }
   body.dark .cf-eb{ box-shadow:none; }
 
-  .cf-empty{ flex:1; display:grid; place-items:center; color:var(--ink-faint); font-size:14px;
+  .cf-empty{ flex:1; display:grid; place-items:center; color:var(--ink-faint); font-size:0.875rem;
              line-height:1.7; text-align:center; padding:0 24px; }
 
   @media (prefers-reduced-motion:reduce){
@@ -1276,7 +1321,7 @@
       <div class="divider"></div>
       <div class="ctl">
         <span class="hlswatch" title="Highlight colour"></span>
-        <button id="selectBtn" class="pill" title="Select &amp; highlight text with your finger">✎ Select</button>
+        <button id="selectBtn" class="pill" title="Select &amp; highlight text with the pen">✎ Select</button>
       </div>
       <div class="ctl">
         <span class="penswatch" title="Ink colour: red"></span>
@@ -1311,7 +1356,7 @@
       <div class="card">
         <h3>Open a book to begin</h3>
         <p>NeoBook narrates your PDF and lights up each word on the page — read, listen and annotate at once.</p>
-        <p class="hint">Tap a word to read from there. <span class="r">Pen draws</span> · finger scrolls · turn on <b>Select</b> to highlight with your finger.</p>
+        <p class="hint">Tap a word to read from there. <span class="r">Pen draws</span> · finger scrolls · turn on <b>Select</b> to highlight with the pen.</p>
         <p><button id="emptyAdd" class="pill" style="margin-top:6px">Add a PDF</button></p>
       </div>
     </div>
@@ -1463,6 +1508,18 @@
 <pre id="penDiag" class="pendiag" aria-hidden="true"></pre>
 <div id="rdRing" class="rd-ring" aria-hidden="true"></div>
 
+<!-- The funnel's reading line. A rule, not a strip: it marks where you are
+     without covering anything. The line itself takes no input so the whole
+     width stays drawable; the handle at the end is what you drag. -->
+<div id="fnRule" class="fnrule" aria-hidden="true">
+  <i></i>
+  <button class="grip" id="fnRuleGrip" aria-label="Reading line — drag to move, hold to fade"></button>
+</div>
+<div id="fnRuleOp" class="fnruleop" role="dialog" aria-label="Reading line opacity">
+  <span class="lb">Fade</span>
+  <input type="range" id="fnRuleOpR" min="10" max="100" step="5" value="55" aria-label="Reading line opacity" />
+</div>
+
 <div id="rdZoom" class="rd-zoom" role="group" aria-label="Zoom">
   <button class="pct hit" id="zPct" aria-label="Zoom level — tap to reset">100%</button>
   <button id="zLock" class="lk hit" aria-label="Lock zoom" aria-pressed="false">
@@ -1495,18 +1552,19 @@
   <div class="trow" id="hlSwatches"></div>
   <div class="trule"></div>
   <div class="tnote" style="max-width:172px;line-height:1.45">
-    Drag across the words.<br>Hold a mark to save it.
+    Drag the pen across the words.<br>Hold a mark to save it.
   </div>
 </div>
 
 <div id="erBar" class="toolbar" role="group" aria-label="Eraser">
-  <div class="trow" id="erPresets"></div>
-  <div class="trow">
-    <button class="tbtn" id="erModeBtn">By area</button>
-    <button class="tbtn" id="erSizeBtn" style="margin-left:auto">20&nbsp;mm</button>
+  <div class="ersize">
+    <input type="range" id="erRange" min="2" max="20" step="1" value="12"
+           aria-label="Eraser size in millimetres" />
+    <span class="erval" id="erVal">12&nbsp;mm</span>
   </div>
   <div class="trule"></div>
   <button class="tbtn wide" id="clearPgBtn2">Clear current page</button>
+  <div class="tnote">Touch a stroke to take the whole stroke away.</div>
 </div>
 
 <div id="sizePop" class="sizepop" role="dialog" aria-label="Size">
@@ -1567,6 +1625,9 @@
       <span class="lab"><b>Underline / Block</b><span id="mHlStyleLab">Block</span></span>
     </button>
 
+    <div class="mrule" role="separator"></div>
+    <div class="mgroup">How the text reads</div>
+
     <button class="mrow" id="mTele">
       <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor">
         <rect x="2" y="10.6" width="2.8" height="2.8" rx="1.4"/>
@@ -1603,6 +1664,9 @@
       <span class="dot"></span>
     </button>
 
+    <div class="mrule" role="separator"></div>
+    <div class="mgroup">How the page sits</div>
+
     <button class="mrow" id="mFitText">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
         <path d="M3 5h18M6 9.5h12M6 14h12M3 18.5h18"/><path d="M2.2 12.2 4 10.4v3.6zM21.8 12.2 20 10.4v3.6" fill="currentColor" stroke="none"/>
@@ -1622,6 +1686,20 @@
       <span class="lab"><b>Visual Funnel</b><span>Narrow the column to the fovea</span></span>
       <span class="dot"></span>
     </button>
+
+    <div class="mrule" role="separator"></div>
+    <div class="mgroup">Appearance</div>
+
+    <button class="mrow" id="mTextSize">
+      <span class="ico" aria-hidden="true"><span style="font-weight:700;letter-spacing:-.04em">A</span><span style="font-size:.72em;opacity:.55">A</span></span>
+      <span class="lab"><b>Text size</b><span id="mTextSizeSub">Normal</span></span>
+    </button>
+    <div class="msub" id="sTextSize"><div><div class="pad">
+      <div class="mseg" id="mTextSizeSeg">
+        <button data-v="87.5">Small</button><button data-v="100">Normal</button><button data-v="112.5">Large</button><button data-v="125">Larger</button>
+      </div>
+      <div class="tnote">Sets the size of every label and control. The page itself is a picture — pinch to zoom that.</div>
+    </div></div></div>
 
     <button class="mrow" id="mTheme">
       <span class="ico"><svg viewBox="0 0 25 25" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:17px;height:17px">
@@ -2528,7 +2606,7 @@ const S = {
   pendingPage:-1,
   renderToken:0,
   selMode:false, hl:[], hlDraft:[], hlTab:'lib', hlView:'book',
-  penColor:'#E02424', penW:2.3, eraseMM:20, eraseMode:'area', hlColor:'#FFE08A',
+  penColor:'#E02424', penW:2.3, eraseMM:12, eraseMode:'stroke', hlColor:'#FFE08A',
   zoomLock:false, lockX:null, speak:false, tool:null,
   /* The reading screen has one state and this is it. The flag survives only
      because the engine reads it in a dozen places to mean "the page is all
@@ -7479,6 +7557,8 @@ async function setFunnel(on, quiet){
     if(FN.scratch){ FN.scratch.width = FN.scratch.height = 1; }
   }
   document.body.classList.toggle('funnel', FN.on);
+  /* the reading line belongs to the funnel, in either scroll mode */
+  if(window.rdRuleSync) rdRuleSync();
   if(IS.on) isLayout(false);
   if(keep >= 0) await goToWord(keep);
   else await renderPage(S.page);
@@ -7772,6 +7852,110 @@ function buzzPen(ms){
 }
 TURBO.buzzOn = true;
 
+/* ---------------------------------------------------------------------------
+   STROKE ERASER
+   The old eraser painted destination-out into the permanent layer and stored
+   every rub as a stroke of its own. Two costs followed from that: the stroke
+   list grew without bound, so every later redraw got slower — the lag — and an
+   erase could only ever be replayed in the order it was made, which is why it
+   drifted out of sync with the ink under it.
+
+   Touching a stroke now removes the stroke. The list gets shorter, not longer,
+   and there is nothing to replay: erasing is a delete, so undo is a delete
+   undone. Hit-testing runs in PDF units against the stored geometry, never
+   against pixels, so it is exact at any zoom.
+--------------------------------------------------------------------------- */
+const ERASE = { live:false, lx:0, ly:0, hit:0, marks:0 };
+
+function segDist2(ax, ay, bx, by, px, py){
+  const vx = bx-ax, vy = by-ay, wx = px-ax, wy = py-ay;
+  const vv = vx*vx + vy*vy;
+  let s = vv > 0 ? (wx*vx + wy*vy) / vv : 0;
+  s = s < 0 ? 0 : (s > 1 ? 1 : s);
+  const dx = ax + s*vx - px, dy = ay + s*vy - py;
+  return dx*dx + dy*dy;
+}
+function strokeTouches(st, px, py, r2){
+  const pts = st.pts;
+  if(!pts || !pts.length) return false;
+  if(pts.length === 1){
+    const dx = pts[0].x - px, dy = pts[0].y - py;
+    return dx*dx + dy*dy <= r2;
+  }
+  for(let i = 1; i < pts.length; i++){
+    if(segDist2(pts[i-1].x, pts[i-1].y, pts[i].x, pts[i].y, px, py) <= r2) return true;
+  }
+  return false;
+}
+/* A highlight is a range of words, not a shape, so it is hit-tested against the
+   word boxes it actually covers — the same boxes the painter draws its bands
+   from, which means what the eraser catches is exactly what you can see. Both
+   the kept marks and the unkept drafts are fair game: to the person holding the
+   eraser they are one thing on the page.
+
+   In the funnel this still lines up, because wbox() answers in whichever layout
+   is on screen. */
+function eraseHighlightsNear(px, py, r){
+  const hit = function(m){
+    if(m.page !== S.page) return false;
+    const lo = Math.min(m.a, m.b), hi = Math.max(m.a, m.b);
+    for(let g = lo; g <= hi; g++){
+      const w = wbox(g);
+      if(!w || w.page !== S.page) continue;
+      if(px >= w.x - r && px <= w.x + w.w + r &&
+         py >= w.y - r && py <= w.y + w.h + r) return true;
+    }
+    return false;
+  };
+  let marks = 0, drafts = 0;
+  const kept = S.hl || [];
+  for(let k = kept.length - 1; k >= 0; k--){ if(hit(kept[k])){ kept.splice(k, 1); marks++; } }
+  const draft = S.hlDraft || [];
+  for(let k = draft.length - 1; k >= 0; k--){ if(hit(draft[k])){ draft.splice(k, 1); drafts++; } }
+  if(marks) saveMarks();
+  if(drafts) saveDrafts();
+  if(marks || drafts) paintMarks();
+  return marks + drafts;
+}
+
+/* The nib is sampled, not continuous: a fast swipe lands centimetres apart.
+   Walk the gap so a stroke crossed between two samples still goes. */
+function eraseStep(x, y){
+  const list = S.strokes[S.page] || [];
+  const mm = (typeof PX_PER_MM === 'number') ? PX_PER_MM : 3.7795;
+  const r  = Math.max(2, (S.eraseMM || 12) * mm * 0.5) / (S.scale || 1);
+  const r2 = r*r;
+  const x0 = ERASE.lx, y0 = ERASE.ly;
+  const span = Math.hypot(x - x0, y - y0);
+  const steps = Math.max(1, Math.min(48, Math.ceil(span / Math.max(1, r * 0.6))));
+  let ink = 0, marks = 0;
+  for(let s = 1; s <= steps; s++){
+    const u = s / steps;
+    const px = x0 + (x - x0) * u, py = y0 + (y - y0) * u;
+    for(let k = list.length - 1; k >= 0; k--){
+      if(!inkLayerMatch(list[k])) continue;       /* never rub out what is hidden */
+      if(strokeTouches(list[k], px, py, r2)){ list.splice(k, 1); ink++; }
+    }
+    marks += eraseHighlightsNear(px, py, r);
+  }
+  ERASE.lx = x; ERASE.ly = y;
+  if(ink){
+    redrawInk();
+    scheduleInk();
+  }
+  ERASE.hit += ink; ERASE.marks += marks;
+}
+function eraseBegin(px, py, clientX, clientY){
+  ERASE.live = true; ERASE.lx = px; ERASE.ly = py; ERASE.hit = 0; ERASE.marks = 0;
+  if(window.ringShow) ringShow(clientX, clientY);
+  eraseStep(px, py);
+}
+function eraseFinish(){
+  if(!ERASE.live) return;
+  ERASE.live = false;
+  if(window.ringHide) ringHide();
+}
+
 function eraseNow(){
   if(!cur || cur.mode === 'erase') return;
   /* Anything already laid down stays a pen line, so it is committed here and
@@ -7796,8 +7980,10 @@ function eraseNow(){
   TURBO.live = false;
   const lastX = PB.n ? PB.x[PB.n-1] : 0, lastY = PB.n ? PB.y[PB.n-1] : 0;
   pbReset(); pbPush(lastX, lastY, 1);
-  cur = { mode:'erase', c:S.penColor, w:S.eraseMM, pts:[{ x:lastX, y:lastY, p:1 }] };
-  if(window.ringShow) ringShow(lastPenX, lastPenY);
+  /* Hold-to-erase and hard-press now enter the same stroke eraser the tool
+     uses, so there is one erase behaviour in the app rather than two. */
+  cur = { mode:'erase', erase:true, c:S.penColor, w:S.eraseMM, pts:[{ x:lastX, y:lastY, p:1 }] };
+  eraseBegin(lastX, lastY, lastPenX, lastPenY);
   buzzPen(8);
 }
 
@@ -7808,9 +7994,33 @@ function eraseNow(){
    it: no layout read, no style read, no toolbar refresh, no storage, no
    vibration, no animation, no snapshot.
 --------------------------------------------------------------------------- */
+/* The highlighter used to be a finger-only tool: the pen went straight to the
+   ink canvas and drew a freehand line, which is why highlighting with the
+   stylus came out crooked and in the pen's colour. The stylus now enters the
+   same word-snapped path the finger uses, so a sweep lands on whole lines of
+   text — straight as a ruler, from an ordinary fluid stroke. */
+let hlPen = false;
 function penBegin(e){
   if(e.pointerType==='touch') return;
-  if(FN.on){ toast('Turn the funnel off to annotate.'); return; }
+  if(S.selMode && S.tool === 'hl'){
+    if(beginSelect(e.clientX, e.clientY, e.pointerId)){
+      penId = e.pointerId; hlPen = true; S.drawing = false;
+      lastPenX = e.clientX; lastPenY = e.clientY;
+      try{ inkCanvas.setPointerCapture(e.pointerId); }catch(err){}
+      e.preventDefault();
+    }
+    return;
+  }
+  /* The funnel re-flows the text into a column of its own, so ink cannot be
+     anchored to where the words used to be. Rather than refuse the pen, a
+     stroke records which layout it was drawn in and is shown in that layout:
+     funnel ink appears with the funnel on, page ink with it off. Nothing is
+     ever discarded, and neither set can land on top of the other. */
+  if(FN.on && !fnInkHintShown){
+    fnInkHintShown = true;
+    try{ localStorage.setItem('lumen:fnink','1'); }catch(err){}
+    toast('Notes made in the funnel stay with the funnel view.');
+  }
   penId=e.pointerId; penDown={x:e.clientX,y:e.clientY}; penMoved2=0; S.drawing=true;
   lastPenX=e.clientX; lastPenY=e.clientY;
   if(!inkRect) refreshInkRect();                 // cached at pen-down, never during
@@ -7821,8 +8031,21 @@ function penBegin(e){
   const pr = e.pressure > 0 ? e.pressure : 0.5;
   const px = (e.clientX - inkRect.left) / S.scale, py = (e.clientY - inkRect.top) / S.scale;
 
-  cur = { mode:mode, c:S.penColor, w:(mode==='erase' ? S.eraseMM : S.penW), pts:null };
+  cur = { mode:mode, c:S.penColor, w:(mode==='erase' ? S.eraseMM : S.penW), pts:null,
+          fn: FN.on ? 1 : 0 };
   pbReset(); pbPush(px, py, pr);
+
+  /* An eraser has no ink to predict, no live layer to composite and nothing to
+     commit. Everything below this line exists to get ink on glass fast; the
+     eraser needs none of it, and running it was most of the lag. */
+  if(mode === 'erase'){
+    cur.erase = true;
+    cur.pts = [{ x:px, y:py, p:pr }];
+    eraseBegin(px, py, e.clientX, e.clientY);
+    clearTimeout(holdT); holdT = null;
+    e.preventDefault();
+    return;
+  }
 
   turboEnter(mode);
 
@@ -7867,6 +8090,11 @@ inkCanvas.addEventListener("pointerdown", penBegin, { passive:false });
    numbers already in registers or a canvas call that draws something.
 --------------------------------------------------------------------------- */
 function penMove(e){
+  if(hlPen && e.pointerId === penId){
+    moveSelect(e.clientX, e.clientY);
+    if(e.cancelable) e.preventDefault();
+    return;
+  }
   if(e.pointerId!==penId || !cur) return;
   const t0 = performance.now();
 
@@ -7878,6 +8106,15 @@ function penMove(e){
 
   const pr = e.pressure > 0 ? e.pressure : 0.5;
   if(cur.mode !== 'erase' && pr >= PEN.press) eraseNow();
+
+  if(cur.erase){
+    if(window.ringShow) ringShow(e.clientX, e.clientY);
+    const q = canvasPoint(e);
+    eraseStep(q.x, q.y);
+    if(e.cancelable) e.preventDefault();
+    DIAG.evt++;
+    return;
+  }
 
   if(!TURBO.live){
     /* eraser: cuts straight into the permanent layer, which is the only place
@@ -7976,9 +8213,22 @@ function finishStroke(){
 }
 function endPen(e){
   if(e.pointerId!==penId) return;
+  if(hlPen){ hlPen=false; penId=null; S.drawing=false; endSelect(); e.preventDefault(); return; }
   clearTimeout(holdT); holdT=null;
   if(window.ringHide) ringHide();
   S.drawing=false; penId=null;
+
+  if(cur && cur.erase){
+    const ink = ERASE.hit, marks = ERASE.marks;
+    eraseFinish(); cur = null; turboExit();
+    if(ink || marks){
+      const bits = [];
+      if(ink)   bits.push(ink   + (ink   === 1 ? ' stroke'    : ' strokes'));
+      if(marks) bits.push(marks + (marks === 1 ? ' highlight' : ' highlights'));
+      toast('Erased ' + bits.join(' and ') + '.');
+    }
+    return;
+  }
 
   const wasLive = TURBO.live;
   const wasTap = cur && cur.mode!=='erase' && penMoved2 < 36 && PB.n < 4;
@@ -8001,6 +8251,8 @@ function penCancel(e){
   if(e.pointerId!==penId) return;
   clearTimeout(holdT); holdT=null;
   if(window.ringHide) ringHide();
+  if(hlPen){ hlPen=false; penId=null; S.drawing=false; abortSelect(); return; }
+  if(cur && cur.erase){ eraseFinish(); cur=null; penId=null; S.drawing=false; turboExit(); return; }
   const wasLive = TURBO.live;
   const st = finishStroke();
   if(st){ strokesHere().push(st); if(wasLive) drawStrokeFinal(st); scheduleInk(); }
@@ -8161,8 +8413,10 @@ function pzStart(){
   PZ.snapped = pzSnapshot();
   if(!PZ.snapped){                              // infinite scroll: scale in place
     PZ.el.style.transformOrigin = (PZ.keep.fx*100)+'% '+(PZ.keep.fy*100)+'%';
+    PZ.el.style.willChange = 'transform';
   }
   document.body.classList.add('pinching');
+  document.body.classList.toggle('pinchsnap', !!PZ.snapped);
   if(window.rdZoomHud) rdZoomHud(true);
 }
 
@@ -8179,7 +8433,7 @@ function pzFrame(){
   }else if(PZ.el){
     PZ.el.style.transform = 'scale('+PZ.k+')';
   }
-  if(zPctEl) zPctEl.textContent = pzWantPct+'%';
+  if(zPctEl && PZ.shownPct !== pzWantPct){ PZ.shownPct = pzWantPct; zPctEl.textContent = pzWantPct+'%'; }
 }
 const zPctEl = document.getElementById('zPct');
 function pzMoveNow(){
@@ -8203,16 +8457,22 @@ function pzEnd(){
   if(!PZ.on) return;
   PZ.on = false;
   if(PZ.raf){ cancelAnimationFrame(PZ.raf); PZ.raf = null; }
-  document.body.classList.remove('pinching');
   const el = PZ.el, keep = PZ.keep, k = PZ.k, wasSnapped = PZ.snapped;
-  if(el && !wasSnapped){ el.style.transform=''; el.style.transformOrigin=''; }
   PZ.el = null;
+  /* 'pinching' used to be dropped here, on the first line — which un-hid the
+     live page at its OLD scale while the re-render at the new one was still in
+     flight. That gap is the flicker: one frame of the page you just zoomed away
+     from, then a jump. The class now comes off inside done(), after the crisp
+     page exists, and the transform is released in the same breath. */
   const done = function(){
-    /* hold the flat copy over the page until the crisp one has actually been
-       painted, so the reallocation flash never reaches the eye */
-    if(wasSnapped) requestAnimationFrame(function(){ requestAnimationFrame(pzHideSnapshot); });
-    else pzHideSnapshot();
-    if(window.rdRecentre) rdRecentre();
+    const settle = function(){
+      if(el && !wasSnapped){ el.style.transform=''; el.style.transformOrigin=''; el.style.willChange=''; }
+      document.body.classList.remove('pinching','pinchsnap');
+      if(wasSnapped) pzHideSnapshot();
+      if(window.rdRecentre) rdRecentre();
+    };
+    /* two frames: one for the new page to be laid out, one for it to be painted */
+    requestAnimationFrame(function(){ requestAnimationFrame(settle); });
   };
   if(S.zoomLock){
     if(Math.abs(k-1) > 0.02) toast('Zoom is locked — tap the padlock to unlock.');
@@ -8267,13 +8527,10 @@ viewer.addEventListener('pointerdown', function(e){
   if(PZ.n >= 2){ cancelHoldF(); pzStart(); e.preventDefault(); return; }
   if(PZ.on) return;
   armHoldF(e.clientX, e.clientY);
-  if(S.selMode){                                   // finger paints a highlight instead of scrolling
-    if(beginSelect(e.clientX, e.clientY, e.pointerId)){
-      try{ viewer.setPointerCapture(e.pointerId); }catch(err){}
-      e.preventDefault();
-    }
-    return;
-  }
+  /* Highlighting is a pen act now. The finger's job on this surface is to move
+     the page, and a finger that sometimes scrolls and sometimes paints is a
+     finger you cannot trust — you end up checking the toolbar before every
+     swipe. The pen enters beginSelect from penBegin instead; see there. */
   cancelFollow();
   glideWasRunning = !!glide;
   if(glide){ cancelAnimationFrame(glide); glide=null; }
@@ -8286,7 +8543,7 @@ viewer.addEventListener('pointermove', function(e){
   if(PZ.p[e.pointerId]){ PZ.p[e.pointerId].x = e.clientX; PZ.p[e.pointerId].y = e.clientY; }
   if(PZ.on){ pzMoveNow(); e.preventDefault(); return; }
   if(holdFT && Math.hypot(e.clientX-holdFX, e.clientY-holdFY) > 9) cancelHoldF();
-  if(S.selMode && selId===e.pointerId){ moveSelect(e.clientX, e.clientY); e.preventDefault(); return; }
+  if(e.pointerType!=='touch' && S.selMode && selId===e.pointerId){ moveSelect(e.clientX, e.clientY); e.preventDefault(); return; }
   if(e.pointerId!==touchId) return;
   const now = performance.now();
   const dx = e.clientX - lastX; lastX = e.clientX;
@@ -8306,7 +8563,7 @@ viewer.addEventListener('pointerup', function(e){
   if(PZ.p[e.pointerId]){ delete PZ.p[e.pointerId]; PZ.n = Object.keys(PZ.p).length; }
   if(wasPinch){ if(PZ.n < 2) pzEnd(); cancelHoldF(); return; }
   cancelHoldF();
-  if(S.selMode && selId===e.pointerId){ endSelect(); e.preventDefault(); userScrolling=false; return; }
+  if(e.pointerType!=='touch' && S.selMode && selId===e.pointerId){ endSelect(); e.preventDefault(); userScrolling=false; return; }
   if(e.pointerId===touchId && IS.on) setTimeout(function(){ if(!isFlinging()) isPump(); }, 0);
   if(e.pointerId!==touchId) return;
   touchId=null; userScrolling=false; scrollSpeed=0; inkRect=null;
@@ -8333,7 +8590,7 @@ viewer.addEventListener('pointercancel', function(e){
   cancelHoldF();
   if(PZ.p[e.pointerId]){ delete PZ.p[e.pointerId]; PZ.n = Object.keys(PZ.p).length; }
   if(PZ.on && PZ.n < 2){ pzEnd(); return; }
-  if(S.selMode && selId===e.pointerId){ endSelect(); return; }
+  if(e.pointerType!=='touch' && S.selMode && selId===e.pointerId){ endSelect(); return; }
   touchId=null; userScrolling=false;
 });
 viewer.addEventListener('scroll', function(){
@@ -8372,9 +8629,10 @@ function inkFarEnough(pts, q){
 /* Committing a stroke repaints that stroke, not the page. The PDF underneath
    is never re-rendered, and the other strokes already on the ink layer are left
    exactly where they are. */
+function inkLayerMatch(st){ return (st.fn ? 1 : 0) === (FN.on ? 1 : 0); }
 function drawStrokeFinal(st){
   if(!st || !st.pts || st.pts.length < 1) return;
-  if(FN.on) return;
+  if(!inkLayerMatch(st)) return;
   if(IS.on){ redrawInk(); return; }
   const s = S.scale;
   ictx.globalCompositeOperation = st.mode==='erase' ? 'destination-out' : 'source-over';
@@ -8395,13 +8653,13 @@ function redrawInk(){
   if(IS.on && !IS.bound){ isRedrawInk(S.page); return; }
   ictx.save(); ictx.setTransform(1,0,0,1,0,0);
   ictx.clearRect(0,0,inkCanvas.width,inkCanvas.height); ictx.restore();
-  /* Ink is anchored to where the words used to be, so it cannot follow them
-     into the funnel. It is hidden rather than moved, and comes back untouched
-     the moment the funnel is off. */
-  if(FN.on) return;
+  /* Ink is anchored to where the words were when it was drawn, so page ink
+     cannot follow them into the funnel and funnel ink cannot follow them out.
+     Each set is hidden in the other's layout and comes back untouched. */
   const s=S.scale, list=S.strokes[S.page]||[];
   for(let k=0;k<list.length;k++){
     const st=list[k];
+    if(!inkLayerMatch(st)) continue;
     ictx.globalCompositeOperation = st.mode==='erase' ? 'destination-out' : 'source-over';
     ictx.strokeStyle = st.c || THEME.pen;
     for(let i=1;i<st.pts.length;i++){
@@ -8527,8 +8785,33 @@ function paintMarks(preview, noClear){
     }
     mctx.globalAlpha=1;
   };
-  markRuns().forEach(function(m){ if(m.page===S.page) draw(m.a, m.b, 0.52, m.c, false); });
-  (S.hlDraft||[]).forEach(function(m){ if(m.page===S.page) draw(m.a, m.b, 0.17, m.c, true); });
+  /* Both mark layers composite in multiply, so two marks over one sentence used
+     to darken it twice — highlighting something again made it look like a
+     different, heavier mark. Overlapping runs of the same colour are unioned
+     into one run first, so a sentence marked five times is exactly as dark as a
+     sentence marked once. */
+  const merge=function(list){
+    const by={};
+    list.forEach(function(m){
+      if(m.page!==S.page) return;
+      const k = m.c || THEME.mark;
+      (by[k] || (by[k]=[])).push({ a:Math.min(m.a,m.b), b:Math.max(m.a,m.b) });
+    });
+    const out=[];
+    Object.keys(by).forEach(function(k){
+      const r = by[k].sort(function(p,q){ return p.a-q.a; });
+      let cur = null;
+      r.forEach(function(m){
+        /* adjacent as well as overlapping: two runs that meet end-to-start are
+           one sweep of the highlighter, not two */
+        if(cur && m.a <= cur.b + 1){ cur.b = Math.max(cur.b, m.b); }
+        else { cur = { a:m.a, b:m.b, c:k }; out.push(cur); }
+      });
+    });
+    return out;
+  };
+  merge(markRuns()).forEach(function(m){ draw(m.a, m.b, 0.52, m.c, false); });
+  merge(S.hlDraft||[]).forEach(function(m){ draw(m.a, m.b, 0.17, m.c, true); });
   if(preview) draw(preview.a, preview.b, 0.55, S.hlColor, false);
 }
 
@@ -8567,6 +8850,8 @@ function endSelect(){
 }
 let hlHintShown = false;
 try{ hlHintShown = !!localStorage.getItem('lumen:hlhint'); }catch(e){}
+let fnInkHintShown = false;
+try{ fnInkHintShown = !!localStorage.getItem('lumen:fnink'); }catch(e){}
 
 /* Unkept marks live with the book, not with the highlights, so a reload never
    loses one and the highlights list never fills up with things you were only
@@ -9350,8 +9635,39 @@ function showHome(){ if(S.book){ noteAnchor(); savePosNow(); }
   const zs=$('#zoomSnap'); if(zs) zs.classList.remove('show');
   if(S.selMode) setSelectMode(false, true);
   S.tool=null; S.penMode='pen'; $('#eraseBtn').classList.remove('on');
-  stopPageClock(); focusClockShow(false); $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
-function showReader(){ $('#home').classList.remove('show'); }
+  stopPageClock(); focusClockShow(false); exitFullscreen();
+  $('#home').classList.add('show'); homeMenuClose(); $('#homeMain').scrollTop=0; renderHome(); }
+/* ---------------------------------------------------------------------------
+   FULL SCREEN
+   The browser's own furniture — tabs, address bar, status bar — is a third of a
+   tablet's height and none of it belongs to the book. Opening a book asks for
+   the screen; going back to the library gives it up. The request has to ride a
+   real user gesture, which is why it is fired from the tap that opens the book
+   rather than from a timer, and it is allowed to fail silently: a browser that
+   refuses simply keeps its chrome, and everything else still works.
+--------------------------------------------------------------------------- */
+function goFullscreen(){
+  const el = document.documentElement;
+  if(document.fullscreenElement || document.webkitFullscreenElement) return;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if(!req) return;
+  try{
+    const p = req.call(el, { navigationUI:'hide' });
+    if(p && p.catch) p.catch(function(){});
+  }catch(e){}
+}
+function exitFullscreen(){
+  if(!(document.fullscreenElement || document.webkitFullscreenElement)) return;
+  const ex = document.exitFullscreen || document.webkitExitFullscreen;
+  if(!ex) return;
+  try{
+    const p = ex.call(document);
+    if(p && p.catch) p.catch(function(){});
+  }catch(e){}
+}
+window.goFullscreen = goFullscreen;
+
+function showReader(){ $('#home').classList.remove('show'); goFullscreen(); }
 async function openFromHome(bk){ try{ CF.wantId = bk.id; }catch(e){} showReader(); await openBook(bk); }
 function removeBook(bk){
   S.library = S.library.filter(function(b){ return b!==bk; });
@@ -10496,8 +10812,7 @@ function cfCaption(){
   var s = elx('p','cf-s'); s.textContent = CF_WORD[st];
 
   var dl = elx('dl','cf-meta'), cell = {};
-  [['Year',   bk.year   ? String(bk.year) : '—'],
-   ['Author', bk.author ? bk.author       : '—'],
+  [['Author', bk.author ? bk.author       : '—'],
    ['Pages',  String(bk.numPages || '—')]].forEach(function(r){
     var row = elx('div');
     var dt = document.createElement('dt'); dt.textContent = r[0];
@@ -10510,10 +10825,8 @@ function cfCaption(){
      and slot the answer into the two cells — no second animation, no flicker. */
   if(!bk.__bib){
     ensureBiblio(bk).then(function(){
-      if(CF.books[CF.sel] !== bk || !cell.Year.isConnected) return;
-      cell.Year.textContent   = bk.year   ? String(bk.year) : '—';
+      if(CF.books[CF.sel] !== bk || !cell.Author || !cell.Author.isConnected) return;
       cell.Author.textContent = bk.author ? bk.author       : '—';
-      cell.Year.title = cell.Year.textContent;
       cell.Author.title = cell.Author.textContent;
     }).catch(function(){});
   }
@@ -10778,14 +11091,19 @@ window.addEventListener('resize', function(){
   const buzz = function(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} };
   const root = document.documentElement;
 
-  const RD_DEF = { penColor:'#E02424', penW:2.3, eraseMM:20, eraseMode:'area',
+  const RD_DEF = { penColor:'#E02424', penW:2.3, eraseMM:12, eraseMode:'stroke',
                    hlColor:'#FFE08A', zoomLock:false, speak:false };
   function rdLoad(){
     let o=null; try{ o = mirror.get('rdset'); }catch(e){}
     o = o || {};
     S.penColor  = o.penColor || RD_DEF.penColor;
     S.penW      = +o.penW    || RD_DEF.penW;
-    S.eraseMM   = +o.eraseMM || RD_DEF.eraseMM;
+    /* clamped to the slider's range, so a 40 mm value saved by the old size
+       popper cannot come back as an eraser the slider cannot express */
+    S.eraseMM   = Math.max(2, Math.min(20, +o.eraseMM || RD_DEF.eraseMM));
+    S.textSize  = o.textSize || '100';
+    S.ruleY     = (typeof o.ruleY === 'number') ? o.ruleY : 0.42;
+    S.ruleO     = (typeof o.ruleO === 'number') ? o.ruleO : 0.55;
     S.eraseMode = o.eraseMode|| RD_DEF.eraseMode;
     S.hlColor   = o.hlColor  || RD_DEF.hlColor;
     S.zoomLock  = !!o.zoomLock;
@@ -10794,10 +11112,14 @@ window.addEventListener('resize', function(){
   }
   function rdSave(){
     const o = { penColor:S.penColor, penW:S.penW, eraseMM:S.eraseMM, eraseMode:S.eraseMode,
-                hlColor:S.hlColor, zoomLock:S.zoomLock, speak:S.speak };
+                hlColor:S.hlColor, zoomLock:S.zoomLock, speak:S.speak,
+                ruleY:S.ruleY, ruleO:S.ruleO, textSize:S.textSize };
     mirror.set('rdset', o); store.set('rdset', o);
   }
   rdLoad();
+  /* applied before the menu first paints, so the chrome never resizes under
+     the reader a beat after it appears */
+  document.documentElement.style.fontSize = (S.textSize || '100') + '%';
   function paintTints(){
     root.style.setProperty('--pen-c', S.penColor);
     root.style.setProperty('--hl-c',  S.hlColor);
@@ -10853,6 +11175,26 @@ window.addEventListener('resize', function(){
   $('#mTele').onclick    = function(){ tap('#teleBtn');    rdSync(); };
   $('#mSr').onclick      = function(){ tap('#srBtn');      rdSync(); };
   $('#mTheme').onclick   = function(){ fold('#sTheme', !$('#sTheme').classList.contains('open')); };
+  $('#mTextSize').onclick= function(){ fold('#sTextSize', !$('#sTextSize').classList.contains('open')); };
+
+  const TEXT_SIZE_LABEL = { '87.5':'Small', '100':'Normal', '112.5':'Large', '125':'Larger' };
+  function applyTextSize(v, save){
+    v = String(v || 100);
+    if(!TEXT_SIZE_LABEL[v]) v = '100';
+    S.textSize = v;
+    document.documentElement.style.fontSize = v + '%';
+    segOn('#mTextSizeSeg', v);
+    const sub=$('#mTextSizeSub'); if(sub) sub.textContent = TEXT_SIZE_LABEL[v];
+    if(save) rdSave();
+  }
+  window.applyTextSize = applyTextSize;
+  $('#mTextSizeSeg').addEventListener('click', function(e){
+    const b=e.target.closest('button[data-v]'); if(!b) return;
+    applyTextSize(b.getAttribute('data-v'), true);
+    /* Fit Text measures the column against the viewport, so it has to re-run
+       once the chrome around it has changed size. */
+    if(typeof FT!=='undefined' && FT.on && typeof setFitText==='function') setTimeout(function(){ setFitText(true); }, 60);
+  });
   $('#mEngine').onclick  = function(){ menuOpen(false); tap('#voiceBtn'); };
   $('#mExit').onclick    = function(){ menuOpen(false); showHome(); };
 
@@ -10931,6 +11273,8 @@ window.addEventListener('resize', function(){
     const vn=(S.narVoice&&S.narVoice.name)?S.narVoice.name.replace(/\s*\(.*$/,''):($('#engineBadge').textContent||'Device');
     $('#mVoiceSub').textContent = vn+' · '+S.rate.toFixed(2)+'×';
 
+    applyTextSize(S.textSize, false);
+
     segOn('#mThemeSeg', S.dark?'dark':'light');
     segOn('#mShadeSeg', S.darkVar);
     $('#mShadeSeg').style.display = S.dark?'':'none';
@@ -10976,6 +11320,94 @@ window.addEventListener('resize', function(){
     [penBar,hlBar,erBar].forEach(function(b){ b.classList.remove('show'); });
     sizePopClose();
   }
+  window.rdBarsClose = barsClose;
+
+  /* ══ the funnel's reading line ═══════════════════════════════════════════
+     Position is kept as a fraction of the viewport so it survives rotation and
+     a change of zoom. Drag tracks the finger 1:1 from wherever it was grabbed
+     — no jump to centre — and holding the grip opens the fade control, because
+     the thing you want to adjust is the thing you are already touching. */
+  const fnRule = $('#fnRule'), fnGrip = $('#fnRuleGrip'), fnOp = $('#fnRuleOp'), fnOpR = $('#fnRuleOpR');
+  let fnDrag = null, fnHoldT = null;
+
+  function fnRulePlace(){
+    const top = Math.round(clamp(S.ruleY, 0.04, 0.96) * innerHeight);
+    fnRule.style.top = top + 'px';
+  }
+  function fnRuleApply(){
+    document.documentElement.style.setProperty('--fnrule-o', String(clamp(S.ruleO, 0.1, 1)));
+    fnRulePlace();
+  }
+  function fnRuleSync(){
+    document.body.classList.toggle('funnelrule', !!FN.on);
+    if(!FN.on){ fnOp.classList.remove('show'); }
+    else fnRuleApply();
+  }
+  window.rdRuleSync = fnRuleSync;
+
+  function fnOpOpen(){
+    const g = fnGrip.getBoundingClientRect();
+    fnOp.style.visibility='hidden'; fnOp.classList.add('show');
+    const w = fnOp.offsetWidth, h = fnOp.offsetHeight;
+    fnOp.style.left = Math.round(clamp(g.left + g.width/2 - w/2, 10, innerWidth - w - 10)) + 'px';
+    fnOp.style.top  = Math.round(clamp(g.top - h - 10, 10, innerHeight - h - 10)) + 'px';
+    fnOp.style.visibility='';
+    fnOpR.value = Math.round(clamp(S.ruleO, .1, 1) * 100);
+    try{ if(navigator.vibrate) navigator.vibrate(8); }catch(e){}
+  }
+  fnGrip.addEventListener('pointerdown', function(e){
+    fnDrag = { id:e.pointerId, dy:e.clientY - (clamp(S.ruleY,0.04,0.96) * innerHeight), moved:false };
+    try{ fnGrip.setPointerCapture(e.pointerId); }catch(err){}
+    fnRule.classList.add('grabbing');
+    clearTimeout(fnHoldT);
+    fnHoldT = setTimeout(function(){ fnHoldT=null; if(fnDrag && !fnDrag.moved) fnOpOpen(); }, 450);
+    e.preventDefault(); e.stopPropagation();
+  });
+  fnGrip.addEventListener('pointermove', function(e){
+    if(!fnDrag || e.pointerId !== fnDrag.id) return;
+    /* respect where it was grabbed, so the rule does not jump under the finger */
+    const y = e.clientY - fnDrag.dy;
+    if(Math.abs(y - clamp(S.ruleY,0.04,0.96)*innerHeight) > 3){
+      fnDrag.moved = true; clearTimeout(fnHoldT); fnHoldT=null;
+    }
+    S.ruleY = clamp(y / innerHeight, 0.04, 0.96);
+    fnRulePlace();
+    e.preventDefault();
+  });
+  function fnDragEnd(e){
+    if(!fnDrag || e.pointerId !== fnDrag.id) return;
+    clearTimeout(fnHoldT); fnHoldT=null;
+    fnDrag = null; fnRule.classList.remove('grabbing');
+    rdSave();
+  }
+  fnGrip.addEventListener('pointerup', fnDragEnd);
+  fnGrip.addEventListener('pointercancel', fnDragEnd);
+  fnOpR.addEventListener('input', function(e){
+    S.ruleO = clamp(+e.target.value / 100, 0.1, 1);
+    fnRuleApply();
+  });
+  fnOpR.addEventListener('change', function(){ rdSave(); });
+  document.addEventListener('pointerdown', function(e){
+    if(!fnOp.classList.contains('show')) return;
+    const el = e.target;
+    if(el instanceof Element && (el.closest('.fnruleop') || el === fnGrip)) return;
+    fnOp.classList.remove('show');
+  }, true);
+  addEventListener('resize', function(){ if(FN.on) fnRulePlace(); });
+
+  /* "The thought and the gesture happen in parallel." A flyout that can only be
+     dismissed by going back to the button that opened it makes you spend a whole
+     gesture on housekeeping. Touch anywhere else and it closes — on pointerDOWN,
+     so it is gone before the finger lifts — and the same touch still reaches
+     whatever it landed on: this listener observes, it never preventDefaults and
+     it never stops propagation. */
+  document.addEventListener('pointerdown', function(e){
+    if(!document.querySelector('.toolbar.show') && !pop.classList.contains('show')) return;
+    const el = e.target;
+    if(!(el instanceof Element)) { barsClose(); return; }
+    if(el.closest('.toolbar') || el.closest('.sizepop') || el.closest('.rd-tools')) return;
+    barsClose();
+  }, true);
   function toolSync(){
     $('#rdPenBtn').classList.toggle('on', S.tool==='pen');
     $('#rdHlBtn').classList.toggle('on',  S.tool==='hl');
@@ -11044,28 +11476,18 @@ window.addEventListener('resize', function(){
   function nibSync(){
     $$('#penBar .nib').forEach(function(b){ b.classList.toggle('on', Math.abs(+b.getAttribute('data-pw')-S.penW)<0.05); });
     const ps=$('#penSizeBtn'); if(ps) ps.textContent = S.penW.toFixed(1)+' mm';
-    const es=$('#erSizeBtn');  if(es) es.textContent = S.eraseMM+' mm';
-    const em=$('#erModeBtn');  if(em) em.textContent = S.eraseMode==='stroke' ? 'Whole strokes' : 'By area';
-    const host=$('#erPresets');
-    if(host && !host.dataset.built){
-      host.dataset.built='1';
-      [2,5,20].forEach(function(v){
-        const b=elx('button','tbtn'); b.textContent=v+' mm'; b.setAttribute('data-mm',v);
-        b.onclick=function(){ S.eraseMM=v; ringSize(); nibSync(); rdSave(); };
-        host.appendChild(b);
-      });
-    }
-    if(host) $$('#erPresets .tbtn').forEach(function(b){ b.classList.toggle('on', +b.getAttribute('data-mm')===S.eraseMM); });
+    const er=$('#erRange'); if(er && document.activeElement!==er) er.value = S.eraseMM;
+    const ev=$('#erVal');   if(ev) ev.innerHTML = S.eraseMM+'&nbsp;mm';
   }
   $('#penBar').addEventListener('click', function(e){
     const n=e.target.closest('.nib'); if(!n) return;
     S.penW=+n.getAttribute('data-pw'); nibSync(); rdSave();
   });
   $('#penSizeBtn').onclick = function(){ openSizePop(this,'pen'); };
-  $('#erSizeBtn').onclick  = function(){ openSizePop(this,'erase'); };
-  $('#erModeBtn').onclick  = function(){
-    S.eraseMode = (S.eraseMode==='stroke')?'area':'stroke'; nibSync(); rdSave();
-  };
+  $('#erRange').addEventListener('input', function(e){
+    S.eraseMM = Math.max(2, Math.min(20, Math.round(+e.target.value)));
+    ringSize(); nibSync(); rdSave();
+  });
   $('#undoBtn2').onclick = function(){ tap('#undoBtn'); };
   function clearPage(){
     const n=(S.strokes[S.page]||[]).length;
