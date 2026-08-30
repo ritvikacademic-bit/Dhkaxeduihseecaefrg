@@ -1324,6 +1324,63 @@
   body.dark .syncfield input[type=text]{ background:#1c1c1e; border-color:#3a3a3c; color:#e6e5e1; }
   body.dark .syncseg button{ background:#1c1c1e; border-color:#3a3a3c; color:#e6e5e1; }
 
+  /* ---- sync panel buttons -------------------------------------------------
+     .sheet .row button sets no colour, so a secondary action inherited whatever
+     was around it and read as disabled. Every state is now explicit, and an
+     actually-disabled control is visibly different from an enabled one. */
+  #syncSheet .row button,
+  #syncSheet .syncpeer button{
+    color:var(--ink);
+    background:var(--paper);
+    border:1px solid var(--line-2);
+    font-weight:500;
+    min-height:44px;                      /* same target size on tablet */
+    transition:background .12s, border-color .12s, color .12s;
+  }
+  #syncSheet .row button:hover:not(:disabled),
+  #syncSheet .syncpeer button:hover:not(:disabled){
+    background:var(--wash); border-color:var(--ink-faint);
+  }
+  #syncSheet .row button:active:not(:disabled){ background:var(--line); }
+  #syncSheet .row button:focus-visible,
+  #syncSheet .syncseg button:focus-visible,
+  #syncSheet input:focus-visible{
+    outline:2px solid var(--brand); outline-offset:2px;
+  }
+  #syncSheet .row button.primary{
+    background:var(--brand); color:#fff; border-color:var(--brand); font-weight:600;
+  }
+  #syncSheet .row button.primary:hover:not(:disabled){ background:#001a52; border-color:#001a52; }
+  #syncSheet .row button:disabled,
+  #syncSheet .syncseg button:disabled{
+    color:var(--ink-faint); background:var(--wash);
+    border-color:var(--line); cursor:not-allowed; opacity:1;
+  }
+  #syncSheet .mghost{ color:var(--ink-soft); background:transparent; border:1px solid transparent; }
+  #syncSheet .mghost:hover{ color:var(--ink); border-color:var(--line-2); }
+
+  body.dark #syncSheet .row button,
+  body.dark #syncSheet .syncpeer button{ background:#1c1c1e; border-color:#4a4a4d; color:#f0efeb; }
+  body.dark #syncSheet .row button:hover:not(:disabled){ background:#2a2a2c; border-color:#6a6a6d; }
+  body.dark #syncSheet .row button.primary{ background:#5b7fd6; border-color:#5b7fd6; color:#0b0b0c; }
+  body.dark #syncSheet .row button:disabled{ color:#6a6a6d; background:#212123; border-color:#333; }
+  body.dark #syncSheet .box{ background:#151516; color:#f0efeb; }
+  body.dark #syncSheet .syncstate{ color:#f5f4f0; }
+  body.dark #syncSheet .mghost{ color:#c9c8c4; }
+  body.dark #syncSheet .syncseg button{ background:#1c1c1e; border-color:#4a4a4d; color:#f0efeb; }
+  body.dark #syncSheet .syncseg button.on{ background:#5b7fd6; border-color:#7d9ce4; color:#0b0b0c; font-weight:600; }
+  body.dark #syncSheet .syncfield small,
+  body.dark #syncSheet .syncview small{ color:#9b998f; }
+  body.dark #syncSheet .syncpeer .wh{ color:#9b998f; }
+  body.dark #syncSheet h3{ color:#f5f4f0; }
+  body.dark #syncSheet p{ color:#a6a49e; }
+
+  @media (max-width:700px){
+    #syncSheet .row{ gap:10px; }
+    #syncSheet .row button{ flex:1 1 46%; min-height:48px; font-size:0.9375rem; }
+    #syncSheet .row button#syncClose{ flex:1 1 100%; }
+  }
+
 </style>
 
 <!-- ===================== HOME · reading library ===================== -->
@@ -1492,7 +1549,7 @@
 <div id="backdrop" class="backdrop"></div>
 <button id="peekBtn" class="peek" aria-label="Show controls">controls ⌄</button>
 <!-- §29: the only thing sync ever puts on the page, and one tap turns it off -->
-<button id="followPill" class="followpill" title="Stop following"><span class="fdot"></span><span id="followPillText">Following</span></button>
+<button id="followPill" class="followpill" title="Two-Way Sync"><span class="fdot"></span><span id="followPillText">Live Mirror</span></button>
 <button id="focusBtn" class="focusbtn" aria-pressed="false" title="Hide everything but the page">Focused Reading</button>
 <button id="bionicBtn" class="bionicbtn" aria-pressed="false" title="Bionic reading"><span><b>B</b><i>b</i></span></button>
 <button id="infBtn" class="infbtn" aria-pressed="false" title="Infinite scroll">∞</button>
@@ -3966,12 +4023,48 @@ async function ingest(file){
     delete pg.lines;
   });
 
-  const id = 'bk_'+file.name.replace(/\W+/g,'_')+'_'+file.size;
+  /* Identity is settled BEFORE anything is written.
+
+     A backup restored without its files leaves cards carrying a fingerprint but
+     no bytes and no page map. Re-adding the file must land on that ORIGINAL
+     book id, or the reader ends up with two entries for one document and the
+     restored highlights, ink, stats and position stay attached to the wrong
+     one. Resolving the id here means the duplicate is never created, rather
+     than being created and merged away afterwards. */
+  const naturalId = 'bk_'+file.name.replace(/\W+/g,'_')+'_'+file.size;
+  const NB = window.NBSync;
+  let fp = '';
+  try{
+    if(NB && NB.FP) fp = await new Promise(function(res){ NB.FP.full(keep, res); });
+  }catch(e){ fp = ''; }
+  let priorCard = null, id = naturalId;
+  if(fp && NB){
+    const boundId = NB.fpxGet(fp);
+    if(boundId && boundId !== naturalId){
+      try{ priorCard = await store.get('card:'+boundId); }catch(e){ priorCard = null; }
+      if(priorCard){
+        id = boundId;
+        toast('Reattached to “' + (priorCard.title || priorCard.name || 'your book') + '”.');
+      }
+    }
+    if(!priorCard){
+      try{ priorCard = await store.get('card:'+naturalId); }catch(e){ priorCard = null; }
+    }
+  }
+
   const total = pages.reduce(function(n,p){ return n + p.words.filter(function(w){return !w.skip;}).length; }, 0);
-  const bk = { id:id, name:file.name, doc:doc, numPages:doc.numPages, pages:pages, totalWords:total };
+  const bk = { id:id, name:file.name, doc:doc, numPages:doc.numPages, pages:pages, totalWords:total, fp:fp };
 
   const existing = S.library.filter(function(b){ return b.id===id; })[0];
-  if(existing){ Object.assign(existing, bk); }
+  if(existing){
+    /* Merge, never assign: a restored entry already carries the cover, title,
+       author, genre and done-state that must survive re-adding the file. */
+    const keepFields = { title:existing.title, author:existing.author, year:existing.year,
+                         genre:existing.genre, cover:existing.cover, done:existing.done,
+                         pos:existing.pos };
+    Object.assign(existing, bk);
+    for(const k in keepFields) if(keepFields[k] != null && existing[k] == null) existing[k] = keepFields[k];
+  }
   else S.library.push(bk);
 
   const realTitle = await realTitleOf(doc, pages, file.name);
@@ -3991,10 +4084,19 @@ async function ingest(file){
     store.set('pg:'+id+':'+i, pages[i]);
     if(i % 24 === 23) await yieldToUI();
   }
-  store.set('card:'+id, { name:file.name, title:realTitle, numPages:doc.numPages,
-                          totalWords:total, genre:genre, paged:true, scanned: total<12,
-                          author:bib.author, year:bib.year,
-                          kind: isEpubBook ? 'epub' : '' });
+  /* Anything the restored card already knew wins over what we just derived —
+     a title you corrected, a cover you chose, the genre you filed it under. */
+  const card = { name:file.name, title:realTitle, numPages:doc.numPages,
+                 totalWords:total, genre:genre, paged:true, scanned: total<12,
+                 author:bib.author, year:bib.year, fp:fp,
+                 kind: isEpubBook ? 'epub' : '' };
+  if(priorCard){
+    ['title','author','year','genre','cover','done','custom','shelf'].forEach(function(k){
+      if(priorCard[k] != null && priorCard[k] !== '') card[k] = priorCard[k];
+    });
+  }
+  store.set('card:'+id, card);
+  if(fp && NB) NB.fpxSet(fp, id);
   if(isEpubBook){
     bk.kind = 'epub';
     /* Where the pictures sit on each page. Tiny next to the word map, and it
@@ -12426,13 +12528,41 @@ var NBFP = (function(){
     sha256Idle(buf, onDone);
   }
 
-  /* A cheap check that both devices really did derive the same word list from
-     the same bytes. Highlights and TTS anchors are indices into that list, so
-     if this ever differs they must not be applied (audit R2). */
-  function ribbonSig(bk){
+  /* Two signatures, because they answer different questions.
+
+     wordSig  — is the WORD SEQUENCE the same on both devices? Highlights and
+                TTS anchors are indices into that sequence, so this is what
+                decides whether an anchor may be applied. Deliberately says
+                nothing about pages: an EPUB reflows to a different page count
+                on a different screen, but epLayout walks the spine in order
+                and epOrder returns its input unchanged, so the sequence itself
+                is identical. That is what makes EPUB anchors portable.
+
+     pageSig  — do the two devices also agree on pagination? Only used to
+                decide whether a bare page number is meaningful. For PDF it
+                matches; for EPUB it usually will not, and that is fine. */
+  function wordSig(bk){
+    if(!bk || !bk.pages) return '';
+    var h = 2166136261, total = 0, i, j, texts = [];
+    for(i=0;i<bk.pages.length;i++){
+      var ws = (bk.pages[i] && bk.pages[i].words) || [];
+      for(j=0;j<ws.length;j++){ texts.push(ws[j].text || ''); total++; }
+    }
+    h = (h ^ total) >>> 0;
+    /* sample at a fixed stride so the cost does not grow with the book */
+    var stride = Math.max(1, Math.floor(total / 512));
+    for(i=0;i<total;i+=stride){
+      var t = texts[i];
+      for(j=0;j<t.length;j++){
+        h ^= t.charCodeAt(j);
+        h = (h + ((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24))) >>> 0;
+      }
+    }
+    return (h>>>0).toString(36) + '.' + total;
+  }
+  function pageSig(bk){
     if(!bk || !bk.pages) return '';
     var h = 2166136261, i, c;
-    h = (h ^ (bk.numPages|0)) >>> 0;
     for(i=0;i<bk.pages.length;i++){
       c = (bk.pages[i] && bk.pages[i].words) ? bk.pages[i].words.length : 0;
       h ^= c;
@@ -12440,8 +12570,11 @@ var NBFP = (function(){
     }
     return (h>>>0).toString(36) + '.' + (bk.numPages|0);
   }
+  /* kept under its old name so nothing else has to change */
+  function ribbonSig(bk){ return pageSig(bk); }
 
-  return { provisional:provisional, full:full, ribbonSig:ribbonSig };
+  return { provisional:provisional, full:full,
+           ribbonSig:ribbonSig, wordSig:wordSig, pageSig:pageSig };
 })();
 
 /* Fingerprint index: fp -> local bk.id. Kept in the localStorage mirror so
@@ -12456,6 +12589,28 @@ function fpxSet(fp, id){
 }
 function fpxGet(fp){ return fp ? (fpxAll()[fp] || null) : null; }
 
+/* Restore writes card records straight into IndexedDB and never touches this
+   index, so after a backup restore the index knows nothing about the books
+   that came back — and re-adding their file would mint a second book instead
+   of rebinding to the original. Rebuild from the cards once at startup, and
+   again after a restore. One key listing, not a continuous scan. */
+var fpxRebuilding = false;
+function fpxRebuild(){
+  if(fpxRebuilding) return Promise.resolve();
+  fpxRebuilding = true;
+  return store.keys().then(function(keys){
+    var cards = (keys || []).filter(function(k){
+      return typeof k === 'string' && k.indexOf('card:') === 0;
+    });
+    return Promise.all(cards.map(function(k){
+      return store.get(k).then(function(c){
+        if(c && c.fp) fpxSet(c.fp, k.slice(5));
+      }).catch(function(){});
+    }));
+  }).catch(function(){}).then(function(){ fpxRebuilding = false; });
+}
+window.nbFpxRebuild = fpxRebuild;   /* the backup restore calls this when done */
+
 /* Books already in the library when this build first runs get fingerprinted
    quietly, one at a time, only when nothing else is happening. */
 var fpQueue = [], fpBusy = false;
@@ -12468,7 +12623,6 @@ function fpPump(){
   store.get('card:'+id).then(function(card){
     if(!card){ done(); return; }
     if(card.fp && card.fp.indexOf('sha256:') === 0){ fpxSet(card.fp, id); done(); return; }
-    if(card.kind === 'epub'){ done(); return; }          /* not syncable in v1 */
     store.get('bytes:'+id).then(function(bytes){
       if(!bytes){ done(); return; }
       NBFP.full(bytes, function(fp){
@@ -12746,6 +12900,8 @@ var SyncProtocol = {
       deviceId:  DEV ? DEV.deviceId  : '',
       sequence:  ++SyncProtocol.seq,
       epoch:     SyncProtocol.epoch,
+      intent:    SM.intent,
+      intentDev: SM.intentDev || SM.deviceId(),
       sentAt:    nowMs(),
       type: type,
       payload: payload || {}
@@ -12985,6 +13141,11 @@ var SyncStateAdapter = {
     return {
       fp: S.book.fp || '',
       ribbonSig: S.book.ribbonSig || '',
+      wordSig: S.book.wordSig || '',
+      pageSig: S.book.pageSig || '',
+      /* meaningful even when two devices paginate the same book differently */
+      globalProgress: (S.ribbon && S.ribbon.length && g >= 0)
+                        ? (g / (S.ribbon.length - 1 || 1)) : 0,
       name: clean(bookTitle(S.book), 80),
       page: S.page|0,
       numPages: S.book.numPages|0,
@@ -13019,6 +13180,97 @@ var SyncStateAdapter = {
     }catch(e){ return 0; }
   },
 
+  /* ── reader modes ────────────────────────────────────────────────────────
+     Everything that changes how the page reads, in one payload. Voice and
+     audio hardware are deliberately absent: those belong to the device, not
+     to the session (§17.4, §17.11). */
+  modes: function(){
+    return {
+      inf:      !!(typeof IS !== 'undefined' && IS.on),
+      funnel:   !!(typeof FN !== 'undefined' && FN.on),
+      fitText:  !!(typeof FT !== 'undefined' && FT.on),
+      zoom:     num(S.zoom, 0.1, 12, 1),
+      focus:    !!S.focusRead,
+      bionic:   !!S.bionic,
+      tele:     !!S.tele,
+      teleLvl:  clean(S.teleLvl, 24),
+      sr:       !!S.sr,
+      wpm:      num(S.wpm, 60, 900, 300),
+      srBreak:  clean(S.srBreak, 24),
+      dark:     !!S.dark,
+      darkVar:  clean(S.darkVar, 24),
+      hlStyle:  clean(S.hlStyle, 16),
+      rate:     num(S.rate, 0.5, 3, 1)
+    };
+  },
+
+  applyModes: function(p){
+    if(!p) return;
+    var call = function(fn, on, quiet){
+      try{ if(typeof fn === 'function') return fn(on, quiet); }catch(e){}
+    };
+
+    /* Layout modes go through the reader's own setters, which already take a
+       `quiet` argument precisely so state can be restored without re-firing
+       everything downstream. */
+    if(typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel)
+      call(typeof setFunnel !== 'undefined' && setFunnel, p.funnel, true);
+    if(typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf)
+      call(typeof setInfinite !== 'undefined' && setInfinite, p.inf, true);
+    if(typeof p.fitText === 'boolean' && typeof FT !== 'undefined' && !!FT.on !== p.fitText)
+      call(typeof setFitText !== 'undefined' && setFitText, p.fitText, true);
+
+    if(typeof p.zoom === 'number' && Math.abs(num(p.zoom,0.1,12,1) - S.zoom) > 0.001){
+      S.zoom = num(p.zoom, 0.1, 12, 1);
+      try{
+        if(typeof IS !== 'undefined' && IS.on) isLayout(true);
+        else renderPage(S.page);
+      }catch(e){}
+    }
+
+    if(typeof p.focus === 'boolean' && !!S.focusRead !== p.focus)
+      call(typeof setFocusRead !== 'undefined' && setFocusRead, p.focus);
+    if(typeof p.bionic === 'boolean' && !!S.bionic !== p.bionic)
+      call(typeof setBionic !== 'undefined' && setBionic, p.bionic);
+    if(typeof p.dark === 'boolean' && !!S.dark !== p.dark)
+      call(typeof setDark !== 'undefined' && setDark, p.dark);
+    if(p.darkVar && S.darkVar !== p.darkVar)
+      call(typeof setDarkVar !== 'undefined' && setDarkVar, clean(p.darkVar, 24));
+
+    /* Telegraph rebuilds the ribbon, so only touch it on a real change. */
+    if(typeof p.tele === 'boolean' && !!S.tele !== p.tele){
+      S.tele = p.tele;
+      if(p.teleLvl) S.teleLvl = clean(p.teleLvl, 24);
+      try{ if(typeof rebuildForTelegraph === 'function') rebuildForTelegraph(); }catch(e){}
+    }else if(p.teleLvl && S.teleLvl !== p.teleLvl){
+      S.teleLvl = clean(p.teleLvl, 24);
+      try{ if(S.tele && typeof rebuildForTelegraph === 'function') rebuildForTelegraph(); }catch(e){}
+    }
+
+    if(typeof p.wpm === 'number') S.wpm = num(p.wpm, 60, 900, 300);
+    if(p.srBreak) S.srBreak = clean(p.srBreak, 24);
+    if(typeof p.sr === 'boolean' && !!S.sr !== p.sr){
+      S.sr = p.sr;
+      try{
+        if(!p.sr && typeof srStop === 'function') srStop();
+        var b = el('srBtn'); if(b) b.classList.toggle('on', !!S.sr);
+      }catch(e){}
+    }
+
+    if(p.hlStyle && S.hlStyle !== p.hlStyle){
+      S.hlStyle = clean(p.hlStyle, 16);
+      try{ if(typeof paintMarks === 'function') paintMarks(); }catch(e){}
+    }
+    if(typeof p.rate === 'number') S.rate = num(p.rate, 0.5, 3, 1);
+
+    /* Persist through the reader's own writer so a reload keeps the mirrored
+       state, and refresh whatever chrome reflects it. */
+    try{ if(typeof saveSettings === 'function') saveSettings(); }catch(e){}
+    try{ if(typeof syncInfBtn === 'function') syncInfBtn(); }catch(e){}
+    try{ if(typeof syncFunnelBtn === 'function') syncFunnelBtn(); }catch(e){}
+    try{ if(typeof syncBionicBtn === 'function') syncBionicBtn(); }catch(e){}
+    try{ if(window.rdSync) window.rdSync(); }catch(e){}
+  },
   /* §7 restore order: word anchor, then page fraction, then bare page. */
   applyPosition: function(p){
     if(!S.book || !p) return;
@@ -13047,16 +13299,40 @@ var SyncStateAdapter = {
 
   place: function(p){
     if(!S.book || !p) return;
-    var sigOk = !p.ribbonSig || !S.book.ribbonSig || p.ribbonSig === S.book.ribbonSig;
-    var page = num(p.page, 0, (S.book.numPages||1)-1, 0)|0;
-    var g = (typeof p.wordAnchor === 'number') ? p.wordAnchor|0 : -1;
 
-    if(sigOk && g >= 0 && S.ribbon && S.ribbon[g]){
+    /* Restore order (§7), with one correction that matters for EPUB:
+
+       when a word anchor is usable we derive the PAGE from it locally rather
+       than trusting the remote page number. Two devices reflow an EPUB to
+       different page counts, so "page 12" is not the same place on both — but
+       word 4,812 is, because epLayout walks the spine in order. Deriving the
+       page locally is therefore both more correct and what lets EPUB into
+       Live Mirror at all. */
+    var wordsMatch = !p.wordSig || !S.book.wordSig || p.wordSig === S.book.wordSig;
+    var g = (typeof p.wordAnchor === 'number') ? p.wordAnchor | 0 : -1;
+
+    if(wordsMatch && g >= 0 && S.ribbon && S.ribbon[g]){
       try{ goToWord(g); return; }catch(e){}
     }
-    SyncStateAdapter.goToPageFraction(page, num(p.pageProgress, 0, 1, 0));
-  },
 
+    /* No usable anchor. If the two devices also paginate alike, a page number
+       is meaningful; otherwise fall back to a fraction of the whole book,
+       which is the only thing that still means something. */
+    var pagesMatch = !p.pageSig || !S.book.pageSig || p.pageSig === S.book.pageSig;
+    var last = (S.book.numPages || 1) - 1;
+
+    if(pagesMatch){
+      SyncStateAdapter.goToPageFraction(num(p.page, 0, last, 0) | 0,
+                                        num(p.pageProgress, 0, 1, 0));
+      return;
+    }
+    if(typeof p.globalProgress === 'number' && S.ribbon && S.ribbon.length){
+      var gi = Math.round(num(p.globalProgress, 0, 1, 0) * (S.ribbon.length - 1));
+      if(S.ribbon[gi]){ try{ goToWord(gi); return; }catch(e){} }
+    }
+    SyncStateAdapter.goToPageFraction(num(p.page, 0, last, 0) | 0,
+                                      num(p.pageProgress, 0, 1, 0));
+  },
   goToPageFraction: function(page, frac){
     try{
       var viewer = el('viewer');
@@ -13106,6 +13382,70 @@ var SM = {
   lastRemotePos: null,
 
   deviceId: function(){ return devLoad().deviceId; },
+
+  /* ── LIVE MIRROR ───────────────────────────────────────────────────────
+     Both devices apply each other's state continuously; there is no Follow.
+     That means every device is now a listener, so "who wins" has to be
+     decided without anyone being in charge.
+
+     Wall-clock timestamps cannot do it — two devices on a LAN are not clock
+     synchronised, and a laptop whose clock is a minute ahead would win every
+     race for ever. So deliberate user actions carry a Lamport counter instead:
+     a plain integer bumped on each genuine local action, with the deviceId as
+     the tiebreak for the genuinely simultaneous case. Receiving a higher
+     counter raises ours to match, so the two converge on one order that both
+     devices compute identically.
+
+     hush() stops an echo; intent stops a fight. Both are needed, and a real
+     local action must always be able to interrupt a hush — otherwise fast
+     back-and-forth swallows real input and the reader feels dead. */
+  intent: 0,
+  intentDev: '',
+
+  bumpIntent: function(){
+    this.intent++;
+    this.intentDev = this.deviceId();
+    /* a deliberate action outranks whatever we were quietly applying */
+    this.quietUntil = 0;
+    this.saveIntent();
+    return this.intent;
+  },
+  /* Survive a reload: an in-memory counter would reset to zero and the device
+     would come back unable to outrank its peer. Written through the mirror,
+     which is synchronous, so a swipe-to-kill cannot lose it. */
+  saveIntent: function(){
+    try{ mirror.set('nbsync.intent', { n:this.intent, dev:this.intentDev }); }catch(e){}
+  },
+  loadIntent: function(){
+    try{
+      var v = mirror.get('nbsync.intent');
+      if(v && typeof v.n === 'number'){ this.intent = v.n; this.intentDev = v.dev || ''; }
+    }catch(e){}
+  },
+
+  /* strictly-greater on (n, deviceId); ties broken consistently on both sides */
+  intentNewer: function(n, dev){
+    n = n | 0;
+    if(n > this.intent) return true;
+    if(n < this.intent) return false;
+    if(!dev) return false;
+    /* Equal counter, same author: this is the SAME deliberate action sending a
+       refined value — a page turn emits once when the intent is claimed and
+       again once renderPage has actually moved. Rejecting it would freeze the
+       mirror one step behind. Equal counter from a DIFFERENT device is a real
+       tie, and that is what the deviceId comparison is for. */
+    var mine = this.intentDev || this.deviceId();
+    if(dev === mine) return true;
+    return dev > mine;
+  },
+
+  adoptIntent: function(n, dev){
+    n = n | 0;
+    var before = this.intent;
+    if(n > this.intent){ this.intent = n; this.intentDev = dev || ''; }
+    else if(n === this.intent && dev && dev > (this.intentDev || '')) this.intentDev = dev;
+    if(this.intent !== before) this.saveIntent();
+  },
 
   /* ---- duplicate + ordering guards (§11, §31) --------------------------- */
   isDuplicate: function(m){
@@ -13159,7 +13499,12 @@ var SM = {
   posPending: null, posTimer: null,
   sendPosition: function(immediate){
     if(this.muted() || !this.connected || !S.book) return;
-    if(!S.book.fp || S.book.kind === 'epub') return;
+    /* Only the device that actually performed the latest deliberate action
+       broadcasts position. A device that merely ADOPTED the peer's counter is
+       mirroring, not driving, and has nothing new to say — letting it speak at
+       the same counter is what made the two snap each other backwards. */
+    if(this.intentDev && this.intentDev !== this.deviceId()) return;
+    if(!S.book.fp) return;
     /* §5 — a provisional hash is a local placeholder; only the real SHA-256
        is allowed to assert that two devices hold the same document */
     if(S.book.fp.indexOf('sha256:') !== 0) return;
@@ -13186,7 +13531,7 @@ var SM = {
   },
 
   sendDocument: function(){
-    if(!S.book || !S.book.fp || S.book.kind === 'epub') return;
+    if(!S.book || !S.book.fp) return;
     this.emit('reader.document', {
       fp: S.book.fp,
       ribbonSig: S.book.ribbonSig || '',
@@ -13299,6 +13644,13 @@ var SM = {
         };
       }
       SM.electAudioOwner();                 /* §17.7 — never two narrators */
+      /* Publish our own full state so a peer that was asleep, closed or
+         reloaded converges immediately rather than waiting for the next
+         thing the user happens to do. */
+      setTimeout(function(){
+        if(!SM.connected) return;
+        if(S.book){ SM.sendDocument(); SM.sendModes(); }
+      }, 400);
       SM.tx.flush();
       /* §15 — ask only for what we missed, never for everything */
       SM.emit('sync.requestMissing', { sinceRev: SM.knownRev() });
@@ -13337,6 +13689,13 @@ var SM = {
       return;
     }
 
+    /* Converge the Lamport counter on every envelope, whatever its type.
+       A reloaded device starts at zero, and without this it would be
+       outranked by its peer and unable to take control at all — which is
+       exactly the opposite of what Live Mirror promises. Adopting here does
+       not apply the event; the per-type intent checks still decide that. */
+    if(typeof m.intent === 'number') SM.adoptIntent(m.intent, m.intentDev);
+
     if(SM.isDuplicate(m)) return;                       /* §11 / test O */
     if(m.rev) SM.noteRev(m.rev);
     SM.dispatch(m, false);
@@ -13373,9 +13732,21 @@ var SM = {
             try{ play(); }catch(e){}
           });
         }
-        if(p.online === false && SM.following === did) SM.stopFollowing();
+
       }
       SM.electAudioOwner();                 /* §17.7 — converge on one narrator */
+      /* A peer that just appeared — first connect, a reload, waking from
+         sleep — has no idea where we are. Publishing our own state when it
+         arrives is the other half of convergence: without it the newcomer
+         sits on its own last-saved position until somebody happens to touch
+         something. */
+      if(p.online !== false && S.book){
+        setTimeout(function(){
+          if(!SM.connected) return;
+          SM.sendDocument();
+          SM.sendModes();
+        }, 500);
+      }
       /* the code has done its job the moment the partner appears */
       if(p.online !== false && el('syncPairView').classList.contains('show')){
         SyncUI.showView(null);
@@ -13395,17 +13766,34 @@ var SM = {
     if(t === 'reader.position'){
       SM.rememberWhere(m.deviceId, p);
       SM.lastRemotePos = p;
-      /* §31 — an old packet must never move the reader backwards */
+      /* an old packet must never move the reader backwards */
       if(SM.isStale(m)) return;
-      /* mirror TTS position even when not following, so the word highlight
-         keeps up with a remote narrator (§17.10) */
+      /* the word highlight tracks a remote narrator regardless of who is driving */
       if(p.tts) SM.applyRemoteTts(p.tts, m.deviceId);
-      if(SM.following && m.deviceId === SM.following && !replay){
-        if(!SM.docMatches(p.fp)){ SM.onRemoteDocument(p, m.deviceId); return; }
-        SM.applying++;
-        try{ SyncStateAdapter.applyPosition(p); }
-        finally{ SM.applying--; SM.hush(700); }
-      }
+      if(replay){ SyncUI.render(); return; }
+
+      /* Live Mirror: apply unconditionally — but only if the other device's
+         deliberate action really is newer than ours. This is what stops the
+         two readers fighting when both are touched at once, and it is checked
+         before anything is applied. */
+      if(!SM.intentNewer(m.intent, m.intentDev)){ SyncUI.render(); return; }
+      SM.adoptIntent(m.intent, m.intentDev);
+
+      if(!SM.docMatches(p.fp)){ SM.onRemoteDocument(p, m.deviceId); return; }
+      SM.applying++;
+      try{ SyncStateAdapter.applyPosition(p); }
+      finally{ SM.applying--; SM.hush(500); }
+      SyncUI.render();
+      return;
+    }
+
+    if(t === 'reader.mode'){
+      if(replay) return;
+      if(!SM.intentNewer(m.intent, m.intentDev)) return;
+      SM.adoptIntent(m.intent, m.intentDev);
+      SM.applying++;
+      try{ SyncStateAdapter.applyModes(p); }
+      finally{ SM.applying--; SM.hush(600); }
       SyncUI.render();
       return;
     }
@@ -13476,11 +13864,11 @@ var SM = {
       var bk = (S.library||[]).filter(function(b){ return b.id === localId; })[0];
       if(bk){
         SM.missingDoc = null;
-        if(SM.following === devId){
-          SM.applying++;
-          try{ openBook(bk); }catch(e){}
-          finally{ SM.applying--; }
-        }
+        /* Live Mirror: the other device changed book, so this one follows —
+           but only when the file is genuinely here. */
+        SM.applying++;
+        try{ openBook(bk); }catch(e){}
+        finally{ SM.applying--; SM.hush(900); }
         return;
       }
     }
@@ -13552,7 +13940,13 @@ var SM = {
   },
 
   /* ---- follow (§9, §10, §29) -------------------------------------------- */
-  startFollowing: function(devId){
+  /* Live Mirror is unconditional, so there is no Follow state to enter or
+     leave. These remain as no-ops because presence handling and the debug
+     panel still reference them. */
+  following: null,
+  startFollowing: function(devId){ return; },
+  stopFollowing: function(){ return; },
+  _legacyStartFollowing: function(devId){
     this.following = devId || null;
     this.emit('follow.set', { navigationLeaderDeviceId: devId || '' });
     SyncUI.render(); SyncUI.pill();
@@ -13564,12 +13958,7 @@ var SM = {
       } finally{ this.applying--; }
     }
   },
-  stopFollowing: function(){
-    if(!this.following) return;
-    this.following = null;
-    this.emit('follow.set', { navigationLeaderDeviceId: '' });
-    SyncUI.render(); SyncUI.pill();
-  },
+  _legacyStopFollowing: function(){ this.following = null; },
 
   /* ---- lifecycle -------------------------------------------------------- */
   paired: function(){ var d = devLoad(); return !!(d.secret && d.sessionId); },
@@ -13634,7 +14023,7 @@ var AnnotationSync = {
      reconnect can replay them (§15, test K) */
   syncable: function(){
     return !!(S.book && S.book.fp && S.book.fp.indexOf('sha256:') === 0 &&
-              S.book.kind !== 'epub');
+              true);
   },
 
   reset: function(){
@@ -14117,7 +14506,9 @@ openBook = function(bk, autoResume){
     SM.restoring = false;
     try{
       if(S.book){
-        S.book.ribbonSig = NBFP.ribbonSig(S.book);
+        S.book.pageSig = NBFP.pageSig(S.book);
+        S.book.wordSig = NBFP.wordSig(S.book);
+        S.book.ribbonSig = S.book.pageSig;
         AnnotationSync.adoptAll();
         AnnotationSync.flushPending();
         if(!S.book.fp){
@@ -14177,7 +14568,7 @@ ingest = function(file){
   var r = _ingest.apply(this, arguments);
   return r.then(function(bk){
     try{
-      if(bk && !bk.fp && bk.kind !== 'epub'){
+      if(bk && !bk.fp){
         store.get('bytes:'+bk.id).then(function(bytes){
           if(!bytes) return;
           /* provisional straight away so the book is usable, real hash on idle */
@@ -14197,25 +14588,151 @@ ingest = function(file){
   });
 };
 
-/* §29 — deliberate local navigation quietly ends follow mode rather than
-   fighting the person holding the device */
-function localNav(){
-  if(SM.following && SM.applying === 0){
-    SM.stopFollowing();
-    toast('Stopped following — you took over.');
-  }
+/* ── LIVE MIRROR: deliberate local actions ───────────────────────────────
+   A remote update is applied inside SM.applying, so it never reaches these.
+   Anything that does is the person actually holding this device, and it takes
+   precedence over whatever the other one is doing.
+
+   These are explicit wrappers rather than a loop over names: this block runs
+   in strict mode, where eval cannot assign to an outer binding. */
+function nbAct(){
+  if(SM.applying > 0 || SM.restoring) return;
+  SM.bumpIntent();
 }
-['pgNext','pgPrev'].forEach(function(id){
-  var b = el(id);
-  if(b) b.addEventListener('click', localNav, true);
-});
+function nbNav(){
+  nbAct();
+  if(SM.applying > 0 || SM.restoring) return;
+  /* These run on capture, before the reader's own handler has changed the
+     page, so sending here would ship the page we are leaving. Claim intent
+     now (so this device wins any race) and send on the next frames, by which
+     time renderPage has updated S.page. */
+  requestAnimationFrame(function(){ SM.sendPosition(true); });
+  setTimeout(function(){ SM.sendPosition(true); }, 120);
+}
+
+SM.sendModes = function(){
+  if(this.muted() || !this.connected) return;
+  if(this.intentDev && this.intentDev !== this.deviceId()) return;   /* mirroring, not driving */
+  this.emit('reader.mode', SyncStateAdapter.modes());
+};
+SM.modeTimer = null;
+SM.scheduleModes = function(){
+  var self = this;
+  if(this.muted() || !this.connected) return;
+  clearTimeout(this.modeTimer);
+  this.modeTimer = setTimeout(function(){ self.sendModes(); }, 90);
+};
+
+/* saveSettings is the reader's own choke point for tele / sr / dark / bionic /
+   rate and friends, so one hook there covers most of the mode list. */
+var _saveSettings2 = saveSettings;
+saveSettings = function(){
+  _saveSettings2.apply(this, arguments);
+  if(SM.applying > 0 || SM.restoring) return;
+  SM.scheduleModes();
+};
+
+/* The layout switches are async and bypass saveSettings. Their existing
+   `quiet` argument is exactly the signal that a call came from a restore
+   rather than from a person, so it is honoured here. */
+var _setInfinite = setInfinite;
+setInfinite = function(on, quiet){
+  var r = _setInfinite.apply(this, arguments);
+  if(!quiet && SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+var _setFunnel = setFunnel;
+setFunnel = function(on, quiet){
+  var r = _setFunnel.apply(this, arguments);
+  if(!quiet && SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+var _setFitText = setFitText;
+setFitText = function(on, quiet){
+  var r = _setFitText.apply(this, arguments);
+  if(!quiet && SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+
+var _setBionic = setBionic;
+setBionic = function(on){
+  var r = _setBionic.apply(this, arguments);
+  if(SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+var _setFocusRead = setFocusRead;
+setFocusRead = function(on){
+  var r = _setFocusRead.apply(this, arguments);
+  if(SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+var _setDark = setDark;
+setDark = function(on){
+  var r = _setDark.apply(this, arguments);
+  if(SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+var _setDarkVar = setDarkVar;
+setDarkVar = function(which){
+  var r = _setDarkVar.apply(this, arguments);
+  if(SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+var _rebuildForTelegraph = rebuildForTelegraph;
+rebuildForTelegraph = function(){
+  var r = _rebuildForTelegraph.apply(this, arguments);
+  if(SM.applying === 0 && !SM.restoring){ nbAct(); SM.scheduleModes(); }
+  return r;
+};
+
+/* Opening a different book is the most deliberate action there is. */
+var _openBookMirror = openBook;
+openBook = function(bk, autoResume){
+  if(SM.applying === 0 && !SM.restoring) SM.bumpIntent();
+  return _openBookMirror.apply(this, arguments);
+};
+
+/* The transport buttons already emit; this only claims precedence, so that a
+   tap on this device outranks whatever the other one last did. */
+var _playAct = play;
+play = function(){ if(SM.applying === 0 && !SM.restoring) SM.bumpIntent();
+                   return _playAct.apply(this, arguments); };
+var _pauseAct = pause;
+pause = function(){ if(SM.applying === 0 && !SM.restoring) SM.bumpIntent();
+                    return _pauseAct.apply(this, arguments); };
+var _stopAct = stop;
+stop = function(){ if(SM.applying === 0 && !SM.restoring) SM.bumpIntent();
+                   return _stopAct.apply(this, arguments); };
+var _startAtAct = startAt;
+startAt = function(g){ if(SM.applying === 0 && !SM.restoring) SM.bumpIntent();
+                       return _startAtAct.apply(this, arguments); };
+
+/* Every way a person moves through the book. */
 (function(){
+  ['pgNext','pgPrev','zoomIn','zoomOut'].forEach(function(id){
+    var b = el(id);
+    if(b) b.addEventListener('click', nbNav, true);
+  });
   var v = el('viewer');
-  if(v) v.addEventListener('pointerdown', function(e){
-    if(e.pointerType === 'touch' || e.pointerType === 'pen') localNav();
+  if(v){
+    /* A finger or pen on the page is deliberate. The sync layer's own scroll
+       restoration is not, and is already inside SM.applying. */
+    v.addEventListener('pointerdown', function(e){
+      if(e.pointerType === 'touch' || e.pointerType === 'pen') nbAct();
+    }, true);
+    v.addEventListener('wheel', nbAct, { passive:true, capture:true });
+    v.addEventListener('scroll', function(){ nbAct(); }, { passive:true });
+  }
+  document.addEventListener('keydown', function(e){
+    if(e.code === 'ArrowRight' || e.code === 'ArrowLeft' ||
+       e.code === 'PageUp' || e.code === 'PageDown' ||
+       e.code === 'Home' || e.code === 'End') nbNav();
   }, true);
-  if(v) v.addEventListener('wheel', localNav, { passive:true, capture:true });
 })();
+
+/* §29 — deliberate local navigation quietly ends follow mode rather than
+/* The old Follow-mode navigation guard lived here. Live Mirror replaced it:
+   every deliberate action now claims intent instead of leaving a mode. */
 
 /* §30 — visibility, network and unload */
 document.addEventListener('visibilitychange', function(){
@@ -14315,7 +14832,7 @@ var SyncUI = {
     dot.className = 'sdot';
     if(pairing){ dot.className = 'sdot busy'; setText(st, 'Waiting for the other device…'); }
     else if(!paired){ setText(st, 'Not connected'); }
-    else if(SM.connected && online.length){ dot.className = 'sdot on'; setText(st, peerName + ' ● Connected'); }
+    else if(SM.connected && online.length){ dot.className = 'sdot on'; setText(st, 'Live Mirror · Connected to ' + peerName); }
     else if(SM.connected && !peers.length){ dot.className = 'sdot busy'; setText(st, 'Waiting for the other device…'); }
     else if(SM.connected){ dot.className = 'sdot warn'; setText(st, peerName + ' paired · Offline'); }
     else if(state === 'CONNECTING' || state === 'RECONNECTING'){ dot.className = 'sdot busy'; setText(st, 'Connecting…'); }
@@ -14324,8 +14841,15 @@ var SyncUI = {
     var nd = el('navSyncDot');
     if(nd) nd.className = 'syncdot' + (SM.connected && online.length ? ' on' : (paired ? ' on warn' : ''));
 
+    /* what is actually being mirrored right now */
+    if(SM.connected && S.book){
+      var t = clean(bookTitle(S.book), 44).replace(/s+/g, ' ').trim();
+      if(t.length > 40) t = t.slice(0, 40).replace(/sS*$/, '') + '…';
+      var whereTxt = t + ' · page ' + ((S.page|0) + 1) + ' of ' + (S.book.numPages|0);
+      setText(el('syncBlurb'), whereTxt);
+    }else
     setText(el('syncBlurb'), paired
-      ? 'Page, position, highlights, ink and narration stay in step with ' + peerName + '.'
+      ? 'Both devices are one reader. Anything you do here appears on ' + peerName + ', and the other way round.'
       : 'Keep this device and one other in step — page, position, highlights, ink and narration.');
 
     /* ---- server field is only interesting before pairing ---------------- */
@@ -14410,10 +14934,8 @@ var SyncUI = {
       }));
       acts.appendChild(this.btn('Forget device', '', function(){ self.doForget(); }));
     } else {
-      if(SM.following) acts.appendChild(this.btn('Stop following', 'primary', function(){ SM.stopFollowing(); }));
-      else if(online.length) acts.appendChild(this.btn('Follow ' + peerName, 'primary', function(){
-        SM.startFollowing(online[0].id); self.close();
-      }));
+      /* Live Mirror is always on while connected — there is nothing to turn
+         on, so there is no button for it. */
       acts.appendChild(this.btn('Disconnect', '', function(){ SM.disconnect(); }));
       acts.appendChild(this.btn('Forget device', '', function(){ self.doForget(); }));
     }
@@ -14510,14 +15032,16 @@ var SyncUI = {
     var p = el('followPill');
     if(!p) return;
     var show = false, label = '';
-    if(SM.connected && SM.following){
-      var nm = (SM.peers[SM.following] && SM.peers[SM.following].deviceName) || 'device';
-      label = 'Following ' + nm; show = true;
+    var mirrored = null;
+    for(var pid in SM.peers) if(SM.peers[pid] && SM.peers[pid].online){ mirrored = SM.peers[pid]; break; }
+    if(SM.connected && mirrored){
+      label = 'Live Mirror · ' + (mirrored.deviceName || 'device');
+      show = true;
     } else if(SM.connected && !SM.isAudioOwner()){
       var an = (SM.peers[SM.audioOwner] && SM.peers[SM.audioOwner].deviceName) || 'other device';
       label = 'Audio on ' + an; show = true;
     }
-    p.classList.toggle('audio', !SM.following);
+    p.classList.toggle('audio', !mirrored);
     setText(el('followPillText'), label);
     p.classList.toggle('show', show && !!S.book);
   },
@@ -14534,7 +15058,7 @@ var SyncUI = {
       'sent / recv  ' + s.sent + ' / ' + s.recv + '\n' +
       'queued       ' + s.queued + '\n' +
       'reconnects   ' + s.reconnects + '\n' +
-      'following    ' + (SM.following || '—') + '\n' +
+      'live mirror  ' + (SM.connected ? 'on' : 'off') + '   intent ' + SM.intent + '\n' +
       'audio owner  ' + (SM.audioOwner || 'this device') + '\n' +
       'document     ' + (S.book ? (S.book.fp || 'not fingerprinted yet').slice(0,26) : '—') + '\n' +
       'ribbon sig   ' + (S.book && S.book.ribbonSig ? S.book.ribbonSig : '—') + '\n' +
@@ -14574,8 +15098,8 @@ var SyncUI = {
 
   var pill = el('followPill');
   if(pill) pill.onclick = function(){
-    if(SM.following) SM.stopFollowing();
-    else if(!SM.isAudioOwner()) SM.setAudioOwner(SM.deviceId(), true);
+    /* the pill is a status light, not a switch; tapping it opens the panel */
+    SyncUI.open();
   };
 
   setInterval(function(){
@@ -14587,6 +15111,7 @@ var SyncUI = {
 /* ---- boot --------------------------------------------------------------- */
 (function(){
   devLoad();
+  SM.loadIntent();
 
   /* a pairing link opened on the second device: prefill and go */
   try{
@@ -14629,7 +15154,7 @@ var SyncUI = {
   /* fingerprint whatever is already in the library, gently */
   setTimeout(function(){
     try{
-      (S.library || []).forEach(function(bk){ if(!bk.fp && bk.kind !== 'epub') fpEnqueue(bk); });
+      (S.library || []).forEach(function(bk){ if(!bk.fp) fpEnqueue(bk); });
     }catch(e){}
   }, 4000);
 
@@ -14637,7 +15162,8 @@ var SyncUI = {
 })();
 
 /* a small handle for the diagnostics panel and for testing from the console */
-window.NBSync = { SM:SM, UI:SyncUI, FP:NBFP, QR:NBQR, Ann:AnnotationSync, dev:devLoad };
+window.NBSync = { SM:SM, UI:SyncUI, FP:NBFP, QR:NBQR, Ann:AnnotationSync, dev:devLoad,
+                  fpxGet:fpxGet, fpxSet:fpxSet, fpxRebuild:fpxRebuild };
 
 })();
 
