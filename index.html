@@ -182,6 +182,14 @@
               box-shadow:0 1px 0 var(--line-2), 0 16px 36px rgba(0,0,0,.07); background:#fff; }
   .pageframe canvas{ position:absolute; top:0; left:0; display:block; }
   .pageframe canvas.base{ position:relative; }
+  /* A slot's canvases are cleared the moment they are resized, and a cleared
+     canvas is transparent — over the dark reader's black frame that is a
+     full-page black rectangle, which is exactly what a page being rendered
+     used to look like. The sheet of paper underneath is what shows instead,
+     and the canvases stay out of sight until the render has actually landed. */
+  .pageframe > .paper{ position:absolute; inset:0; background:var(--paper-rd);
+                       border-radius:inherit; pointer-events:none; }
+  .pageframe.loading > canvas{ visibility:hidden; }
   canvas.veil{ pointer-events:none; opacity:0; transition:opacity .18s; }
   canvas.veil.on{ opacity:1; }
   canvas.mark{ pointer-events:none; mix-blend-mode:multiply; }
@@ -2185,9 +2193,122 @@ const FN = {
   padT:64, padB:80, pageW:820,
   heights:null,                /* funnelled height of every page, in page units */
   cache:Object.create(null), order:[], max:10,
-  scratch:null, sctx:null,
+  grade:Object.create(null),   /* how far each page's geometry can be trusted  */
+  cuts:Object.create(null), cutsKey:'',    /* where one word stops, in pixels  */
+  rows:Object.create(null), rowsKey:'',    /* where one line stops, in pixels  */
+  scratch:null, sctx:null, gen:0, busy:null,
   anchor:-1
 };
+
+/* ── how far a page's geometry can be trusted ────────────────────────────────
+   A PDF hands us no word boxes. rawWords reconstructs them by splitting a text
+   run's width in proportion to CHARACTER COUNT, so every box is an estimate --
+   and on some pages the estimate describes nothing at all: a scan with no text
+   layer, text placed glyph by glyph, boxes that fall outside the sheet, runs
+   that overlap each other. Cutting a raster on numbers like that is what
+   damages a page, so the page is graded first and the pipeline takes the
+   sharpest treatment it can apply without inventing a boundary:
+
+     'seg'   word and segment tiling -- the full funnel
+     'line'  cut only where the geometry is confident there is a word space,
+             and keep every other run whole, even where that makes a line
+             wider than the column
+     'page'  do not reconstruct at all: show the original page, narrowed
+
+   It is a pure function of the stored word map, so fnLayout (which measures)
+   and fnDrawPage (which draws) always reach the same answer, and Infinite
+   Scroll can never reserve one geometry and render another. */
+function fnGrade(p){
+  const hit = FN.grade[p];
+  if(hit !== undefined) return hit;
+  const g = fnGradeOf(p);
+  FN.grade[p] = g;
+  return g;
+}
+function fnGradeOf(p){
+  const list = S.byPage[p] || [];
+  const pageW = FN.pageW || 820;
+  const pageH = (S.book && S.book.pages && S.book.pages[p] && S.book.pages[p].H > 0)
+                  ? S.book.pages[p].H : pageW * 1.294;
+  const ws = [];
+  for(let i = 0; i < list.length; i++){
+    const w = S.ribbon[list[i]];
+    if(w && w.text) ws.push(w);
+  }
+  /* a page with almost no text is a plate, a scan or a cover: there is nothing
+     to re-set, and pretending otherwise is how a scan gets shredded */
+  if(ws.length < 6) return 'page';
+
+  let bad = 0, outside = 0;
+  for(let i = 0; i < ws.length; i++){
+    const w = ws[i];
+    if(!isFinite(w.x) || !isFinite(w.y) || !isFinite(w.w) || !isFinite(w.h)
+       || w.w <= 0 || w.h <= 0){ bad++; continue; }
+    if(w.x < -2 || w.y < -2 || w.x + w.w > pageW + 2 || w.y + w.h > pageH + 2){ outside++; continue; }
+    /* a word as wide as the sheet, or letters the size of a page, is not a
+       word -- it is a run the splitter could not read */
+    const per = w.w / Math.max(1, w.text.length);
+    if(w.w > pageW * 0.98 || per > w.h * 3.2 || per < w.h * 0.04) bad++;
+  }
+  if((bad + outside) > ws.length * 0.35) return 'page';
+
+  /* lines: how the words actually sit together */
+  const lines = [];
+  let cur = null;
+  for(let i = 0; i < ws.length; i++){
+    const w = ws[i];
+    if(!cur || Math.abs(w.y - cur.y) > Math.max(4, cur.h * 0.55)){
+      cur = { y:w.y, h:w.h, ws:[w] }; lines.push(cur);
+    }else{
+      cur.ws.push(w);
+      if(w.h > cur.h) cur.h = w.h;
+    }
+  }
+  /* every word on a line of its own means the text layer has no lines in it */
+  if(lines.length > ws.length * 0.8) return 'page';
+
+  let pairs = 0, clash = 0, spread = 0;
+  for(let i = 0; i < lines.length; i++){
+    const ln = lines[i];
+    const ord = ln.ws.slice().sort(function(a,b){ return a.x - b.x; });
+    let ymin = Infinity, ymax = -Infinity;
+    for(let j = 0; j < ord.length; j++){
+      if(ord[j].y < ymin) ymin = ord[j].y;
+      if(ord[j].y > ymax) ymax = ord[j].y;
+      if(j === 0) continue;
+      const a = ord[j-1], b = ord[j];
+      pairs++;
+      const over = (a.x + a.w) - b.x;
+      if(over > Math.min(a.w, b.w) * 0.35) clash++;   /* boxes sitting on top of each other */
+    }
+    if(ord.length > 1 && (ymax - ymin) > ln.h * 0.8) spread++;
+  }
+  const shaky = (pairs > 0 && clash > pairs * 0.2)
+             || (spread > lines.length * 0.25)
+             || (bad + outside > ws.length * 0.1);
+  if(!shaky) return 'seg';
+
+  /* Would line-level reflow even fit? A run with no confident gap inside it
+     cannot be broken, so if the longest one is wider than the funnel's page it
+     would hang off both edges and be clipped. Showing the sheet intact is the
+     better answer. */
+  const room = (FN.boxW || FN.pageW || pageW) * 0.94;
+  let widest = 0;
+  for(let i = 0; i < lines.length; i++){
+    const ord = lines[i].ws.slice().sort(function(a,b){ return a.x - b.x; });
+    let x0 = ord.length ? ord[0].x : 0;
+    for(let j = 0; j < ord.length; j++){
+      const w = ord[j];
+      const span = (w.x + w.w) - x0;
+      if(span > widest) widest = span;
+      const nx = ord[j+1];
+      if(!nx) break;
+      /* a gap this size is a space the splitter can be believed about */
+      if((nx.x - (w.x + w.w)) > Math.max(1, w.h * 0.16)) x0 = nx.x;
+    }
+  }
+  return widest > room ? 'page' : 'line';
+}
 
 /* Which style band a word belongs to. EPUB records the real font, so headings
    are known exactly; a PDF only gives us glyph heights, so anything markedly
@@ -2280,7 +2401,7 @@ function fnLayout(p, wantBoxes){
   const pageW = FN.boxW || FN.pageW;
   const cx = pageW / 2;
   const out = { h: FN.padT + FN.padB, items: wantBoxes ? [] : null,
-                box: wantBoxes ? Object.create(null) : null, imgs: [] };
+                box: wantBoxes ? Object.create(null) : null, imgs: [], segs: [] };
 
   /* pictures on this page, in flow order */
   let pics = [];
@@ -2290,6 +2411,47 @@ function fnLayout(p, wantBoxes){
   }
 
   if(!list.length && !pics.length){ out.h = Math.max(out.h, FN.padT + FN.padB + 40); return out; }
+
+  /* An EPUB was typeset by us, so its boxes are exact by construction and there
+     is no raster to cut; a PDF has to be graded first. */
+  const isEp = !!(S.book && S.book.doc && S.book.doc.__epub);
+  const grade = isEp ? 'seg' : fnGrade(p);
+  out.grade = grade;
+
+  /* --- C: do not reconstruct at all ------------------------------------
+     Nothing here can be trusted to say where a word ends, so nothing is cut.
+     The original page is shown intact and simply narrowed to the funnel's own
+     column, which still does the one thing that matters -- it keeps the line
+     inside the sharp patch of vision -- without touching a single glyph. The
+     funnel stays on; the page is just not re-set.
+
+     The height is the page's own aspect against the column, so what this
+     reserves and what fnDrawPage paints are the same rectangle, which is what
+     Infinite Scroll positions its slots against. */
+  if(grade === 'page'){
+    const srcW = FN.pageW || 820;
+    const srcH = (S.book && S.book.pages && S.book.pages[p] && S.book.pages[p].H > 0)
+                   ? S.book.pages[p].H : srcW * 1.294;
+    const kk = pageW / srcW;
+    out.optical = true;
+    out.h = Math.max(FN.padT + FN.padB + 40, srcH * kk);
+    if(wantBoxes){
+      /* the words still have to be findable: highlights, ink layers, the spoken
+         word marker and goToWord all ask wbox() where a word is, and a page
+         with no entry would send every one of them to the unfunnelled page */
+      for(let i = 0; i < list.length; i++){
+        const g = list[i], r = S.ribbon[g];
+        if(!r) continue;
+        const asc = (r.bl !== undefined && r.bl !== null) ? (r.bl - r.y) : r.h * 0.82;
+        const b = { text:r.text, say:r.say, page:r.page, skip:r.skip, tele:r.tele,
+                    f:r.f, g:g,
+                    x:r.x*kk, y:r.y*kk, w:r.w*kk, h:r.h*kk, bl:(r.y+asc)*kk,
+                    ox:r.x, oy:r.y, ow:r.w, oh:r.h };
+        out.items.push(b); out.box[g] = b;
+      }
+    }
+    return out;
+  }
 
   /* --- original lines ------------------------------------------------- */
   const lines = [];
@@ -2331,6 +2493,40 @@ function fnLayout(p, wantBoxes){
     ln.at = Object.create(null);
     for(let i = 0; i < ln.order.length; i++) ln.at[ln.order[i]] = i;
     for(let i = 0; i < ln.ws.length; i++) lineOf[ln.ws[i]] = ln;
+    let xa = Infinity, xb = -Infinity;
+    for(let i = 0; i < ln.ws.length; i++){
+      const w = S.ribbon[ln.ws[i]];
+      if(!w) continue;
+      if(w.x < xa) xa = w.x;
+      if(w.x + w.w > xb) xb = w.x + w.w;
+    }
+    ln.x0s = isFinite(xa) ? xa : 0;
+    ln.x1s = isFinite(xb) ? xb : 0;
+    ln.bandK = -1;
+  }
+  /* --- vertical neighbours ---------------------------------------------
+     Source tiling solved the horizontal question and left the vertical one
+     alone: a crop ran from the line's box top less a third of its height to
+     its box bottom plus the same -- about two ems in all, against a body pitch
+     that in most books is between 1.15 and 1.45. So on any tightly set page
+     every crop carried a slice of the line above and the line below with it,
+     and multiply stamped those slices at this line's NEW position: the
+     fragments that appear floating between funnelled lines, belonging to text
+     that is somewhere else entirely.
+
+     Bands now tile the page the way tiles already tile a line, and the boundary
+     between two lines is decided by the pixels (see fnDrawPage). Which line is
+     above which is asked only of lines that share columns: on a two-column page
+     the line beside this one is not above or below it. */
+  const byY = lines.slice().sort(function(a,b){ return a.y - b.y; });
+  const shareX = function(a, b){
+    return Math.min(a.x1s, b.x1s) - Math.max(a.x0s, b.x0s) > 0;
+  };
+  for(let i = 0; i < byY.length; i++){
+    const ln = byY[i];
+    ln.up = null; ln.dn = null;
+    for(let j = i-1; j >= 0; j--) if(shareX(ln, byY[j])){ ln.up = byY[j]; break; }
+    for(let j = i+1; j < byY.length; j++) if(shareX(ln, byY[j])){ ln.dn = byY[j]; break; }
   }
   /* Where a cut between two source-adjacent words falls. The midpoint of the
      gap is the only defensible place: it belongs to neither word's ink, and it
@@ -2385,6 +2581,8 @@ function fnLayout(p, wantBoxes){
      also what makes highlights land on the right glyphs. */
   const emit = function(seg, top, sz){
     const ln = seg.ln;
+    /* what the band would like to be; how far it may actually go is settled
+       against the raster, one boundary at a time, in fnDrawPage */
     const vpad = Math.max(1, ln.h * 0.34);
     seg.sT = ln.y - vpad; seg.sB = ln.yb + vpad;
     seg.dY = seg.sT - ln.y;
@@ -2404,6 +2602,20 @@ function fnLayout(p, wantBoxes){
     }
   };
 
+  /* On a page graded 'line' the word boundaries are not to be trusted, so a cut
+     is only made where the geometry is confident there is a real space, and
+     every other run stays whole -- even where that leaves a line wider than the
+     column. A slightly weaker funnel is a smaller gain; a cut through a glyph
+     is damage. */
+  const confidentGap = function(a, b){
+    const la = lineOf[a];
+    if(!la || la !== lineOf[b]) return true;              /* a line end is free */
+    const wa = S.ribbon[a], wb = S.ribbon[b];
+    if(!wa || !wb) return true;
+    return (wb.x - (wa.x + wa.w)) > Math.max(1, wa.h * 0.16);
+  };
+  const mayCut = function(a, b){ return grade !== 'line' || confidentGap(a, b); };
+
   let bi = 0, pi = 0;
   while(bi < blocks.length || pi < pics.length){
     /* a picture that belongs before the next paragraph goes in first */
@@ -2421,7 +2633,8 @@ function fnLayout(p, wantBoxes){
 
     const b = blocks[bi++];
     const isHead = (b.sty === 'head');
-    const measure = isHead ? Math.min(pageW * 0.92, colW * 1.7) : colW;
+    const measure = (grade === 'line') ? pageW * 0.94
+                  : (isHead ? Math.min(pageW * 0.92, colW * 1.7) : colW);
     const lh = b.sz * (isHead ? 1.34 : 1.5);
     const sp = FN.spaceW * (b.sz / Math.max(1, FN.baseSize));
 
@@ -2461,7 +2674,7 @@ function fnLayout(p, wantBoxes){
       };
       if(join){
         const grow = cutAfter(g) - tail.x1;
-        if(rowW + grow > measure && row.length){
+        if(rowW + grow > measure && row.length && mayCut(last, g)){
           flush();
           const seg = mkSeg(g);
           row.push(seg); rowW = seg.x1 - seg.x0; last = g;
@@ -2510,9 +2723,16 @@ function fnGet(p){
   }
   return lay;
 }
-function fnForget(){ FN.cache = Object.create(null); FN.order.length = 0; }
+function fnForget(){
+  FN.cache = Object.create(null); FN.order.length = 0;
+  FN.grade = Object.create(null);
+  FN.cuts  = Object.create(null); FN.cutsKey = '';
+  FN.rows  = Object.create(null); FN.rowsKey = '';
+  FN.gen++;                       /* renders already in flight must not commit */
+}
 function fnHeight(p){
   if(!FN.on) return 0;
+  if(FN.heights && FN.heights.length !== (S.book ? S.book.numPages : 0)) FN.heights = null;
   if(FN.heights && FN.heights[p] > 0) return FN.heights[p];
   const h = fnLayout(p, false).h;
   if(FN.heights) FN.heights[p] = h;
@@ -2581,10 +2801,40 @@ function wbox(g){
    sharp at any zoom and bionic can still thicken it. A PDF has no fonts we can
    read, only a picture — so each word is lifted from a scratch render of the
    original page and set down in its new place, which keeps the book's own
-   typeface instead of substituting one. */
-async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
+   typeface instead of substituting one.
+
+   ONE PAGE AT A TIME. The scratch canvas is shared, and it has to be: a second
+   copy of a page at device resolution is tens of megabytes. But fnDrawPage is
+   asynchronous, and two calls in flight — a page turn arriving while the
+   previous page is still rendering, or Infinite Scroll switching on while the
+   paged view is mid-render — used to resize and repaint that one canvas under
+   each other. The first call's await would return, find the OTHER page's
+   picture sitting in the scratch, and cut it up with this page's geometry. Every
+   render therefore takes the scratch in turn, and re-checks after each await
+   that it is still the render anyone wants. */
+async function fnDrawPage(ctx2d, p, sc, vpW, vpH, alive){
+  const prev = FN.busy;
+  let release;
+  const mine = new Promise(function(r){ release = r; });
+  FN.busy = mine;
+  if(prev){ try{ await prev; }catch(e){} }
+  try{
+    /* the queue may have been long enough that nobody wants this any more */
+    if(typeof alive === 'function' && !alive()) return;
+    return await fnDrawNow(ctx2d, p, sc, vpW, vpH, alive);
+  }finally{
+    release();
+    if(FN.busy === mine) FN.busy = null;
+  }
+}
+
+async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
   const lay = fnGet(p);
   const doc = S.book && S.book.doc;
+  const gen = FN.gen;
+  const ok = function(){
+    return gen === FN.gen && (typeof alive !== 'function' || alive());
+  };
   ctx2d.save();
   ctx2d.fillStyle = '#ffffff';
   ctx2d.fillRect(0, 0, vpW, vpH);
@@ -2592,6 +2842,7 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
 
   if(doc.__epub){
     if(lay.imgs.length && doc.__imgReady){ try{ await doc.__imgReady(p); }catch(e){} }
+    if(!ok()){ ctx2d.restore(); return; }
     for(let i = 0; i < lay.imgs.length; i++){
       const im = lay.imgs[i];
       const bm = doc.__imgOf ? doc.__imgOf(im.src) : null;
@@ -2617,12 +2868,13 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
 
   /* --- PDF: cut the words out of the real page and re-set them ---------- */
   const dpr = S.dpr || 1;
-  let src = null;
+  let src = null, vp0 = null;
   try{
     const page = await doc.getPage(p+1);
+    if(!ok()){ ctx2d.restore(); return; }
     /* the scratch is the ORIGINAL page at the same scale: source coordinates are
        still original-page units, only the destination moved into the box */
-    const vp0 = page.getViewport({ scale: sc });
+    vp0 = page.getViewport({ scale: sc });
     const w0 = Math.max(1, Math.round(vp0.width*dpr)), h0 = Math.max(1, Math.round(vp0.height*dpr));
     if(!FN.scratch){
       FN.scratch = document.createElement('canvas');
@@ -2639,7 +2891,33 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
     src = FN.scratch;
   }catch(e){ src = null; }
 
-  if(!src){ ctx2d.restore(); return; }
+  if(!src || !ok()){ ctx2d.restore(); return; }
+
+  const k  = sc * dpr;
+  const sw0 = src.width, sh0 = src.height;
+
+  /* ── C: the page, intact ────────────────────────────────────────────────
+     Graded 'page' means nothing about this sheet can be trusted to say where a
+     word ends — a scan, a plate, glyph-by-glyph placement. So it is not taken
+     apart at all. It is shown whole, fitted into the funnel's own narrow page,
+     which still keeps the line inside the sharp patch of vision. fnLayout
+     reserved exactly this rectangle, so the strip's arithmetic is unchanged. */
+  if(lay.optical){
+    const fit = Math.min(vpW / vp0.width, vpH / vp0.height);
+    const dw = vp0.width * fit, dh = vp0.height * fit;
+    ctx2d.save();
+    ctx2d.setTransform(1,0,0,1,0,0);
+    ctx2d.imageSmoothingEnabled = true;
+    ctx2d.imageSmoothingQuality = 'high';
+    try{
+      ctx2d.drawImage(src, 0, 0, sw0, sh0,
+                      Math.round((vpW - dw)/2 * dpr), Math.round((vpH - dh)/2 * dpr),
+                      Math.round(dw*dpr), Math.round(dh*dpr));
+    }catch(e){}
+    ctx2d.restore();
+    ctx2d.restore();
+    return;
+  }
 
   /* Every number below is in DEVICE pixels of the scratch, which is the one
      coordinate system where source and destination are the same size. Rounding
@@ -2647,33 +2925,84 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
      resampling, no half-pixel edge that fades a glyph's last column away.
 
      multiply, not source-over: a tile carries blank paper around its word, and
-     white multiplied over anything leaves it alone. Tiles may therefore overlap
-     their neighbours and the line above without erasing a single stroke — which
-     is what makes generous bleed safe in the first place. */
-  const k  = sc * dpr;
-  const sw0 = src.width, sh0 = src.height;
+     white multiplied over anything leaves it alone. Tiles may therefore meet
+     their neighbours without erasing a single stroke. */
 
   /* Where exactly does one word stop and the next begin? The word boxes cannot
      answer that — they are estimates — so the question is put to the only thing
      that knows: the pixels. Around each cut we read a narrow window of the
-     scratch and take the emptiest column in it. A cut then falls in real
+     scratch and take the widest blank run in it. A cut then falls in real
      whitespace, and the two crops that meet there meet without splitting a
      letter or copying one twice.
 
-     Only cuts INSIDE a source line are asked; a line's own ends need no help.
-     One window per cut, a few thousand pixels each, and the answers are cached
-     for as long as this page stays at this scale. */
-  const ckey = p + '|' + Math.round(k*1000);
+     The key names the DOCUMENT as well as the page and the scale. It used not
+     to, and fnForget never cleared this map, so the second book opened at the
+     same page and the same scale inherited the first book's cut positions and
+     was sliced at columns that meant nothing in it. */
+  const ckey = (S.book ? S.book.id : '?') + '|' + FN.gen + '|' + p + '|' + Math.round(k*1000);
   if(FN.cutsKey !== ckey){ FN.cuts = Object.create(null); FN.cutsKey = ckey; }
-  const snapCut = function(id, nominal, bandTop, bandH, win){
+  if(FN.rowsKey !== ckey){ FN.rows = Object.create(null); FN.rowsKey = ckey; }
+
+  /* one ink profile, read once, summed either down the columns or across the
+     rows depending on which way the cut runs */
+  const profile = function(x0, y0, w, h, byCol){
+    const d = FN.sctx.getImageData(x0, y0, w, h).data;
+    const out = new Int32Array(byCol ? w : h);
+    for(let r = 0; r < h; r++){
+      const base = (r*w) << 2;
+      for(let c = 0; c < w; c++){
+        const o = base + (c<<2);
+        const lum = (d[o]*77 + d[o+1]*151 + d[o+2]*28) >> 8;
+        if(lum < 250) out[byCol ? c : r] += (250 - lum);
+      }
+    }
+    return out;
+  };
+  /* A space between words — or between lines — is a RUN of blank slices; the
+     gap between two letters, or between an ascender and the descender above it,
+     is a slice or two at most. So the widest blank run wins, not the single
+     emptiest slice: that is what tells a boundary apart from the notch inside
+     an "rn" or beside an apostrophe. */
+  const pickRun = function(ink, origin, nominal){
+    let bestLen = -1, bestDist = Infinity, best = nominal, run = 0;
+    for(let i = 0; i <= ink.length; i++){
+      if(i < ink.length && ink[i] === 0){ run++; continue; }
+      if(run > 0){
+        const mid = origin + i - (run/2);
+        const dist = Math.abs(mid - nominal);
+        if(run > bestLen || (run === bestLen && dist < bestDist)){
+          bestLen = run; bestDist = dist; best = Math.round(mid);
+        }
+        run = 0;
+      }
+    }
+    if(bestLen < 0){                    /* nothing blank: take the thinnest slice */
+      let lo = Infinity;
+      for(let i = 0; i < ink.length; i++){
+        const s2 = ink[i]*1000 + Math.abs((origin+i) - nominal);
+        if(s2 < lo){ lo = s2; best = origin + i; }
+      }
+    }
+    return best;
+  };
+
+  const snapCut = function(id, nominal, bandTop, bandH, win, side){
     if(id < 0) return nominal;
     const hit = FN.cuts[id];
     if(hit !== undefined) return hit;
     /* The window has to be wide enough to reach the real gap. A box estimated
        by character count can be a whole letter out, so the search spans about
-       half a line height either side rather than a fixed handful of pixels. */
+       half a line height either side rather than a fixed handful of pixels.
+
+       At the two ENDS of a line the window only opens outward. A line's first
+       word can sit hard against the edge of the sheet, and there the widest
+       blank run in a symmetric window is the space AFTER that word — which
+       would put the cut past it and drop it from the page. Searching outward
+       only, the cut can add blank paper and catch an overhanging italic, and
+       can never take a letter away. */
     const CUT_WIN = Math.max(12, Math.round(win));
-    let x0 = nominal - CUT_WIN, x1 = nominal + CUT_WIN;
+    let x0 = nominal - (side > 0 ? 0 : CUT_WIN);
+    let x1 = nominal + (side < 0 ? 0 : CUT_WIN);
     if(x0 < 0) x0 = 0;
     if(x1 > sw0) x1 = sw0;
     let ty = bandTop, th = bandH;
@@ -2681,46 +3010,65 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
     if(ty + th > sh0) th = sh0 - ty;
     if(x1 - x0 < 2 || th < 1){ FN.cuts[id] = nominal; return nominal; }
     let best = nominal;
-    try{
-      const wpx = x1 - x0;
-      const d = FN.sctx.getImageData(x0, ty, wpx, th).data;
-      const ink = new Int32Array(wpx);
-      for(let c = 0; c < wpx; c++){
-        let a = 0;
-        for(let r = 0; r < th; r++){
-          const o = (r*wpx + c) << 2;
-          const lum = (d[o]*77 + d[o+1]*151 + d[o+2]*28) >> 8;
-          if(lum < 250) a += (250 - lum);
-        }
-        ink[c] = a;
-      }
-      /* A space between words is a RUN of blank columns; the gap between two
-         letters is a column or two at most. So the widest blank run wins, not
-         the single emptiest column — that is what tells a word boundary apart
-         from the notch inside a "rn" or beside an apostrophe. */
-      let bestLen = -1, bestDist = Infinity, run = 0;
-      for(let c = 0; c <= wpx; c++){
-        if(c < wpx && ink[c] === 0){ run++; continue; }
-        if(run > 0){
-          const mid = x0 + c - (run/2);
-          const dist = Math.abs(mid - nominal);
-          if(run > bestLen || (run === bestLen && dist < bestDist)){
-            bestLen = run; bestDist = dist; best = Math.round(mid);
-          }
-          run = 0;
-        }
-      }
-      if(bestLen < 0){                       // nothing blank: take the thinnest
-        let lo = Infinity;
-        for(let c = 0; c < wpx; c++){
-          const sc2 = ink[c]*1000 + Math.abs((x0+c) - nominal);
-          if(sc2 < lo){ lo = sc2; best = x0 + c; }
-        }
-      }
-    }catch(e){ best = nominal; }
+    try{ best = pickRun(profile(x0, ty, x1-x0, th, true), x0, nominal); }
+    catch(e){ best = nominal; }
     FN.cuts[id] = best;
     return best;
   };
+
+  /* ── the band a line is cut from ────────────────────────────────────────
+     The horizontal cuts have been settled on the pixels since the tiling was
+     written; the vertical extent never was, and that was the damage. Bands now
+     tile the page down its length the way tiles already tile a line across it:
+     the boundary between two source lines is the emptiest run of rows between
+     them, measured only over the columns the two of them share. Every row of
+     ink then belongs to exactly one band, so no crop can carry a slice of its
+     neighbour off to a new position.
+
+     A boundary is named by the pair of lines that meet at it, so both of them
+     look it up under the same id and get the same answer — the crops meet
+     exactly, with nothing dropped and nothing copied twice. */
+  const rowCut = function(id, lo, hi, x0, x1, nominal){
+    if(id >= 0){ const hit = FN.rows[id]; if(hit !== undefined) return hit; }
+    let y0 = Math.round(lo), y1 = Math.round(hi);
+    let a = Math.round(x0), b = Math.round(x1);
+    if(y0 < 0) y0 = 0;
+    if(y1 > sh0) y1 = sh0;
+    if(a < 0) a = 0;
+    if(b > sw0) b = sw0;
+    let best = nominal;
+    if(y1 - y0 >= 2 && b - a >= 2){
+      try{ best = pickRun(profile(a, y0, b-a, y1-y0, false), y0, nominal); }
+      catch(e){ best = nominal; }
+    }
+    if(id >= 0) FN.rows[id] = best;
+    return best;
+  };
+  const bandOf = function(ln){
+    if(ln.bandK === k) return;
+    const pad = Math.max(1, ln.h * 0.34);
+    let t = Math.round((ln.y - pad) * k);
+    let b = Math.round((ln.yb + pad) * k);
+    if(ln.up){
+      const u = ln.up;
+      t = rowCut(u.i*4096 + ln.i,
+                 (Math.min(u.yb, ln.y) - Math.max(1, u.h*0.12)) * k,
+                 (Math.max(u.yb, ln.y) + Math.max(1, ln.h*0.12)) * k,
+                 Math.max(u.x0s, ln.x0s) * k, Math.min(u.x1s, ln.x1s) * k,
+                 Math.round(((u.yb + ln.y)/2) * k));
+    }
+    if(ln.dn){
+      const d = ln.dn;
+      b = rowCut(ln.i*4096 + d.i,
+                 (Math.min(ln.yb, d.y) - Math.max(1, ln.h*0.12)) * k,
+                 (Math.max(ln.yb, d.y) + Math.max(1, d.h*0.12)) * k,
+                 Math.max(ln.x0s, d.x0s) * k, Math.min(ln.x1s, d.x1s) * k,
+                 Math.round(((ln.yb + d.y)/2) * k));
+    }
+    if(b <= t) b = t + 1;
+    ln.bandT = t; ln.bandB = b; ln.bandK = k;
+  };
+
   ctx2d.save();
   ctx2d.setTransform(1,0,0,1,0,0);
   ctx2d.globalCompositeOperation = 'multiply';
@@ -2728,16 +3076,24 @@ async function fnDrawPage(ctx2d, p, sc, vpW, vpH){
   const segs = lay.segs || [];
   for(let i = 0; i < segs.length; i++){
     const it = segs[i];
-    let sy = Math.round(it.sT * k), ey = Math.round(it.sB * k);
+    const ln = it.ln;
+    bandOf(ln);
+    let sy = ln.bandT, ey = ln.bandB;
     const nx0 = Math.round(it.x0 * k), nx1 = Math.round(it.x1 * k);
     const win = (ey - sy) * 0.55;
-    let sx = snapCut(it.kL, nx0, sy, ey - sy, win);
-    let ex = snapCut(it.kR, nx1, sy, ey - sy, win);
+    /* Interior cuts are named by the source line and the word to their right.
+       The two ends of a line have no neighbour to agree with, so they are named
+       separately — 0 and one past the last word, ids the interior can never
+       use — and they are snapped as well: an italic f or a swash overhangs its
+       nominal box, and a box that is short by half a letter used to shave it. */
+    const ends = ln.order ? ln.order.length : 0;
+    let sx = snapCut(it.kL >= 0 ? it.kL : (ln.i*4096 + 0),        nx0, sy, ey - sy, win, it.kL >= 0 ? 0 : -1);
+    let ex = snapCut(it.kR >= 0 ? it.kR : (ln.i*4096 + ends + 1), nx1, sy, ey - sy, win, it.kR >= 0 ? 0 :  1);
     if(ex <= sx) ex = sx + 1;
     /* the destination moves by exactly what the source start moved, so the ink
        inside the crop never shifts relative to where the layout put it */
     let dx = Math.round(it.dx * k) + (sx - nx0);
-    let dy = Math.round((it.top + it.dY) * k);
+    let dy = Math.round(it.top * k) + (sy - Math.round(ln.y * k));
     /* clamp only here, at the real canvas edge, and move the destination by the
        same amount so the ink never slides relative to its box */
     if(sx < 0){ dx -= sx; sx = 0; }
@@ -4420,6 +4776,9 @@ async function openBook(bk, autoResume){
   buildChunks();
   updateTeleStat();
 
+  /* before anything measures or draws a page of this book */
+  if(FN.on) await fnAdopt();
+
   S.strokes = await loadInk(bk);
   S.hl = (await store.get('marks:'+bk.id)) || [];
   S.hlDraft = mirror.get('draft:'+bk.id) || (await store.get('draft:'+bk.id)) || [];
@@ -4922,7 +5281,12 @@ async function renderPage(pageIdx){
   if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
   if(FN.on){
     renderTask = null;
-    try{ await fnDrawPage(pctx, pageIdx, S.scale, vp.width, vp.height); }catch(e){}
+    /* Funnel renders take the scratch in turn. Five quick page turns must not
+       mean five full renders drawn one after another and then thrown away by
+       the token test below -- a queued render that nobody wants any more asks
+       first, and stops. */
+    try{ await fnDrawPage(pctx, pageIdx, S.scale, vp.width, vp.height,
+                          function(){ return token === S.renderToken; }); }catch(e){}
   }else{
     renderTask = page.render({ canvasContext:pctx, viewport:vp });
     try{ await renderTask.promise; }
@@ -7231,8 +7595,10 @@ function isPoolFor(w, h, d){
 
 function isMakeSlot(){
   const el = document.createElement('div');
-  el.className = 'pageframe';
+  el.className = 'pageframe loading';
   el.style.display = 'none';
+  const pap = document.createElement('div'); pap.className = 'paper';
+  el.appendChild(pap);
   const base = document.createElement('canvas'); base.className = 'base';
   const ov   = document.createElement('canvas'); ov.className   = 'ov';
   const ink  = document.createElement('canvas'); ink.className  = 'ink';
@@ -7248,6 +7614,7 @@ function isMakeSlot(){
   /* the pen writes on whichever page it lands on */
   ink.addEventListener('pointerdown', function(e){
     if(e.pointerType==='touch') return;
+    if(!sl.ready) return;
     if(IS.bound) isUnbind();
     isBind(sl);
     penBegin(e);
@@ -7329,7 +7696,10 @@ function isRedrawInk(p){
 function isSlotAt(x, y){
   for(let i=0;i<IS.slots.length;i++){
     const sl = IS.slots[i];
-    if(sl.page < 0 || sl.el.style.display === 'none') continue;
+    /* a parked slot is a sheet of paper, not a page: its ink canvas is still
+       the size of whatever it held last, and the render about to land will
+       resize and clear it */
+    if(sl.page < 0 || !sl.ready || sl.el.style.display === 'none') continue;
     const r = sl.ink.getBoundingClientRect();
     if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return sl;
   }
@@ -7340,7 +7710,22 @@ function isRelease(sl){
   if(sl.page >= 0 && IS.live[sl.page] === sl) delete IS.live[sl.page];
   if(sl.task){ try{ sl.task.cancel(); }catch(e){} sl.task = null; }
   sl.gen++; sl.page = -1; sl.ready = false;
+  sl.el.classList.add('loading');          /* whatever it holds is now the wrong page */
   sl.el.style.display = 'none';
+}
+
+/* Put a slot where its page belongs, at the size the strip reserved for it, and
+   show a sheet of paper there. The canvases stay hidden: the page is not drawn
+   yet, and a recycled canvas holds either the last page or nothing at all.
+   Neither is this page, and showing either is worse than showing paper. */
+function isPark(sl, p){
+  const h = (IS.hts && IS.hts[p]) || IS.pageH;
+  const w = IS.contentW || IS.pageW;
+  sl.el.classList.add('loading');
+  sl.el.style.width  = Math.round(w) + 'px';
+  sl.el.style.height = Math.round(h) + 'px';
+  sl.el.style.transform = 'translate(0px,' + Math.round(IS.tops ? IS.tops[p] : 0) + 'px)';
+  sl.el.style.display = '';
 }
 function isReleaseAll(){ for(let i=0;i<IS.slots.length;i++) isRelease(IS.slots[i]); IS.live = {}; }
 
@@ -7417,15 +7802,19 @@ async function isRenderSlot(sl, pageIdx){
   sl.ictx.lineCap='round'; sl.ictx.lineJoin='round';
   sl.scale = sc; sl.dpr = dpr; sl.w = vp.width; sl.h = vp.height;
 
-  /* centre a page that does not fill its box */
+  /* Where it will go once it is drawn. The frame is NOT revealed here: the
+     canvases above have just been resized, which clears them, and a cleared
+     canvas over the dark frame is a page-sized black rectangle. isPark has
+     already put a sheet of paper in the right place; this only measures. */
   const dy = IS.tops[pageIdx] + Math.max(0, (boxH - vp.height)/2);
   const dx = ((IS.contentW || IS.pageW) - vp.width)/2;
-  sl.el.style.transform = 'translate('+Math.round(dx)+'px,'+Math.round(dy)+'px)';
-  sl.el.style.display = '';
 
   if(FN.on){
     const keepDpr = S.dpr; S.dpr = dpr;
-    try{ await fnDrawPage(sl.bctx, pageIdx, sc, vp.width, vp.height); }catch(e){}
+    /* the funnel queue may be several pages deep by the time this is reached;
+       a slot that has since been recycled must not be drawn into at all */
+    try{ await fnDrawPage(sl.bctx, pageIdx, sc, vp.width, vp.height,
+                          function(){ return gen === sl.gen && IS.on && sl.page === pageIdx; }); }catch(e){}
     S.dpr = keepDpr;
   }else{
     sl.task = page.render({ canvasContext: sl.bctx, viewport: vp });
@@ -7433,10 +7822,18 @@ async function isRenderSlot(sl, pageIdx){
     catch(e){ sl.task = null; return; }        // cancelled or failed: isPump retries
     sl.task = null;
   }
-  if(gen !== sl.gen || !IS.on) return;
+  /* the one check that makes a recycled canvas safe: after every await, is this
+     still the page this slot is meant to be holding? */
+  if(gen !== sl.gen || !IS.on || sl.page !== pageIdx) return;
 
   tintPaper(sl.bctx, sl.base);
   sl.ready = true;
+  /* drawn, in the right place, and only now visible */
+  sl.el.style.width  = Math.round(vp.width) + 'px';
+  sl.el.style.height = Math.round(vp.height) + 'px';
+  sl.el.style.transform = 'translate('+Math.round(dx)+'px,'+Math.round(dy)+'px)';
+  sl.el.style.display = '';
+  sl.el.classList.remove('loading');
   isBind(sl);
   paintBionic();
   redrawInk();
@@ -7560,7 +7957,7 @@ function isSync(force){
     const held = IS.live[p];
     if(held){
       if(held.ready || held === IS.rendering) continue;
-      held.el.style.transform = 'translate(0px,'+Math.round(IS.tops[p])+'px)';
+      isPark(held, p);
       IS.queue.push({ slot:held, page:p, gen:held.gen });
       continue;
     }
@@ -7571,7 +7968,7 @@ function isSync(force){
     IS.live[p] = free;
     /* park it in the right place immediately so nothing flashes in the wrong
        spot while the render is still coming */
-    free.el.style.transform = 'translate(0px,'+Math.round(IS.tops[p])+'px)';
+    isPark(free, p);
     IS.queue.push({ slot:free, page:p, gen:free.gen });
   }
   isPump();
@@ -7784,6 +8181,25 @@ async function setFitText(on, quiet){
   if(!quiet) toast(FT.on ? 'Fit Text on — ' + Math.round(S.zoom*100) + '%.' : 'Fit Text off.');
 }
 window.setFitText = setFitText;
+
+/* The funnel's geometry belongs to a BOOK. The column is calibrated from that
+   book's type, the page width is sampled from its sheets, and every cached
+   layout, height and cut is keyed by a page NUMBER inside it. Opening a second
+   book while the funnel was on inherited all of it: the previous book's column,
+   its page heights, and cut positions measured on a different page entirely. Its
+   pages were then re-set against numbers describing another document, and in
+   continuous scroll the strip reserved one height while isRenderSlot drew
+   another. openBook calls this so a book always brings its own geometry. */
+async function fnAdopt(){
+  if(!FN.on || !S.book || !S.book.doc) return;
+  await fnPageWidth();
+  fnCalibrate();
+  fnForget();
+  if(!(await fnLoadHeights())){
+    await new Promise(function(res){ fnMeasureChunked(res); });
+    fnSaveHeights();
+  }
+}
 
 async function setFunnel(on, quiet){
   on = !!on;
@@ -8849,6 +9265,11 @@ viewer.addEventListener('scroll', function(){
      closed the horizontal position is a constant. */
   if(S.zoomLock && S.lockX !== null && viewer.scrollLeft !== S.lockX) viewer.scrollLeft = S.lockX;
   inkRect=null; isScheduleSync();
+  /* Continuous scroll is continuous. This is coalesced onto the animation
+     frame and rate-limited inside sync, and it returns immediately when there
+     is no peer -- so the cost on this path is one call and one boolean. */
+  const NBS = window.NBSync;
+  if(NBS && NBS.live) NBS.live();
 }, { passive:true });
 
 /* How wide the nib is at this instant. Sizes are stored in millimetres, so a
@@ -13204,28 +13625,26 @@ var SyncStateAdapter = {
     };
   },
 
-  applyModes: function(p){
+  applyModes: function(p, inTx){
     if(!p) return;
     var call = function(fn, on, quiet){
       try{ if(typeof fn === 'function') return fn(on, quiet); }catch(e){}
     };
 
-    /* Layout modes go through the reader's own setters, which already take a
-       `quiet` argument precisely so state can be restored without re-firing
-       everything downstream. */
-    if(typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel)
-      call(typeof setFunnel !== 'undefined' && setFunnel, p.funnel, true);
-    if(typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf)
-      call(typeof setInfinite !== 'undefined' && setInfinite, p.inf, true);
-    if(typeof p.fitText === 'boolean' && typeof FT !== 'undefined' && !!FT.on !== p.fitText)
-      call(typeof setFitText !== 'undefined' && setFitText, p.fitText, true);
-
-    if(typeof p.zoom === 'number' && Math.abs(num(p.zoom,0.1,12,1) - S.zoom) > 0.001){
-      S.zoom = num(p.zoom, 0.1, 12, 1);
-      try{
-        if(typeof IS !== 'undefined' && IS.on) isLayout(true);
-        else renderPage(S.page);
-      }catch(e){}
+    /* Geometry is NOT changed here. Funnel, continuous scroll, fit-text and
+       zoom all rewrite the same page layout, so they are applied in a fixed
+       order inside viewTransaction and never three at once from here. */
+    if(!inTx){
+      var geom = (typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel)
+              || (typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf)
+              || (typeof p.fitText === 'boolean' && typeof FT !== 'undefined' && !!FT.on !== p.fitText)
+              || (typeof p.zoom === 'number' && Math.abs(num(p.zoom,0.1,12,1) - S.zoom) > 0.001);
+      if(geom){
+        var q = {}; for(var k in p) q[k] = p[k];
+        q.__modes = true;
+        SM.applyView(q);
+        return;
+      }
     }
 
     if(typeof p.focus === 'boolean' && !!S.focusRead !== p.focus)
@@ -13271,30 +13690,182 @@ var SyncStateAdapter = {
     try{ if(typeof syncBionicBtn === 'function') syncBionicBtn(); }catch(e){}
     try{ if(window.rdSync) window.rdSync(); }catch(e){}
   },
+  /* ── one mirrored view change at a time ─────────────────────────────────
+     The funnel decides a page's geometry; Infinite Scroll builds its strip,
+     its slot heights and its render pool OUT of that geometry. Running both
+     switches at once -- which is what Promise.all did here -- let the strip
+     measure one layout and draw another: heights reserved for the unfunnelled
+     page, slots parked where nothing was going to be drawn, and renders
+     committing into a layout that no longer existed.
+
+     They are serialized now, in a fixed order -- funnel, then continuous
+     scroll, then fit-text, then zoom -- and every transaction carries a
+     generation. A newer remote state, or a hand on this device, moves the
+     generation on and the older transaction stops at its next step instead of
+     racing it to the DOM. */
+  viewTransaction: function(p, gen){
+    var SA = SyncStateAdapter;
+    var live = function(){ return gen === SM.viewGen; };
+    SM.applying++;
+    SM.hush(1600);
+    var released = false;
+    var release = function(){
+      if(released) return;
+      released = true;
+      SM.applying--;
+      /* the render tail runs in afterPaint, long after this returns */
+      SM.hush(600);
+    };
+    var guard = setTimeout(function(){ SM.viewGen++; release(); }, 8000);
+    return (async function(){
+      try{
+        /* what this device is actually looking at, before the layout moves */
+        var anchor = -1;
+        try{ anchor = readingAnchor(); }catch(e){}
+
+        if(typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel
+           && typeof setFunnel === 'function'){
+          try{ await setFunnel(p.funnel, true); }catch(e){}
+          if(!live()) return;
+        }
+        if(typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf
+           && typeof setInfinite === 'function'){
+          try{ await setInfinite(p.inf, true); }catch(e){}
+          if(!live()) return;
+        }
+        if(typeof p.fitText === 'boolean' && typeof FT !== 'undefined' && !!FT.on !== p.fitText
+           && typeof setFitText === 'function'){
+          try{ await setFitText(p.fitText, true); }catch(e){}
+          if(!live()) return;
+        }
+        /* zoom last: it scales whatever geometry the three above settled on */
+        if(typeof p.zoom === 'number' && Math.abs(num(p.zoom,0.1,12,1) - S.zoom) > 0.001){
+          S.zoom = num(p.zoom, 0.1, 12, 1);
+          try{
+            if(typeof IS !== 'undefined' && IS.on){ if(typeof isLayout === 'function') isLayout(true); }
+            else await renderPage(S.page);
+          }catch(e){}
+          if(!live()) return;
+        }
+
+        /* everything that changes how a page READS but not how big it is */
+        if(p.__modes) SA.applyModes(p, true);
+        if(!live()) return;
+
+        /* and only now, against the FINAL geometry, put the reader back */
+        if(p.__place) SA.place(p);
+        else if(anchor >= 0 && S.ribbon && S.ribbon[anchor]){
+          try{ await goToWord(anchor); }catch(e){}
+        }
+      }finally{
+        clearTimeout(guard);
+        release();
+      }
+    })();
+  },
+
   /* §7 restore order: word anchor, then page fraction, then bare page. */
   applyPosition: function(p){
     if(!S.book || !p) return;
-    var sigOk = !p.ribbonSig || !S.book.ribbonSig || p.ribbonSig === S.book.ribbonSig;
-
-    /* Mode first, so the anchor lands in the layout it was measured against.
-       setFunnel/setInfinite are async and rebuild IS.tops, which the anchor
-       needs, so the placement waits for them rather than racing a half-built
-       layout. */
-    var switches = [];
-    try{
-      if(typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel
-         && typeof setFunnel === 'function') switches.push(setFunnel(p.funnel, true));
-      if(typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf
-         && typeof setInfinite === 'function') switches.push(setInfinite(p.inf, true));
-    }catch(e){}
-    if(switches.length){
-      var self = SyncStateAdapter;
-      SM.hush(1200);
-      Promise.all(switches.map(function(x){ return Promise.resolve(x).catch(function(){}); }))
-        .then(function(){ self.place(p); });
+    var geom = (typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel)
+            || (typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf);
+    if(geom){
+      var q = {}; for(var k in p) q[k] = p[k];
+      q.__place = true;
+      SM.applyView(q);
       return;
     }
     SyncStateAdapter.place(p);
+  },
+
+  /* ── a live scroll frame ────────────────────────────────────────────────
+     Continuous scrolling has to be told continuously, and every frame of it
+     runs while a finger is still moving -- so this may not measure anything.
+     No readingAnchor, no fnGet, no page layout: the page comes from the strip
+     arithmetic that is already done, and the reading anchor is the word that
+     sits at the same fraction down that page's own word list. One array
+     lookup, and because it names a WORD it still means the same place on a
+     device that paginates the book differently. */
+  livePosition: function(){
+    if(!S.book) return null;
+    var viewer = el('viewer');
+    if(!viewer) return null;
+    var page = S.page|0, frac = 0;
+    if(typeof IS !== 'undefined' && IS.on && IS.tops && IS.hts && typeof isPageAt === 'function'){
+      var probe = viewer.scrollTop + 48;
+      page = isPageAt(probe);
+      frac = num((probe - IS.tops[page]) / Math.max(1, IS.hts[page]), 0, 1, 0);
+    }else{
+      frac = SyncStateAdapter.pageFraction();
+    }
+    var g = -1, list = S.byPage[page];
+    if(list && list.length){
+      var i = Math.round(frac * (list.length - 1));
+      if(i < 0) i = 0;
+      if(i > list.length - 1) i = list.length - 1;
+      g = list[i];
+    }
+    return {
+      live: true,
+      fp: S.book.fp || '',
+      wordSig: S.book.wordSig || '',
+      pageSig: S.book.pageSig || '',
+      page: page|0,
+      numPages: S.book.numPages|0,
+      pageProgress: frac,
+      wordAnchor: g,
+      globalProgress: (S.ribbon && S.ribbon.length && g >= 0)
+                        ? (g / (S.ribbon.length - 1 || 1)) : 0,
+      inf: !!(typeof IS !== 'undefined' && IS.on),
+      funnel: !!(typeof FN !== 'undefined' && FN.on),
+      at: nowMs()
+    };
+  },
+
+  /* Converge STRAIGHT to the newest position. Replaying every intermediate
+     one the sender passed through is what makes a mirrored scroll feel like
+     it is being dragged along behind rather than moving with you. */
+  placeLive: function(p){
+    if(!S.book || !p) return;
+    var viewer = el('viewer');
+    if(!viewer) return;
+    var wordsMatch = !p.wordSig || !S.book.wordSig || p.wordSig === S.book.wordSig;
+    var g = (typeof p.wordAnchor === 'number') ? p.wordAnchor|0 : -1;
+    var page = -1, frac = num(p.pageProgress, 0, 1, 0);
+
+    if(wordsMatch && g >= 0 && S.ribbon && S.ribbon[g]){
+      page = S.ribbon[g].page|0;
+      var list = S.byPage[page];
+      if(list && list.length){
+        var at = list.indexOf(g);
+        if(at >= 0) frac = at / Math.max(1, list.length - 1);
+      }
+    }
+    if(page < 0){
+      var pagesMatch = !p.pageSig || !S.book.pageSig || p.pageSig === S.book.pageSig;
+      if(pagesMatch) page = num(p.page, 0, (S.book.numPages||1)-1, 0)|0;
+      else if(S.ribbon && S.ribbon.length){
+        var gi = Math.round(num(p.globalProgress, 0, 1, 0) * (S.ribbon.length - 1));
+        if(S.ribbon[gi]){ page = S.ribbon[gi].page|0; frac = 0; }
+      }
+    }
+    if(page < 0) return;
+
+    if(typeof IS !== 'undefined' && IS.on){
+      if(!IS.tops || !IS.hts) return;
+      viewer.scrollTop = Math.max(0, IS.tops[page] + (IS.hts[page] || 0) * frac - 48);
+      if(typeof isScheduleSync === 'function') isScheduleSync();
+    }else{
+      var land = function(){
+        var f = el('pageframe');
+        if(f) viewer.scrollTop = Math.max(0, f.offsetTop + (f.offsetHeight||0)*frac - 48);
+      };
+      if(page !== (S.page|0)){
+        var r = renderPage(page);
+        if(r && r.then) r.then(land); else land();
+      }else land();
+    }
+    if(typeof inkRect !== 'undefined') inkRect = null;
   },
 
   place: function(p){
@@ -13528,6 +14099,99 @@ var SM = {
     if(!this.posPending) return;
     var p = this.posPending; this.posPending = null;
     this.emit('reader.position', p);
+  },
+
+  /* ── mirrored view changes, one at a time ──────────────────────────────
+     Every geometry-changing state that arrives is queued behind the one
+     before it and given a generation. A newer arrival, or a hand on this
+     device, moves the generation on; the older transaction then stops at its
+     next step rather than finishing a layout nobody wants any more. */
+  viewGen: 0,
+  viewQ: null,
+  applyView: function(p){
+    var gen = ++this.viewGen, self = this;
+    var run = function(){
+      if(gen !== self.viewGen) return Promise.resolve();
+      var body;
+      try{ body = Promise.resolve(SyncStateAdapter.viewTransaction(p, gen)); }
+      catch(e){ return Promise.resolve(); }
+      /* and the queue keeps moving even if one transition never settles */
+      var t;
+      var cap = new Promise(function(res){ t = setTimeout(res, 9000); });
+      return Promise.race([body.catch(function(){}), cap])
+                    .then(function(){ clearTimeout(t); });
+    };
+    var prev = this.viewQ || Promise.resolve();
+    this.viewQ = prev.then(run, run).catch(function(){});
+    return this.viewQ;
+  },
+
+  /* ── continuous scroll, out ────────────────────────────────────────────
+     isSync used to tell sync where the reader was only when the middle of the
+     screen crossed into a DIFFERENT page -- which on a funnelled page can be
+     several screens of reading apart. That, not the network, is why a
+     mirrored scroll felt like it arrived in jumps.
+
+     Frames are coalesced on the animation frame and rate-limited to about one
+     every two frames, and only the NEWEST is ever sent: an intermediate scroll
+     position that has already been overtaken is worth nothing to the other
+     device, so it is dropped rather than queued. */
+  liveRaf: 0, liveAt: 0, livePend: false,
+  LIVE_MS: 33,
+  streamPosition: function(){
+    if(this.muted() || !this.connected || !S.book) return;
+    if(this.intentDev && this.intentDev !== this.deviceId()) return;
+    if(!S.book.fp || S.book.fp.indexOf('sha256:') !== 0) return;
+    this.livePend = true;
+    if(this.liveRaf) return;
+    var self = this;
+    var tick = function(){
+      self.liveRaf = 0;
+      if(!self.livePend) return;
+      var now = nowMs();
+      if(now - self.liveAt < self.LIVE_MS){
+        self.liveRaf = requestAnimationFrame(tick);
+        return;
+      }
+      self.livePend = false;
+      self.liveAt = now;
+      if(self.muted() || !self.connected) return;
+      if(self.intentDev && self.intentDev !== self.deviceId()) return;
+      var p = SyncStateAdapter.livePosition();
+      if(p) self.emit('reader.position', p);
+    };
+    this.liveRaf = requestAnimationFrame(tick);
+  },
+
+  /* ── continuous scroll, in ─────────────────────────────────────────────
+     The receiver treats a superseded frame as rubbish too. Whatever arrived
+     while the last one was still being applied is thrown away and only the
+     newest is used, so a burst -- a fling, or a moment of network catch-up --
+     converges in one step instead of being animated through in order. */
+  livePos: null, liveApply: 0,
+  queueLive: function(p){
+    this.livePos = p;
+    if(this.liveApply) return;
+    var self = this;
+    this.liveApply = requestAnimationFrame(function(){
+      self.liveApply = 0;
+      var q = self.livePos; self.livePos = null;
+      if(!q) return;
+      /* A geometry switch is still settling. Writing a scroll position now
+         would measure a strip that is being rebuilt underneath it -- exactly
+         the race the transaction exists to remove. Hold the newest frame and
+         come back for it, rather than dropping it: it is where the other
+         device actually is. */
+      if(self.applying > 0){ self.livePos = q; self.queueLive(q); return; }
+      self.applying++;
+      try{ SyncStateAdapter.placeLive(q); }
+      finally{
+        self.applying--;
+        /* the scroll this just caused is delivered asynchronously; without a
+           quiet window it comes back as a deliberate action by this device */
+        self.hush(260);
+      }
+    });
   },
 
   sendDocument: function(){
@@ -13768,6 +14432,18 @@ var SM = {
       SM.lastRemotePos = p;
       /* an old packet must never move the reader backwards */
       if(SM.isStale(m)) return;
+
+      /* A live scroll frame: no modes, no TTS, nothing durable — just where
+         the other device is, right now. It never replays, and it is applied
+         newest-first rather than in order. */
+      if(p.live){
+        if(replay) return;
+        if(!SM.intentNewer(m.intent, m.intentDev)) return;
+        SM.adoptIntent(m.intent, m.intentDev);
+        if(!SM.docMatches(p.fp)) return;
+        SM.queueLive(p);
+        return;
+      }
       /* the word highlight tracks a remote narrator regardless of who is driving */
       if(p.tts) SM.applyRemoteTts(p.tts, m.deviceId);
       if(replay){ SyncUI.render(); return; }
@@ -14596,7 +15272,15 @@ ingest = function(file){
    These are explicit wrappers rather than a loop over names: this block runs
    in strict mode, where eval cannot assign to an outer binding. */
 function nbAct(){
-  if(SM.applying > 0 || SM.restoring) return;
+  if(SM.restoring) return;
+  if(SM.applying > 0){
+    /* A mirrored view change is still settling. It does not get to finish
+       laying out a screen the person in front of this one has just moved on
+       from: the generation moves, the transaction stops at its next step, and
+       this device claims the action as soon as the counter is released. */
+    SM.viewGen++;
+    return;
+  }
   SM.bumpIntent();
 }
 function nbNav(){
@@ -14717,11 +15401,16 @@ startAt = function(g){ if(SM.applying === 0 && !SM.restoring) SM.bumpIntent();
   if(v){
     /* A finger or pen on the page is deliberate. The sync layer's own scroll
        restoration is not, and is already inside SM.applying. */
-    v.addEventListener('pointerdown', function(e){
-      if(e.pointerType === 'touch' || e.pointerType === 'pen') nbAct();
-    }, true);
+    /* nbAct decides what to do while a mirrored change is in flight -- it
+       supersedes it. Returning early here meant a finger or a pen on the glass
+       during a remote mode change did nothing at all, on the one device the
+       whole feature is written around. */
+    v.addEventListener('pointerdown', function(){ nbAct(); }, true);
     v.addEventListener('wheel', nbAct, { passive:true, capture:true });
-    v.addEventListener('scroll', function(){ nbAct(); }, { passive:true });
+    v.addEventListener('scroll', function(){
+      if(SM.muted()) return;          /* the app's own scroll, not yours */
+      nbAct();
+    }, { passive:true });
   }
   document.addEventListener('keydown', function(e){
     if(e.code === 'ArrowRight' || e.code === 'ArrowLeft' ||
@@ -15163,7 +15852,8 @@ var SyncUI = {
 
 /* a small handle for the diagnostics panel and for testing from the console */
 window.NBSync = { SM:SM, UI:SyncUI, FP:NBFP, QR:NBQR, Ann:AnnotationSync, dev:devLoad,
-                  fpxGet:fpxGet, fpxSet:fpxSet, fpxRebuild:fpxRebuild };
+                  fpxGet:fpxGet, fpxSet:fpxSet, fpxRebuild:fpxRebuild,
+                  live: function(){ SM.streamPosition(); } };
 
 })();
 
