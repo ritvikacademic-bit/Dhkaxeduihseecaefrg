@@ -1247,6 +1247,83 @@
     .cf-bar .tr i{ transition:none; }
   }
 
+  /* ==========================================================================
+     TWO-WAY SYNC
+     Borrows the sheet/box chrome already used by Backup and Voices, so the
+     panel needs almost nothing of its own.
+     ====================================================================== */
+  .syncdot{ display:none; width:7px; height:7px; border-radius:99px; background:var(--ok);
+            margin-left:auto; align-self:center; flex:0 0 auto; }
+  .syncdot.on{ display:block; }
+  .syncdot.warn{ background:var(--mark-edge); }
+
+  .syncstate{ display:flex; align-items:center; gap:9px; font-size:0.9375rem; font-weight:600; margin:2px 0 4px; }
+  .sdot{ width:9px; height:9px; border-radius:99px; background:var(--ink-faint); flex:0 0 auto; }
+  .sdot.on{ background:var(--ok); }
+  .sdot.warn{ background:var(--mark-edge); }
+  .sdot.busy{ background:var(--bolt); animation:sdotpulse 1s ease-in-out infinite; }
+  @keyframes sdotpulse{ 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
+
+  .syncfield{ margin:12px 0; }
+  .syncfield label.small{ display:block; margin-bottom:5px; color:var(--ink-soft); }
+  .syncfield input[type=text]{ width:100%; padding:9px 11px; border:1px solid var(--line-2);
+        border-radius:10px; background:var(--paper); color:var(--ink); font:inherit; font-size:0.875rem; }
+  .syncfield small{ display:block; margin-top:5px; color:var(--ink-faint); font-size:0.75rem; line-height:1.45; }
+  .syncfield code{ font-size:0.75rem; background:var(--wash); padding:1px 5px; border-radius:5px; }
+
+  .syncview{ display:none; margin:14px 0; text-align:center; }
+  .syncview.show{ display:block; }
+  .syncqr{ display:flex; justify-content:center; margin-bottom:10px; min-height:4px; }
+  .syncqr canvas{ border-radius:10px; border:1px solid var(--line);
+        background:#fff; padding:8px; width:min(210px,52vw); height:auto; image-rendering:pixelated; }
+  .synccode{ font-size:1.75rem; font-weight:700; letter-spacing:.22em; text-indent:.22em;
+        font-variant-numeric:tabular-nums; color:var(--brand); }
+  .syncview small{ display:block; margin-top:6px; color:var(--ink-faint); font-size:0.75rem; }
+  .synccodein{ text-align:center; font-size:1.5rem !important; font-weight:700;
+        letter-spacing:.2em; text-indent:.2em; font-variant-numeric:tabular-nums; }
+
+  .syncpeers{ margin:12px 0; display:none; }
+  .syncpeers.show{ display:block; }
+  .syncpeer{ display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid var(--line);
+        border-radius:10px; margin-bottom:6px; background:var(--wash); font-size:0.8125rem; }
+  .syncpeer .nm{ font-weight:600; }
+  .syncpeer .wh{ color:var(--ink-faint); margin-left:auto; text-align:right;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:52%; }
+  .syncpeer button{ padding:4px 9px; font-size:0.75rem; border-radius:8px; border:1px solid var(--line-2);
+        background:var(--paper); color:var(--ink); cursor:pointer; }
+
+  .syncseg{ display:flex; gap:6px; flex-wrap:wrap; }
+  .syncseg button{ flex:1 1 auto; min-width:88px; padding:8px 10px; border:1px solid var(--line-2);
+        border-radius:10px; background:var(--paper); color:var(--ink); cursor:pointer;
+        font:inherit; font-size:0.8125rem; }
+  .syncseg button.on{ border-color:var(--brand); background:var(--brand); color:#fff; font-weight:600; }
+  .syncseg button:disabled{ opacity:.4; cursor:default; }
+
+  .syncmsg{ margin:10px 0; padding:9px 11px; border-radius:10px; font-size:0.8125rem; line-height:1.5;
+        border:1px solid var(--line-2); background:var(--wash); color:var(--ink); white-space:pre-line; }
+  .syncmsg.bad{ border-color:#e8c9c9; background:#fdf5f5; color:#8d2b2b; }
+  .syncmsg.good{ border-color:#bfe0cd; background:#f2fbf6; color:var(--ok); }
+
+  .syncdebug{ margin:8px 0 0; padding:9px 11px; background:var(--wash); border:1px solid var(--line);
+        border-radius:10px; font-size:0.6875rem; line-height:1.6; color:var(--ink-soft);
+        white-space:pre; overflow:auto; max-height:190px; font-family:ui-monospace,Menlo,Consolas,monospace; }
+
+  /* §29 — subtle, never over the text, one tap to stop */
+  .followpill{ position:fixed; left:50%; transform:translateX(-50%); top:10px; z-index:37;
+        display:none; align-items:center; gap:7px; padding:5px 13px; border-radius:99px;
+        border:1px solid var(--line-2); background:rgba(251,251,251,.93); color:var(--ink-soft);
+        font:inherit; font-size:0.75rem; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.07);
+        -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  .followpill.show{ display:flex; }
+  .followpill .fdot{ width:6px; height:6px; border-radius:99px; background:var(--ok); }
+  .followpill.audio .fdot{ background:var(--bolt); }
+  body.dark .followpill{ background:rgba(28,28,30,.93); color:#c9c8c4; border-color:#3a3a3c; }
+  body.dark .syncmsg{ background:#232325; border-color:#3a3a3c; color:#e6e5e1; }
+  body.dark .syncpeer{ background:#232325; border-color:#3a3a3c; }
+  body.dark .syncdebug{ background:#232325; border-color:#3a3a3c; }
+  body.dark .syncfield input[type=text]{ background:#1c1c1e; border-color:#3a3a3c; color:#e6e5e1; }
+  body.dark .syncseg button{ background:#1c1c1e; border-color:#3a3a3c; color:#e6e5e1; }
+
 </style>
 
 <!-- ===================== HOME · reading library ===================== -->
@@ -1263,6 +1340,7 @@
         <button id="navHlAll" class="hsublink">All highlights</button>
       </div>
       <button id="navStats" class="hnavitem"><span class="ic">📈</span> Stats</button>
+      <button id="navSync" class="hnavitem"><span class="ic">⇄</span> Two-Way Sync<span id="navSyncDot" class="syncdot"></span></button>
       <button id="navThemes" class="hnavitem"><span class="ic">◨</span> Themes</button>
       <div id="themeNav" class="hsublist" style="display:none">
         <button id="navThm1" class="hsublink">Theme 1 (original)</button>
@@ -1413,6 +1491,8 @@
 
 <div id="backdrop" class="backdrop"></div>
 <button id="peekBtn" class="peek" aria-label="Show controls">controls ⌄</button>
+<!-- §29: the only thing sync ever puts on the page, and one tap turns it off -->
+<button id="followPill" class="followpill" title="Stop following"><span class="fdot"></span><span id="followPillText">Following</span></button>
 <button id="focusBtn" class="focusbtn" aria-pressed="false" title="Hide everything but the page">Focused Reading</button>
 <button id="bionicBtn" class="bionicbtn" aria-pressed="false" title="Bionic reading"><span><b>B</b><i>b</i></span></button>
 <button id="infBtn" class="infbtn" aria-pressed="false" title="Infinite scroll">∞</button>
@@ -1786,6 +1866,60 @@
     <div class="row">
       <button id="bkClose">Close</button>
     </div>
+  </div>
+</div>
+
+<!-- ── two-way sync ──────────────────────────────────────────────── -->
+<div id="syncSheet" class="sheet">
+  <div class="box">
+    <h3>Two-Way Sync</h3>
+
+    <div class="syncstate">
+      <span id="syncDot" class="sdot"></span>
+      <span id="syncStatus">Not connected</span>
+    </div>
+    <p id="syncBlurb">Keep this device and one other in step — page, position, highlights, ink and narration.</p>
+
+    <!-- service address -->
+    <div id="syncServerRow" class="syncfield">
+      <label class="small" for="syncUrl">Sync service</label>
+      <input id="syncUrl" type="text" spellcheck="false" autocomplete="off" placeholder="192.168.1.20:8787" />
+      <small>Your laptop's address on this network, running <code>node sync-server/server.js</code> — for example <code>192.168.1.12:8787</code>. This copy of NeoBook is hosted, so it must be told where to look. The service needs HTTPS; run <code>node sync-server/make-cert.js</code> once to set that up.</small>
+    </div>
+
+    <!-- pairing: this device generates a code -->
+    <div id="syncPairView" class="syncview">
+      <div id="syncQr" class="syncqr"></div>
+      <div class="synccode" id="syncCode">------</div>
+      <small id="syncCodeHint">On the other device, open NeoBook → Two-Way Sync → “Enter a code”.</small>
+    </div>
+
+    <!-- pairing: this device enters a code -->
+    <div id="syncClaimView" class="syncview">
+      <label class="small" for="syncCodeIn">Six-digit code from the other device</label>
+      <input id="syncCodeIn" type="text" inputmode="numeric" maxlength="6" autocomplete="off"
+             spellcheck="false" placeholder="000000" class="synccodein" />
+    </div>
+
+    <!-- who is here -->
+    <div id="syncPeers" class="syncpeers"></div>
+
+    <!-- audio device (§17.1) -->
+    <div id="syncAudioRow" class="syncfield">
+      <label class="small">TTS audio plays on</label>
+      <div id="syncAudioPick" class="syncseg"></div>
+      <small id="syncAudioHint">The chosen device narrates with its own voice. Only one device ever speaks.</small>
+    </div>
+
+    <div id="syncMsg" class="syncmsg" style="display:none"></div>
+
+    <div class="row" id="syncActions"></div>
+
+    <div class="row">
+      <button id="syncClose">Close</button>
+      <button id="syncDebugBtn" class="mghost" style="margin-left:auto">Diagnostics</button>
+    </div>
+    <pre id="syncDebug" class="syncdebug" style="display:none"></pre>
   </div>
 </div>
 
@@ -4404,7 +4538,13 @@ function inkTrim(list){
                  y: Math.round(pts[i].y * 10) / 10,
                  p: Math.round(pts[i].p * 100) / 100 });
     }
-    out.push({ mode: st.mode, c: st.c, w: st.w, pts: cut });
+    /* id/t give a stroke an identity that survives a reload, which is what lets
+       sync delete exactly one stroke instead of shipping the whole page.
+       fn records which layout it was drawn in — it was always set on the live
+       stroke and always dropped here, so funnel ink came back as page ink on
+       every reload. Keeping it is what the comment in penBegin already promises. */
+    out.push({ id: st.id, t: st.t, fn: st.fn ? 1 : 0,
+               mode: st.mode, c: st.c, w: st.w, pts: cut });
   }
   return out;
 }
@@ -5933,7 +6073,7 @@ function closeNoteModal(){ $('#noteSheet').classList.remove('show'); }
 async function saveManualNote(){
   const text = ($('#noteText').value||'').replace(/\r/g,'').trim();
   if(!text){ closeNoteModal(); return; }
-  const note = { text:text, at:Date.now(), manual:true, page:(S.book?S.page:0) };
+  const note = { text:text, at:Date.now(), manual:true, page:(S.book?S.page:0), id:nbNewId('h') };
   if(S.book){
     S.hl.push(note); saveMarks();
   }else{
@@ -6100,8 +6240,14 @@ setInterval(function(){
 }, 700);
 
 document.addEventListener('visibilitychange', function(){
-  if(document.hidden){ if(S.playing && S.engine==='device'){ S.wasPlaying=true; pause(); } }
-  else{ if(S.wasPlaying){ S.wasPlaying=false; play(); } requestWakeLock(); }
+  /* Only the device actually producing sound suspends it when hidden. On a
+     mirroring device S.playing is true but nothing is being synthesised, so
+     pausing here would reach through the sync wrapper and stop the real
+     narrator on the other device (§17.7, §17.17). */
+  var _sm = window.NBSync && window.NBSync.SM;
+  var ownsAudio = !_sm || _sm.isAudioOwner();
+  if(document.hidden){ if(ownsAudio && S.playing && S.engine==='device'){ S.wasPlaying=true; pause(); } }
+  else{ if(ownsAudio && S.wasPlaying){ S.wasPlaying=false; play(); } requestWakeLock(); }
 });
 
 let wakeLock=null;
@@ -6135,6 +6281,8 @@ $('#speed').addEventListener('input', function(e){
   S.rate = parseFloat(e.target.value);
   $('#speedVal').textContent = S.rate.toFixed(2)+'×';
   saveSettings();
+  /* §17.8 — rate must reach whichever device is narrating */
+  try{ if(window.NBSync && window.NBSync.SM) window.NBSync.SM.sendTts('rate'); }catch(err){}
   if(S.engine!=='device'){ players.forEach(function(p){ p.playbackRate = clamp(S.rate,0.5,2); }); return; }
   clearTimeout(speedT);
   speedT = setTimeout(function(){ if(S.playing) restartHere(); }, 250);
@@ -8032,7 +8180,7 @@ function penBegin(e){
   const px = (e.clientX - inkRect.left) / S.scale, py = (e.clientY - inkRect.top) / S.scale;
 
   cur = { mode:mode, c:S.penColor, w:(mode==='erase' ? S.eraseMM : S.penW), pts:null,
-          fn: FN.on ? 1 : 0 };
+          fn: FN.on ? 1 : 0, id: nbNewId('s'), t: Date.now() };
   pbReset(); pbPush(px, py, pr);
 
   /* An eraser has no ink to predict, no live layer to composite and nothing to
@@ -8839,7 +8987,7 @@ function endSelect(){
   const text = txt.join(' ').replace(/\s+/g,' ').trim();
   if(!text){ paintMarks(); return; }
   if(!S.hlDraft) S.hlDraft = [];
-  S.hlDraft.push({ page:page, a:lo, b:hi, text:text, at:Date.now(), c:S.hlColor });
+  S.hlDraft.push({ page:page, a:lo, b:hi, text:text, at:Date.now(), c:S.hlColor, id:nbNewId('h') });
   saveDrafts();
   paintMarks();
   if(!hlHintShown){
@@ -12035,4 +12183,2462 @@ window.addEventListener('resize', function(){
   });
 
 })();
+
+/* ==== NEOBOOK TWO-WAY SYNC (spliced) ==== */
+/* ============================================================================
+   TWO-WAY SYNC
+   ----------------------------------------------------------------------------
+   Everything below is additive. With no server reachable, nothing in here runs
+   past its own guards and NeoBook is exactly the reader it was.
+
+   The reader is never rewritten: sync wraps a handful of existing functions
+   (schedulePos, scheduleInk, saveMarks, saveDrafts, playChunk, openBook,
+   ingest) and reads NeoBook's own state. There is no second copy of the
+   reading position, the highlight list or the stroke list anywhere in here.
+
+     nbNewId / NBFP      identity — devices and documents            (Stage 2)
+     NBQR                pairing code as a QR, no dependency         (Stage 3)
+     SyncProtocol        envelope shape and validation               (Stage 3)
+     SyncTransport       WebSocket, backoff, queue                   (Stage 3/9)
+     SyncPairing         /pair/new + /pair/claim                     (Stage 3)
+     SyncStateAdapter    read + apply reader state                   (Stage 4/5)
+     AnnotationSync      ink and highlight operations                (Stage 7/8)
+     SyncManager         the one object that ties it together        (all)
+     SyncUI              the panel and the follow pill               (Stage 3/5)
+============================================================================ */
+
+/* Stroke and highlight ids. Device-scoped so two devices drawing at the same
+   instant can never collide, which a bare timestamp could. Declared at script
+   level because penBegin and endSelect call it. */
+var NB_IDN = 0;
+function nbNewId(prefix){
+  if(!NB_IDN){
+    var seed = 0;
+    try{
+      var b = new Uint8Array(4); crypto.getRandomValues(b);
+      seed = ((b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3]) >>> 0;
+    }catch(e){ seed = (Math.random()*4294967295)>>>0; }
+    NB_IDN = seed % 100000 + 1;
+  }
+  NB_IDN = (NB_IDN + 1) % 2147483647;
+  return (prefix||'x') + NB_IDN.toString(36) + Date.now().toString(36).slice(-5);
+}
+
+(function(){
+'use strict';
+
+/* ============================================================================
+   0. SMALL THINGS
+============================================================================ */
+var LOGN = 60, LOG = [];
+function slog(){
+  var s = Array.prototype.join.call(arguments, ' ');
+  LOG.push(new Date().toISOString().slice(11,19) + ' ' + s);
+  if(LOG.length > LOGN) LOG.shift();
+}
+function el(id){ return document.getElementById(id); }
+/* Every string that comes off the wire reaches the DOM through textContent.
+   Nothing built from a remote payload is ever assigned to innerHTML (§24). */
+function setText(node, s){ if(node) node.textContent = (s == null ? '' : String(s)); }
+function clean(s, max){
+  if(typeof s !== 'string') return '';
+  s = s.replace(/[\u0000-\u001f\u007f]/g, '');
+  return s.length > (max||64) ? s.slice(0, max||64) : s;
+}
+function num(v, lo, hi, dflt){
+  v = typeof v === 'number' ? v : parseFloat(v);
+  if(!isFinite(v)) return dflt;
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+function nowMs(){ return Date.now(); }
+
+/* ============================================================================
+   1. DEVICE IDENTITY  (§4)
+============================================================================ */
+var DEV = null;
+function devLoad(){
+  if(DEV) return DEV;
+  var d = null;
+  try{ d = mirror.get('nbsync.device'); }catch(e){}
+  if(!d || !d.deviceId){
+    var raw = new Uint8Array(18);
+    try{ crypto.getRandomValues(raw); }
+    catch(e){ for(var i=0;i<18;i++) raw[i] = (Math.random()*256)|0; }
+    var id = '';
+    for(var j=0;j<18;j++) id += ('0'+raw[j].toString(16)).slice(-2);
+    /* A guess, only ever shown to you and only as a label. */
+    var ua = navigator.userAgent || '';
+    var touch = (navigator.maxTouchPoints || 0) > 1;
+    var name = /Android|Tablet|iPad|SM-|Silk/i.test(ua) ? 'Tablet'
+             : (/iPhone|Mobile/i.test(ua) ? 'Phone'
+             : (touch ? 'Tablet' : 'Laptop'));
+    d = { deviceId:id, deviceName:name, secret:'', sessionId:'', server:'' };
+    devSave(d);
+  }
+  DEV = d;
+  return d;
+}
+function devSave(d){
+  DEV = d;
+  try{ mirror.set('nbsync.device', d); }catch(e){}
+  try{ store.set('nbsync.device', d); }catch(e){}
+}
+
+/* ============================================================================
+   2. DOCUMENT FINGERPRINT  (§5)
+
+   Two hashes, because one of them has to be instant and the other has to be
+   right.
+
+     prov:<size>:<hex>   size plus three 64 KB samples, folded with FNV-1a.
+                         Microseconds. Local placeholder only — never used to
+                         decide that two devices hold the same document.
+     sha256:<hex>        the real identity. Computed on idle, in slices, so a
+                         300 MB textbook never blocks a frame.
+
+   crypto.subtle does not exist on a plain-http LAN origin, which is exactly
+   where this reader lives, so there is a compact SHA-256 here for that case.
+============================================================================ */
+var NBFP = (function(){
+
+  function fnv(bytes, h){
+    h = h >>> 0;
+    for(var i=0;i<bytes.length;i++){
+      h ^= bytes[i];
+      h = (h + ((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24))) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function provisional(buf){
+    var u8 = new Uint8Array(buf), n = u8.length, C = 65536;
+    var h = 2166136261;
+    h = fnv(u8.subarray(0, Math.min(C, n)), h);
+    if(n > C*2){
+      var mid = (n>>1) - (C>>1);
+      h = fnv(u8.subarray(mid, mid + C), h);
+    }
+    if(n > C) h = fnv(u8.subarray(Math.max(0, n - C), n), h);
+    return 'prov:' + n + ':' + (h >>> 0).toString(16);
+  }
+
+  /* ---- SHA-256, chunked ------------------------------------------------- */
+  var K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+
+  function Sha(){
+    this.h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    this.buf = new Uint8Array(64); this.bl = 0; this.len = 0;
+    this.w = new Int32Array(64);
+  }
+  Sha.prototype._block = function(b, off){
+    var w = this.w, h = this.h, i, t1, t2;
+    for(i=0;i<16;i++) w[i] = (b[off+i*4]<<24)|(b[off+i*4+1]<<16)|(b[off+i*4+2]<<8)|b[off+i*4+3];
+    for(i=16;i<64;i++){
+      var x = w[i-15], y = w[i-2];
+      var s0 = ((x>>>7)|(x<<25)) ^ ((x>>>18)|(x<<14)) ^ (x>>>3);
+      var s1 = ((y>>>17)|(y<<15)) ^ ((y>>>19)|(y<<13)) ^ (y>>>10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) | 0;
+    }
+    var a=h[0],b2=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+    for(i=0;i<64;i++){
+      var S1 = ((e>>>6)|(e<<26)) ^ ((e>>>11)|(e<<21)) ^ ((e>>>25)|(e<<7));
+      var ch = (e & f) ^ (~e & g);
+      t1 = (hh + S1 + ch + K[i] + w[i]) | 0;
+      var S0 = ((a>>>2)|(a<<30)) ^ ((a>>>13)|(a<<19)) ^ ((a>>>22)|(a<<10));
+      var maj = (a & b2) ^ (a & c) ^ (b2 & c);
+      t2 = (S0 + maj) | 0;
+      hh=g; g=f; f=e; e=(d+t1)|0; d=c; c=b2; b2=a; a=(t1+t2)|0;
+    }
+    h[0]=(h[0]+a)|0; h[1]=(h[1]+b2)|0; h[2]=(h[2]+c)|0; h[3]=(h[3]+d)|0;
+    h[4]=(h[4]+e)|0; h[5]=(h[5]+f)|0; h[6]=(h[6]+g)|0; h[7]=(h[7]+hh)|0;
+  };
+  Sha.prototype.update = function(u8){
+    this.len += u8.length;
+    var i = 0, n = u8.length;
+    if(this.bl){
+      while(i < n && this.bl < 64) this.buf[this.bl++] = u8[i++];
+      if(this.bl === 64){ this._block(this.buf, 0); this.bl = 0; }
+    }
+    while(i + 64 <= n){ this._block(u8, i); i += 64; }
+    while(i < n) this.buf[this.bl++] = u8[i++];
+  };
+  Sha.prototype.hex = function(){
+    var bits = this.len * 8;
+    var pad = new Uint8Array(this.bl < 56 ? 64 - this.bl : 128 - this.bl);
+    pad[0] = 0x80;
+    var p = pad.length;
+    /* length is 64-bit big-endian; files here are far below 2^53 bytes */
+    pad[p-4] = (bits >>> 24) & 255; pad[p-3] = (bits >>> 16) & 255;
+    pad[p-2] = (bits >>> 8) & 255;  pad[p-1] = bits & 255;
+    var hi = Math.floor(this.len / 536870912);
+    pad[p-8] = (hi >>> 24) & 255; pad[p-7] = (hi >>> 16) & 255;
+    pad[p-6] = (hi >>> 8) & 255;  pad[p-5] = hi & 255;
+    this.update(pad);
+    var out = '';
+    for(var i=0;i<8;i++) out += ('00000000' + (this.h[i] >>> 0).toString(16)).slice(-8);
+    return out;
+  };
+
+  /* Slices through requestIdleCallback so the main thread keeps its frames.
+     Falls back to setTimeout where idle callbacks are unavailable. */
+  function sha256Idle(buf, onDone){
+    var u8 = new Uint8Array(buf), n = u8.length, i = 0;
+    var SLICE = 1 << 20;                       /* 1 MB per idle turn */
+    var h = new Sha();
+    function step(deadline){
+      var budget = 3;
+      var t0 = (window.performance && performance.now) ? performance.now() : 0;
+      while(i < n){
+        h.update(u8.subarray(i, Math.min(n, i + SLICE)));
+        i += SLICE;
+        if(deadline && deadline.timeRemaining && deadline.timeRemaining() < 4) break;
+        if(!deadline && performance.now && (performance.now() - t0) > budget) break;
+      }
+      if(i < n) schedule();
+      else onDone('sha256:' + h.hex());
+    }
+    function schedule(){
+      if(window.requestIdleCallback) requestIdleCallback(step, { timeout:3000 });
+      else setTimeout(function(){ step(null); }, 16);
+    }
+    schedule();
+  }
+
+  function full(buf, onDone){
+    /* native where the origin allows it — far faster, and it does not block */
+    if(window.crypto && crypto.subtle && crypto.subtle.digest){
+      try{
+        crypto.subtle.digest('SHA-256', buf).then(function(d){
+          var v = new Uint8Array(d), s = '';
+          for(var i=0;i<v.length;i++) s += ('0'+v[i].toString(16)).slice(-2);
+          onDone('sha256:' + s);
+        }, function(){ sha256Idle(buf, onDone); });
+        return;
+      }catch(e){}
+    }
+    sha256Idle(buf, onDone);
+  }
+
+  /* A cheap check that both devices really did derive the same word list from
+     the same bytes. Highlights and TTS anchors are indices into that list, so
+     if this ever differs they must not be applied (audit R2). */
+  function ribbonSig(bk){
+    if(!bk || !bk.pages) return '';
+    var h = 2166136261, i, c;
+    h = (h ^ (bk.numPages|0)) >>> 0;
+    for(i=0;i<bk.pages.length;i++){
+      c = (bk.pages[i] && bk.pages[i].words) ? bk.pages[i].words.length : 0;
+      h ^= c;
+      h = (h + ((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24))) >>> 0;
+    }
+    return (h>>>0).toString(36) + '.' + (bk.numPages|0);
+  }
+
+  return { provisional:provisional, full:full, ribbonSig:ribbonSig };
+})();
+
+/* Fingerprint index: fp -> local bk.id. Kept in the localStorage mirror so
+   looking a document up never costs an IndexedDB key scan (audit R9, §20). */
+function fpxAll(){ try{ return mirror.get('nbsync.fpx') || {}; }catch(e){ return {}; } }
+function fpxSet(fp, id){
+  if(!fp || !id) return;
+  var m = fpxAll();
+  if(m[fp] === id) return;
+  m[fp] = id;
+  try{ mirror.set('nbsync.fpx', m); }catch(e){}
+}
+function fpxGet(fp){ return fp ? (fpxAll()[fp] || null) : null; }
+
+/* Books already in the library when this build first runs get fingerprinted
+   quietly, one at a time, only when nothing else is happening. */
+var fpQueue = [], fpBusy = false;
+function fpEnqueue(bk){ if(bk && bk.id && fpQueue.indexOf(bk.id) < 0){ fpQueue.push(bk.id); fpPump(); } }
+function fpPump(){
+  if(fpBusy || !fpQueue.length) return;
+  fpBusy = true;
+  var id = fpQueue.shift();
+  var done = function(){ fpBusy = false; setTimeout(fpPump, 250); };
+  store.get('card:'+id).then(function(card){
+    if(!card){ done(); return; }
+    if(card.fp && card.fp.indexOf('sha256:') === 0){ fpxSet(card.fp, id); done(); return; }
+    if(card.kind === 'epub'){ done(); return; }          /* not syncable in v1 */
+    store.get('bytes:'+id).then(function(bytes){
+      if(!bytes){ done(); return; }
+      NBFP.full(bytes, function(fp){
+        card.fp = fp;
+        store.set('card:'+id, card);
+        fpxSet(fp, id);
+        var live = (S.library||[]).filter(function(b){ return b.id === id; })[0];
+        if(live) live.fp = fp;
+        slog('fingerprinted', id.slice(0,18), fp.slice(0,14));
+        if(SM.connected && S.book && S.book.id === id) SM.sendDocument();
+        done();
+      });
+    }).catch(done);
+  }).catch(done);
+}
+
+/* ============================================================================
+   3. QR  (§2)
+   Byte mode, error correction L, versions 1-10, all eight masks scored.
+   Enough for a pairing URL and nothing more, which is the point.
+============================================================================ */
+var NBQR = (function(){
+  var EC_L = {
+    1:[7,1,19,0,0],    2:[10,1,34,0,0],  3:[15,1,55,0,0],  4:[20,1,80,0,0],
+    5:[26,1,108,0,0],  6:[18,2,68,0,0],  7:[20,2,78,0,0],  8:[24,2,97,0,0],
+    9:[30,2,116,0,0], 10:[18,2,68,2,69]
+  };
+  var ALIGN = { 1:[], 2:[6,18], 3:[6,22], 4:[6,26], 5:[6,30],
+                6:[6,34], 7:[6,22,38], 8:[6,24,42], 9:[6,26,46], 10:[6,28,50] };
+  var FMT_L = [0x77C4,0x72F3,0x7DAA,0x789D,0x662F,0x6318,0x6C41,0x6976];
+  var VER   = { 7:0x07C94, 8:0x085BC, 9:0x09A99, 10:0x0A4D3 };
+
+  var EXP = new Uint8Array(512), LOGT = new Uint8Array(256);
+  (function(){
+    var x = 1;
+    for(var i=0;i<255;i++){ EXP[i] = x; LOGT[x] = i; x <<= 1; if(x & 256) x ^= 0x11D; }
+    for(var j=255;j<512;j++) EXP[j] = EXP[j-255];
+  })();
+  function mul(a,b){ return (a && b) ? EXP[LOGT[a] + LOGT[b]] : 0; }
+
+  function rsGen(n){
+    var g = [1];
+    for(var i=0;i<n;i++){
+      var ng = new Array(g.length+1); for(var k=0;k<ng.length;k++) ng[k]=0;
+      for(var j=0;j<g.length;j++){
+        ng[j]   ^= mul(g[j], EXP[i]);
+        ng[j+1] ^= g[j];
+      }
+      g = ng;
+    }
+    return g;
+  }
+  function rsEnc(data, n){
+    var g = rsGen(n), res = new Array(n);
+    for(var i=0;i<n;i++) res[i]=0;
+    for(var d=0; d<data.length; d++){
+      var f = data[d] ^ res[0];
+      res.shift(); res.push(0);
+      if(f) for(var j=0;j<g.length-1;j++) res[j] ^= mul(g[j+1], f);
+    }
+    return res;
+  }
+
+  function make(text){
+    var bytes = [];
+    for(var i=0;i<text.length;i++){
+      var c = text.charCodeAt(i);
+      if(c < 128) bytes.push(c);
+      else if(c < 2048){ bytes.push(192|(c>>6), 128|(c&63)); }
+      else { bytes.push(224|(c>>12), 128|((c>>6)&63), 128|(c&63)); }
+    }
+    var ver = 0;
+    for(var v=1; v<=10; v++){
+      var s = EC_L[v], cap = s[1]*s[2] + s[3]*s[4];
+      var need = bytes.length + 2 + (v >= 10 ? 1 : 0);   /* mode + count */
+      if(cap >= need){ ver = v; break; }
+    }
+    if(!ver) return null;
+
+    var spec = EC_L[ver], total = spec[1]*spec[2] + spec[3]*spec[4];
+    var cntBits = ver < 10 ? 8 : 16;
+
+    /* bit stream */
+    var bits = [];
+    function push(val, n){ for(var b=n-1;b>=0;b--) bits.push((val>>b)&1); }
+    push(4, 4);                       /* byte mode */
+    push(bytes.length, cntBits);
+    for(i=0;i<bytes.length;i++) push(bytes[i], 8);
+    var cap8 = total*8;
+    for(i=0; i<4 && bits.length < cap8; i++) bits.push(0);      /* terminator */
+    while(bits.length % 8) bits.push(0);
+    var dat = [];
+    for(i=0;i<bits.length;i+=8){
+      var byte = 0; for(var b=0;b<8;b++) byte = (byte<<1) | bits[i+b];
+      dat.push(byte);
+    }
+    var padArr = [0xEC, 0x11], pi = 0;
+    while(dat.length < total) dat.push(padArr[pi++ & 1]);
+
+    /* split into blocks, interleave data then ec */
+    var blocks = [], p = 0, bi;
+    for(bi=0; bi<spec[1]; bi++){ blocks.push(dat.slice(p, p+spec[2])); p += spec[2]; }
+    for(bi=0; bi<spec[3]; bi++){ blocks.push(dat.slice(p, p+spec[4])); p += spec[4]; }
+    var ecs = blocks.map(function(b){ return rsEnc(b, spec[0]); });
+    var out = [], maxD = Math.max(spec[2], spec[4] || 0);
+    for(i=0;i<maxD;i++) for(bi=0;bi<blocks.length;bi++) if(i < blocks[bi].length) out.push(blocks[bi][i]);
+    for(i=0;i<spec[0];i++) for(bi=0;bi<ecs.length;bi++) out.push(ecs[bi][i]);
+
+    /* matrix */
+    var size = ver*4 + 17;
+    var m = [], res = [];
+    for(i=0;i<size;i++){ m.push(new Int8Array(size).fill(-1)); res.push(new Uint8Array(size)); }
+    function setF(r,c,v){ if(r>=0&&r<size&&c>=0&&c<size){ m[r][c]=v; res[r][c]=1; } }
+
+    function finder(r,c){
+      for(var dr=-1; dr<=7; dr++) for(var dc=-1; dc<=7; dc++){
+        var rr=r+dr, cc=c+dc;
+        if(rr<0||rr>=size||cc<0||cc>=size) continue;
+        var on = (dr>=0&&dr<=6&&(dc===0||dc===6)) || (dc>=0&&dc<=6&&(dr===0||dr===6)) ||
+                 (dr>=2&&dr<=4&&dc>=2&&dc<=4);
+        setF(rr,cc,on?1:0);
+      }
+    }
+    finder(0,0); finder(0,size-7); finder(size-7,0);
+    for(i=8;i<size-8;i++){ setF(6,i,(i%2===0)?1:0); setF(i,6,(i%2===0)?1:0); }
+    var ac = ALIGN[ver];
+    for(var a=0;a<ac.length;a++) for(var b2=0;b2<ac.length;b2++){
+      var ar=ac[a], acc=ac[b2];
+      if((ar<=7&&acc<=7)||(ar<=7&&acc>=size-8)||(ar>=size-8&&acc<=7)) continue;
+      for(var dr2=-2;dr2<=2;dr2++) for(var dc2=-2;dc2<=2;dc2++){
+        var on2 = (Math.abs(dr2)===2||Math.abs(dc2)===2||(dr2===0&&dc2===0));
+        setF(ar+dr2, acc+dc2, on2?1:0);
+      }
+    }
+    setF(size-8, 8, 1);                                     /* dark module */
+    /* reserve format + version areas */
+    for(i=0;i<9;i++){ if(m[8][i]<0) setF(8,i,0); if(m[i][8]<0) setF(i,8,0); }
+    for(i=0;i<8;i++){ setF(8, size-1-i, 0); setF(size-1-i, 8, 0); }
+    if(ver >= 7) for(i=0;i<6;i++) for(var k2=0;k2<3;k2++){ setF(i, size-11+k2, 0); setF(size-11+k2, i, 0); }
+
+    /* zig-zag data placement */
+    var bitIdx = 0, dirUp = true;
+    for(var col = size-1; col > 0; col -= 2){
+      if(col === 6) col = 5;
+      for(var t=0; t<size; t++){
+        var row = dirUp ? (size-1-t) : t;
+        for(var s2=0; s2<2; s2++){
+          var cc2 = col - s2;
+          if(res[row][cc2]) continue;
+          var bit = 0;
+          if(bitIdx < out.length*8) bit = (out[bitIdx>>3] >> (7 - (bitIdx & 7))) & 1;
+          bitIdx++;
+          m[row][cc2] = bit;
+        }
+      }
+      dirUp = !dirUp;
+    }
+
+    function maskAt(k, r, c){
+      switch(k){
+        case 0: return (r+c)%2===0;
+        case 1: return r%2===0;
+        case 2: return c%3===0;
+        case 3: return (r+c)%3===0;
+        case 4: return ((r/2|0)+(c/3|0))%2===0;
+        case 5: return ((r*c)%2 + (r*c)%3)===0;
+        case 6: return (((r*c)%2 + (r*c)%3)%2)===0;
+        default:return (((r+c)%2 + (r*c)%3)%2)===0;
+      }
+    }
+    function penalty(g){
+      var pen = 0, r, c, run, last, dark = 0;
+      for(r=0;r<size;r++){
+        run=1; last=g[r][0];
+        for(c=1;c<size;c++){
+          if(g[r][c]===last) run++; else { if(run>=5) pen += 3 + (run-5); run=1; last=g[r][c]; }
+        }
+        if(run>=5) pen += 3 + (run-5);
+      }
+      for(c=0;c<size;c++){
+        run=1; last=g[0][c];
+        for(r=1;r<size;r++){
+          if(g[r][c]===last) run++; else { if(run>=5) pen += 3 + (run-5); run=1; last=g[r][c]; }
+        }
+        if(run>=5) pen += 3 + (run-5);
+      }
+      for(r=0;r<size-1;r++) for(c=0;c<size-1;c++){
+        var v=g[r][c];
+        if(v===g[r][c+1] && v===g[r+1][c] && v===g[r+1][c+1]) pen += 3;
+      }
+      var pat=[1,0,1,1,1,0,1,0,0,0,0];
+      for(r=0;r<size;r++) for(c=0;c<=size-11;c++){
+        var okR=true, okC=true;
+        for(var q=0;q<11;q++){
+          if(g[r][c+q]!==pat[q]) okR=false;
+          if(g[c+q][r]!==pat[q]) okC=false;
+        }
+        if(okR) pen+=40; if(okC) pen+=40;
+      }
+      for(r=0;r<size;r++) for(c=0;c<size;c++) if(g[r][c]) dark++;
+      pen += Math.floor(Math.abs(dark*100/(size*size) - 50)/5)*10;
+      return pen;
+    }
+
+    var best=null, bestPen=Infinity, bestMask=0;
+    for(var mk=0; mk<8; mk++){
+      var g2 = [];
+      for(var r2=0;r2<size;r2++){
+        var row2 = new Uint8Array(size);
+        for(var c3=0;c3<size;c3++){
+          row2[c3] = res[r2][c3] ? (m[r2][c3]&1) : ((m[r2][c3]&1) ^ (maskAt(mk,r2,c3)?1:0));
+        }
+        g2.push(row2);
+      }
+      /* format bits for this mask */
+      var f = FMT_L[mk];
+      for(var i2=0;i2<15;i2++){
+        var bitv = (f >> (14-i2)) & 1;
+        if(i2<6) g2[8][i2] = bitv;
+        else if(i2===6) g2[8][7] = bitv;
+        else if(i2===7) g2[8][8] = bitv;
+        else if(i2===8) g2[7][8] = bitv;
+        else g2[14-i2][8] = bitv;
+
+        if(i2<8) g2[size-1-i2][8] = bitv;
+        else g2[8][size-15+i2] = bitv;
+      }
+      g2[size-8][8] = 1;
+      if(ver >= 7){
+        var vb = VER[ver];
+        for(var i3=0;i3<18;i3++){
+          var b3 = (vb >> i3) & 1;
+          g2[(i3/3)|0][size-11+(i3%3)] = b3;
+          g2[size-11+(i3%3)][(i3/3)|0] = b3;
+        }
+      }
+      var pn = penalty(g2);
+      if(pn < bestPen){ bestPen = pn; best = g2; bestMask = mk; }
+    }
+    return { size:size, data:best, version:ver };
+  }
+
+  function toCanvas(text, px){
+    var q = make(text);
+    if(!q) return null;
+    var quiet = 4, n = q.size + quiet*2;
+    var scale = Math.max(2, Math.floor((px||220) / n));
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = n * scale;
+    var g = cv.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0,0,cv.width,cv.height);
+    g.fillStyle = '#000';
+    for(var r=0;r<q.size;r++) for(var c=0;c<q.size;c++)
+      if(q.data[r][c]) g.fillRect((c+quiet)*scale, (r+quiet)*scale, scale, scale);
+    return cv;
+  }
+  return { make:make, toCanvas:toCanvas };
+})();
+
+/* ============================================================================
+   4. PROTOCOL  (§25, §24, §31)
+============================================================================ */
+var PROTOCOL = 1;
+var SyncProtocol = {
+  seq: 0,
+  /* One per page load. `sequence` is in-memory and restarts at 1 on reload,
+     so the receiver needs to know which run a number belongs to (see
+     SM.isStale). */
+  epoch: nbNewId('r'),
+  envelope: function(type, payload){
+    return {
+      protocol: PROTOCOL,
+      eventId: nbNewId('e'),
+      sessionId: DEV ? DEV.sessionId : '',
+      deviceId:  DEV ? DEV.deviceId  : '',
+      sequence:  ++SyncProtocol.seq,
+      epoch:     SyncProtocol.epoch,
+      sentAt:    nowMs(),
+      type: type,
+      payload: payload || {}
+    };
+  },
+  /* Structural checks only; each handler validates its own payload fields.
+     Anything that fails is dropped silently — a malformed packet is never
+     allowed to become an exception in the reader. */
+  valid: function(m){
+    return !!m && typeof m === 'object'
+        && m.protocol === PROTOCOL
+        && typeof m.type === 'string' && m.type.length < 40
+        && (m.payload == null || typeof m.payload === 'object');
+  }
+};
+
+/* ============================================================================
+   5. TRANSPORT  (§3, §15, §30)
+============================================================================ */
+function SyncTransport(){
+  this.ws = null;
+  this.state = 'OFFLINE';          /* OFFLINE | CONNECTING | CONNECTED | RECONNECTING */
+  this.tries = 0;
+  this.timer = null;
+  this.wantOpen = false;
+  this.queue = [];                 /* unsent while down (§15)                */
+  this.onMessage = null;
+  this.onState = null;
+  this.stats = { sent:0, recv:0, reconnects:0, rtt:null, lastRecvAt:0, queued:0 };
+}
+/* Where the sync service lives.
+
+   When the reader is served BY the service (the LAN case) location.host is the
+   right answer. When it is hosted anywhere else — GitHub Pages — location.host
+   is github.io, which is emphatically not the sync service, so falling back to
+   it would point every connection at GitHub. Only fall back when this page
+   plausibly came from the service itself. */
+function hostedElsewhere(){
+  var h = location.hostname || '';
+  if(!h) return true;                                   /* file:// */
+  if(h === 'localhost' || h === '127.0.0.1' || h === '::1') return false;
+  /* RFC1918 and .local — the shapes a service on your own network takes */
+  if(/^10\./.test(h)) return false;
+  if(/^192\.168\./.test(h)) return false;
+  if(/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
+  if(/\.local$/i.test(h)) return false;
+  return true;
+}
+SyncTransport.prototype.base = function(){
+  var d = devLoad();
+  var base = (d.server || '').trim();
+  if(!base && !hostedElsewhere()) base = location.host;
+  return base.replace(/^wss?:\/\//i, '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+};
+SyncTransport.prototype.url = function(){
+  var base = this.base();
+  if(!base) return null;
+  /* A secure page may only open wss://. Mixed content is not negotiable. */
+  return ((location.protocol === 'https:') ? 'wss://' : 'ws://') + base + '/';
+};
+SyncTransport.prototype.http = function(){
+  var base = this.base();
+  if(!base) return '';
+  return ((location.protocol === 'https:') ? 'https://' : 'http://') + base;
+};
+SyncTransport.prototype.setState = function(s){
+  if(this.state === s) return;
+  this.state = s;
+  slog('transport', s);
+  if(this.onState) try{ this.onState(s); }catch(e){}
+};
+/* A wss:// handshake to an untrusted certificate fails with NO interstitial
+   and no useful error — the socket simply never opens. So reach the same host
+   over https first, where a failure is at least distinguishable, and keep the
+   reason for the panel to show. */
+SyncTransport.prototype.probe = function(){
+  var self = this;
+  var http = this.http();
+  if(!http) return Promise.resolve('noaddress');
+  return new Promise(function(resolve){
+    var done = false;
+    var finish = function(v){ if(!done){ done = true; resolve(v); } };
+    var xhr = new XMLHttpRequest();
+    try{ xhr.open('GET', http + '/health', true); }
+    catch(e){ finish('badaddress'); return; }
+    xhr.timeout = 6000;
+    xhr.onload  = function(){
+      var j = null; try{ j = JSON.parse(xhr.responseText); }catch(e){}
+      self.lastHealth = j;
+      finish(j && j.ok ? 'ok' : 'notsync');
+    };
+    /* The browser will not tell a page WHY a cross-origin request died, so
+       these three are one event to us. The panel names all three. */
+    xhr.onerror   = function(){ finish('blocked'); };
+    xhr.ontimeout = function(){ finish('timeout'); };
+    try{ xhr.send(); }catch(e){ finish('blocked'); }
+  });
+};
+
+SyncTransport.prototype.open = function(){
+  var self = this;
+  this.wantOpen = true;
+  if(this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
+  var u = this.url();
+  if(!u){ this.setState('OFFLINE'); this.lastError = 'noaddress'; return; }
+  this.setState(this.tries ? 'RECONNECTING' : 'CONNECTING');
+  /* Probe once per attempt so a wrong address or an untrusted certificate
+     surfaces as an explanation rather than a silent Offline. */
+  this.probe().then(function(r){
+    self.lastError = (r === 'ok') ? null : r;
+    if(r !== 'ok') SyncUI.render();
+  });
+  var ws;
+  try{ ws = new WebSocket(u); }
+  catch(e){ this.scheduleRetry(); return; }
+  this.ws = ws;
+  ws.onopen = function(){
+    self.tries = 0;
+    var d = devLoad();
+    self.raw(SyncProtocol.envelope('sync.hello', { secret: d.secret, deviceName: d.deviceName }));
+  };
+  ws.onmessage = function(ev){
+    var m = null;
+    try{ m = JSON.parse(ev.data); }catch(e){ return; }
+    self.stats.recv++; self.stats.lastRecvAt = nowMs();
+    if(m && m.type === 'sync.welcome') self.setState('CONNECTED');
+    if(self.onMessage) self.onMessage(m);
+  };
+  ws.onclose = function(){
+    if(self.ws === ws) self.ws = null;
+    if(self.wantOpen){ self.stats.reconnects++; self.scheduleRetry(); }
+    else self.setState('OFFLINE');
+  };
+  ws.onerror = function(){ /* close follows */ };
+};
+SyncTransport.prototype.scheduleRetry = function(){
+  var self = this;
+  if(!this.wantOpen) return;
+  this.setState('RECONNECTING');
+  clearTimeout(this.timer);
+  /* exponential with jitter, capped — a sleeping laptop must not hammer */
+  var wait = Math.min(20000, 700 * Math.pow(1.7, Math.min(this.tries, 8)));
+  wait = wait * (0.75 + Math.random() * 0.5);
+  this.tries++;
+  this.timer = setTimeout(function(){ self.open(); }, wait);
+};
+SyncTransport.prototype.close = function(){
+  this.wantOpen = false;
+  clearTimeout(this.timer);
+  if(this.ws){ try{ this.ws.close(); }catch(e){} this.ws = null; }
+  this.setState('OFFLINE');
+};
+SyncTransport.prototype.raw = function(env){
+  if(!this.ws || this.ws.readyState !== 1) return false;
+  try{ this.ws.send(JSON.stringify(env)); this.stats.sent++; return true; }
+  catch(e){ return false; }
+};
+SyncTransport.prototype.send = function(env, durable){
+  if(this.raw(env)) return true;
+  /* Only things worth replaying are held. Position is regenerated from live
+     state on reconnect, so queueing stale positions would be noise (§18). */
+  if(durable){
+    this.queue.push(env);
+    if(this.queue.length > 600) this.queue.splice(0, this.queue.length - 600);
+    this.stats.queued = this.queue.length;
+  }
+  return false;
+};
+SyncTransport.prototype.flush = function(){
+  var q = this.queue; this.queue = [];
+  for(var i=0;i<q.length;i++) if(!this.raw(q[i])) this.queue.push(q[i]);
+  this.stats.queued = this.queue.length;
+};
+
+/* ============================================================================
+   6. PAIRING  (§2, §24)
+============================================================================ */
+var SyncPairing = {
+  post: function(base, path, body){
+    return new Promise(function(res, rej){
+      var xhr = new XMLHttpRequest();
+      /* XHR rather than fetch: the older Android Chrome this reader targets
+         has it everywhere, and the timeout is simpler to reason about. */
+      xhr.open('POST', base + path, true);
+      xhr.timeout = 9000;
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.onload = function(){
+        var j = null;
+        try{ j = JSON.parse(xhr.responseText); }catch(e){}
+        if(xhr.status >= 200 && xhr.status < 300 && j) res(j);
+        else rej(new Error((j && j.error) || ('server said ' + xhr.status)));
+      };
+      xhr.onerror   = function(){ rej(new Error('Could not reach the sync service.')); };
+      xhr.ontimeout = function(){ rej(new Error('The sync service did not answer.')); };
+      xhr.send(JSON.stringify(body));
+    });
+  },
+  newCode: function(){
+    var d = devLoad();
+    /* the secret proves this really is the paired device re-pairing, rather
+       than someone who merely knows the deviceId (server.js /pair/new) */
+    return SyncPairing.post(SM.tx.http(), '/pair/new',
+      { deviceId: d.deviceId, deviceName: d.deviceName, secret: d.secret || '' });
+  },
+  claim: function(code){
+    var d = devLoad();
+    return SyncPairing.post(SM.tx.http(), '/pair/claim',
+      { code: code, deviceId: d.deviceId, deviceName: d.deviceName });
+  }
+};
+
+/* ============================================================================
+   7. STATE ADAPTER  (§6, §7, §8, §28)
+
+   Reads NeoBook's own state and writes back through NeoBook's own functions.
+   Nothing here keeps a second copy of anything.
+============================================================================ */
+var SyncStateAdapter = {
+
+  zoomMode: function(){
+    if(typeof FT !== 'undefined' && FT.on) return 'fitText';
+    if(typeof FN !== 'undefined' && FN.on) return 'funnel';
+    return 'manual';
+  },
+
+  /* §7 — a semantic anchor. There is deliberately no scrollTop in here. */
+  position: function(){
+    if(!S.book) return null;
+    var g = -1;
+    try{ g = readingAnchor(); }catch(e){ g = -1; }
+    if(g < 0) g = (typeof lastAnchor === 'number' ? lastAnchor : -1);
+    var pageWord = -1;
+    if(g >= 0 && S.byPage[S.page]){
+      var idx = S.byPage[S.page].indexOf(g);
+      if(idx >= 0) pageWord = idx;
+    }
+    return {
+      fp: S.book.fp || '',
+      ribbonSig: S.book.ribbonSig || '',
+      name: clean(bookTitle(S.book), 80),
+      page: S.page|0,
+      numPages: S.book.numPages|0,
+      pageProgress: SyncStateAdapter.pageFraction(),
+      wordAnchor: g,
+      pageWordAnchor: pageWord,
+      zoom: num(S.zoom, 0.1, 12, 1),
+      zoomMode: SyncStateAdapter.zoomMode(),
+      inf: !!(typeof IS !== 'undefined' && IS.on),
+      funnel: !!(typeof FN !== 'undefined' && FN.on),
+      progress: (typeof pctNow === 'function') ? pctNow() : 0,
+      at: nowMs()
+    };
+  },
+
+  /* how far down the current page the reading line sits, 0..1 */
+  pageFraction: function(){
+    try{
+      var viewer = el('viewer');
+      if(!viewer) return 0;
+      var probe = viewer.scrollTop + 48;
+      if(typeof IS !== 'undefined' && IS.on && IS.tops && IS.hts){
+        var p = S.page|0;
+        var top = IS.tops[p], h = IS.hts[p];
+        if(top != null && h) return num((probe - top) / h, 0, 1, 0);
+        return 0;
+      }
+      var frame = el('pageframe');
+      if(!frame) return 0;
+      var fh = frame.offsetHeight || 1;
+      return num((probe - frame.offsetTop) / fh, 0, 1, 0);
+    }catch(e){ return 0; }
+  },
+
+  /* §7 restore order: word anchor, then page fraction, then bare page. */
+  applyPosition: function(p){
+    if(!S.book || !p) return;
+    var sigOk = !p.ribbonSig || !S.book.ribbonSig || p.ribbonSig === S.book.ribbonSig;
+
+    /* Mode first, so the anchor lands in the layout it was measured against.
+       setFunnel/setInfinite are async and rebuild IS.tops, which the anchor
+       needs, so the placement waits for them rather than racing a half-built
+       layout. */
+    var switches = [];
+    try{
+      if(typeof p.funnel === 'boolean' && typeof FN !== 'undefined' && !!FN.on !== p.funnel
+         && typeof setFunnel === 'function') switches.push(setFunnel(p.funnel, true));
+      if(typeof p.inf === 'boolean' && typeof IS !== 'undefined' && !!IS.on !== p.inf
+         && typeof setInfinite === 'function') switches.push(setInfinite(p.inf, true));
+    }catch(e){}
+    if(switches.length){
+      var self = SyncStateAdapter;
+      SM.hush(1200);
+      Promise.all(switches.map(function(x){ return Promise.resolve(x).catch(function(){}); }))
+        .then(function(){ self.place(p); });
+      return;
+    }
+    SyncStateAdapter.place(p);
+  },
+
+  place: function(p){
+    if(!S.book || !p) return;
+    var sigOk = !p.ribbonSig || !S.book.ribbonSig || p.ribbonSig === S.book.ribbonSig;
+    var page = num(p.page, 0, (S.book.numPages||1)-1, 0)|0;
+    var g = (typeof p.wordAnchor === 'number') ? p.wordAnchor|0 : -1;
+
+    if(sigOk && g >= 0 && S.ribbon && S.ribbon[g]){
+      try{ goToWord(g); return; }catch(e){}
+    }
+    SyncStateAdapter.goToPageFraction(page, num(p.pageProgress, 0, 1, 0));
+  },
+
+  goToPageFraction: function(page, frac){
+    try{
+      var viewer = el('viewer');
+      if(typeof IS !== 'undefined' && IS.on){
+        if(typeof isGoToPage === 'function') isGoToPage(page);
+        if(IS.tops && IS.hts && viewer){
+          var h = IS.hts[page] || 0;
+          viewer.scrollTop = Math.max(0, IS.tops[page] + h*frac - 48);
+        }
+        if(typeof isSync === 'function') isSync(true);
+      }else{
+        var done = function(){
+          var frame = el('pageframe');
+          if(frame && viewer) viewer.scrollTop = Math.max(0, frame.offsetTop + (frame.offsetHeight||0)*frac - 48);
+        };
+        var r = renderPage(page);
+        if(r && r.then) r.then(done); else done();
+      }
+      if(typeof inkRect !== 'undefined') inkRect = null;
+    }catch(e){}
+  }
+};
+
+/* ============================================================================
+   8. THE MANAGER
+============================================================================ */
+var SM = {
+  tx: new SyncTransport(),
+
+  connected: false,
+  peers: {},                 /* deviceId -> {deviceName, online, where}      */
+  sessionRev: 0,
+
+  /* §11 — a depth counter, not a boolean: applying one remote event can call
+     through functions that themselves emit, and a boolean would be cleared by
+     the inner one while the outer is still applying. */
+  applying: 0,
+  seen: [],                  /* recent eventIds, oldest first               */
+  seenSet: Object.create(null),
+  lastSeq: Object.create(null),   /* deviceId -> highest applied sequence   */
+
+  /* §10 / §17.17 — two independent roles */
+  following: null,           /* deviceId this device is following, or null  */
+  audioOwner: null,          /* deviceId that narrates; null = this device  */
+
+  missingDoc: null,          /* {name, fp} when the peer's book is not here */
+  lastRemotePos: null,
+
+  deviceId: function(){ return devLoad().deviceId; },
+
+  /* ---- duplicate + ordering guards (§11, §31) --------------------------- */
+  isDuplicate: function(m){
+    var id = m && m.eventId;
+    if(!id) return false;
+    if(this.seenSet[id]) return true;
+    this.seenSet[id] = 1;
+    this.seen.push(id);
+    if(this.seen.length > 400) delete this.seenSet[this.seen.shift()];
+    return false;
+  },
+  /* §31 — an old packet must not regress state. The high-water mark is per
+     (device, epoch): a device's sequence counter lives in memory and restarts
+     at 1 when its page reloads, so without the epoch the receiver's surviving
+     watermark would silently drop every event from a reloaded peer until it
+     had generated as much traffic again. The epoch is minted once per page
+     load and travels in every envelope. */
+  isStale: function(m){
+    if(!m || !m.deviceId || typeof m.sequence !== 'number') return false;
+    var rec = this.lastSeq[m.deviceId];
+    var epoch = (typeof m.epoch === 'string') ? m.epoch : '';
+    if(!rec || rec.epoch !== epoch){
+      this.lastSeq[m.deviceId] = { epoch: epoch, seq: m.sequence };
+      return false;                       /* a fresh run of that device */
+    }
+    if(m.sequence <= rec.seq) return true;
+    rec.seq = m.sequence;
+    return false;
+  },
+
+  /* ---- sending ---------------------------------------------------------- */
+  /* §11 — the depth counter covers the synchronous part of applying a remote
+     event, but applyPosition reaches goToWord/renderPage, whose tail runs in
+     afterPaint (rAF + setTimeout) and calls schedulePos() long after the
+     finally{} has released the counter. A short quiet window closes that gap;
+     navigation the user performs themselves during it is picked up by the very
+     next schedulePos, so nothing is lost. */
+  quietUntil: 0,
+  hush: function(ms){ this.quietUntil = nowMs() + (ms || 500); },
+  muted: function(){ return this.applying > 0 || nowMs() < this.quietUntil; },
+
+  emit: function(type, payload, durable){
+    if(!this.connected && !durable) return;
+    if(this.muted()) return;                          /* §11 — never echo */
+    var env = SyncProtocol.envelope(type, payload);
+    this.tx.send(env, !!durable);
+    return env;
+  },
+
+  /* §18 — position is coalesced: only the newest unsent one matters. */
+  posPending: null, posTimer: null,
+  sendPosition: function(immediate){
+    if(this.muted() || !this.connected || !S.book) return;
+    if(!S.book.fp || S.book.kind === 'epub') return;
+    /* §5 — a provisional hash is a local placeholder; only the real SHA-256
+       is allowed to assert that two devices hold the same document */
+    if(S.book.fp.indexOf('sha256:') !== 0) return;
+    var p = SyncStateAdapter.position();
+    if(!p) return;
+    p.tts = SM.ttsSnapshot();
+    this.posPending = p;
+    var self = this;
+    if(immediate){
+      clearTimeout(this.posTimer); this.posTimer = null;
+      this.flushPosition();
+      return;
+    }
+    if(this.posTimer) return;
+    this.posTimer = setTimeout(function(){
+      self.posTimer = null;
+      self.flushPosition();
+    }, 60);
+  },
+  flushPosition: function(){
+    if(!this.posPending) return;
+    var p = this.posPending; this.posPending = null;
+    this.emit('reader.position', p);
+  },
+
+  sendDocument: function(){
+    if(!S.book || !S.book.fp || S.book.kind === 'epub') return;
+    this.emit('reader.document', {
+      fp: S.book.fp,
+      ribbonSig: S.book.ribbonSig || '',
+      name: clean(bookTitle(S.book), 80),
+      numPages: S.book.numPages|0
+    });
+    this.sendPosition(true);
+  },
+
+  /* ---- TTS (§17) -------------------------------------------------------- */
+  ttsSnapshot: function(){
+    return {
+      fp: (S.book && S.book.fp) || '',
+      state: S.playing ? 'playing' : 'paused',
+      wordAnchor: (typeof S.wordIdx === 'number') ? S.wordIdx : -1,
+      chunkIndex: (typeof S.curChunk === 'number') ? S.curChunk : -1,
+      rate: num(S.rate, 0.5, 3, 1),
+      owner: this.audioOwner || ''
+    };
+  },
+  /* §17.7 — exactly one narrator. `audioOwner` null used to mean "me", which
+     made it mean "me" on BOTH devices at once, so the first Play narrated
+     twice. While connected an owner is always elected (see electAudioOwner);
+     null now only ever means "not connected, so this device owns its own
+     audio". */
+  isAudioOwner: function(){
+    if(!this.connected) return true;
+    if(!this.audioOwner) return true;
+    return this.audioOwner === this.deviceId();
+  },
+  /* Deterministic and identical on both devices, so no round trip is needed
+     and there is no window in which both think they own the audio. Pressing
+     Play claims ownership explicitly and overrides this. */
+  audioOwnerExplicit: false,
+  electAudioOwner: function(){
+    /* Runs again whenever the peer set changes: a device that connects before
+       its partner would otherwise elect itself and never revisit, leaving both
+       devices believing they own the audio. Recomputing from the current
+       online set makes both converge on the same answer. A choice the user
+       made always wins over the election. */
+    if(this.audioOwnerExplicit) return;
+    var ids = [this.deviceId()];
+    for(var id in this.peers) if(this.peers[id] && this.peers[id].online) ids.push(id);
+    ids.sort();
+    var winner = ids[0];
+    if(winner === this.audioOwner) return;
+    var wasMine = (!this.audioOwner || this.audioOwner === this.deviceId());
+    this.audioOwner = winner;
+    if(wasMine && !this.isAudioOwner()){
+      try{ if(typeof silence === 'function') silence(); }catch(e){}
+      S.playing = false;
+      try{ var pb = el('play'); if(pb) pb.textContent = '▶'; onPlayStop(); }catch(e){}
+    }
+  },
+  /* the device that starts playback becomes the narrator (§17.7: changing
+     ownership is an explicit synchronised operation) */
+  claimAudio: function(){
+    if(!this.connected) return;
+    if(this.audioOwner === this.deviceId()) return;
+    this.setAudioOwner(this.deviceId(), true);
+  },
+  sendTts: function(action, extra){
+    if(this.applying > 0 || !this.connected) return;
+    var p = { action: action, at: nowMs() };
+    if(extra) for(var k in extra) p[k] = extra[k];
+    p.wordAnchor = (typeof S.wordIdx === 'number') ? S.wordIdx : -1;
+    p.rate = num(S.rate, 0.5, 3, 1);
+    this.emit('tts.control', p);                       /* §17.15 immediate */
+  },
+  setAudioOwner: function(devId, announce){
+    this.audioOwnerExplicit = true;
+    var prev = this.audioOwner;
+    var wasMine = (!prev || prev === this.deviceId());   /* null also meant "me" */
+    this.audioOwner = devId || null;
+    if(prev !== this.audioOwner){
+      /* whoever is losing the role stops making noise, right now (§17.7).
+         The previous owner may have been implicit (null), which is why this
+         tests wasMine rather than prev === deviceId(). */
+      if(wasMine && !this.isAudioOwner()){
+        try{ if(typeof silence === 'function') silence(); }catch(e){}
+        S.playing = false;
+        try{ var pb = el('play'); if(pb){ pb.textContent = '▶'; } onPlayStop(); }catch(e){}
+      }
+    }
+    if(announce){
+      this.emit('tts.audioOwner', {
+        audioOwnerDeviceId: this.audioOwner || '',
+        wordAnchor: (typeof S.wordIdx === 'number') ? S.wordIdx : -1,
+        rate: num(S.rate, 0.5, 3, 1),
+        playing: !!S.playing
+      });
+    }
+    SyncUI.render();
+    SyncUI.pill();
+  },
+
+  /* ---- receiving -------------------------------------------------------- */
+  onMessage: function(m){
+    if(!SyncProtocol.valid(m)) return;
+
+    if(m.type === 'sync.welcome'){
+      SM.connected = true;
+      SM.sessionRev = m.payload.rev | 0;
+      SM.peers = {};
+      var ps = m.payload.peers || [];
+      for(var i=0;i<ps.length;i++){
+        SM.peers[clean(ps[i].deviceId,64)] = {
+          deviceName: clean(ps[i].deviceName, 40) || 'Device',
+          online: !!ps[i].online
+        };
+      }
+      SM.electAudioOwner();                 /* §17.7 — never two narrators */
+      SM.tx.flush();
+      /* §15 — ask only for what we missed, never for everything */
+      SM.emit('sync.requestMissing', { sinceRev: SM.knownRev() });
+      if(S.book) SM.sendDocument();
+      /* §21 — offer to continue from wherever the other device stopped */
+      var snap = m.payload.snapshot;
+      if(snap && snap.lastPosition && !S.book) SM.offerContinue(snap.lastPosition);
+      SyncUI.render(); SyncUI.pill();
+      slog('connected, rev', SM.sessionRev);
+      return;
+    }
+    if(m.type === 'sync.denied'){
+      SM.connected = false;
+      SM.tx.wantOpen = false;
+      SyncUI.say('This device is no longer paired. Pair it again.', 'bad');
+      SyncUI.render();
+      return;
+    }
+    if(m.type === 'sync.pong'){
+      if(m.payload && m.payload.t) SM.tx.stats.rtt = nowMs() - m.payload.t;
+      return;
+    }
+    if(m.type === 'sync.ack'){
+      if(m.deviceId !== 'server') return;      /* §24 — server-only frame */
+      AnnotationSync.acked(m.payload && m.payload.eventId);
+      if(m.payload && m.payload.rev) SM.noteRev(m.payload.rev);
+      return;
+    }
+    if(m.type === 'sync.missing'){
+      var ops = (m.payload && m.payload.ops) || [];
+      slog('replaying', ops.length, 'op(s)');
+      SM.applying++;
+      try{ for(var k=0;k<ops.length;k++) SM.dispatch(ops[k], true); }
+      finally{ SM.applying--; }
+      if(m.payload && m.payload.rev) SM.noteRev(m.payload.rev);
+      return;
+    }
+
+    if(SM.isDuplicate(m)) return;                       /* §11 / test O */
+    if(m.rev) SM.noteRev(m.rev);
+    SM.dispatch(m, false);
+  },
+
+  knownRev: function(){
+    try{ var v = mirror.get('nbsync.rev'); return (v && v.rev) | 0; }catch(e){ return 0; }
+  },
+  noteRev: function(rev){
+    rev = rev|0;
+    if(rev <= this.knownRev()) return;
+    try{ mirror.set('nbsync.rev', { rev: rev }); }catch(e){}
+    this.sessionRev = rev;
+  },
+
+  dispatch: function(m, replay){
+    var t = m.type, p = m.payload || {};
+
+    if(t === 'device.presence'){
+      var did = clean(p.deviceId, 64);
+      if(did){
+        SM.peers[did] = SM.peers[did] || {};
+        SM.peers[did].deviceName = clean(p.deviceName, 40) || SM.peers[did].deviceName || 'Device';
+        if(typeof p.online === 'boolean') SM.peers[did].online = p.online;
+        if(p.joined) SM.peers[did].online = true;
+        /* §17.14 — the narrating device vanished */
+        if(p.online === false && SM.audioOwner === did){
+          SM.audioOwner = null;
+          if(S.playing){ try{ pause(); }catch(e){} }
+          SyncUI.say('The device that was reading aloud disconnected. Narration is paused; ' +
+                     'the position is kept.', 'bad');
+          toast('Audio device disconnected — TTS paused.', 'Resume here', function(){
+            SM.setAudioOwner(SM.deviceId(), true);
+            try{ play(); }catch(e){}
+          });
+        }
+        if(p.online === false && SM.following === did) SM.stopFollowing();
+      }
+      SM.electAudioOwner();                 /* §17.7 — converge on one narrator */
+      /* the code has done its job the moment the partner appears */
+      if(p.online !== false && el('syncPairView').classList.contains('show')){
+        SyncUI.showView(null);
+        SyncUI.say('Paired.', 'good');
+      }
+      SyncUI.render(); SyncUI.pill();
+      return;
+    }
+
+    if(t === 'reader.document'){
+      SM.rememberWhere(m.deviceId, p);
+      SM.onRemoteDocument(p, m.deviceId);
+      SyncUI.render();
+      return;
+    }
+
+    if(t === 'reader.position'){
+      SM.rememberWhere(m.deviceId, p);
+      SM.lastRemotePos = p;
+      /* §31 — an old packet must never move the reader backwards */
+      if(SM.isStale(m)) return;
+      /* mirror TTS position even when not following, so the word highlight
+         keeps up with a remote narrator (§17.10) */
+      if(p.tts) SM.applyRemoteTts(p.tts, m.deviceId);
+      if(SM.following && m.deviceId === SM.following && !replay){
+        if(!SM.docMatches(p.fp)){ SM.onRemoteDocument(p, m.deviceId); return; }
+        SM.applying++;
+        try{ SyncStateAdapter.applyPosition(p); }
+        finally{ SM.applying--; SM.hush(700); }
+      }
+      SyncUI.render();
+      return;
+    }
+
+    if(t === 'tts.audioOwner'){
+      var owner = clean(p.audioOwnerDeviceId, 64) || null;
+      SM.audioOwnerExplicit = true;
+      SM.applying++;
+      try{
+        SM.audioOwner = owner;
+        if(owner && owner !== SM.deviceId()){
+          try{ if(typeof silence === 'function') silence(); }catch(e){}
+        } else if(owner === SM.deviceId()){
+          /* §17.5 — pick up exactly where the other device left off */
+          var g = (typeof p.wordAnchor === 'number') ? p.wordAnchor|0 : -1;
+          if(typeof p.rate === 'number') S.rate = num(p.rate, 0.5, 3, 1);
+          if(g >= 0 && S.ribbon && S.ribbon[g] && p.playing){
+            try{ startAt(g); }catch(e){}
+          }
+        }
+      } finally{ SM.applying--; }
+      SyncUI.render(); SyncUI.pill();
+      return;
+    }
+
+    if(t === 'tts.control'){
+      SM.onRemoteTtsControl(p);
+      return;
+    }
+
+    if(t === 'follow.set'){
+      /* purely informational: it tells us someone started following us */
+      SyncUI.render();
+      return;
+    }
+
+    if(t === 'ink.start' || t === 'ink.points' || t === 'ink.end' || t === 'ink.delete'
+       || t === 'highlight.add' || t === 'highlight.delete'){
+      AnnotationSync.apply(t, p, replay);
+      return;
+    }
+  },
+
+  rememberWhere: function(devId, p){
+    devId = clean(devId, 64);
+    if(!devId) return;
+    SM.peers[devId] = SM.peers[devId] || { deviceName:'Device', online:true };
+    SM.peers[devId].online = true;
+    SM.peers[devId].where = {
+      name: clean(p.name, 80),
+      page: (typeof p.page === 'number') ? p.page|0 : -1,
+      numPages: p.numPages|0,
+      fp: clean(p.fp, 80)
+    };
+  },
+
+  docMatches: function(fp){
+    return !!(S.book && fp && S.book.fp === fp);
+  },
+
+  /* §22 — a device that does not hold the document says so, and opens nothing */
+  onRemoteDocument: function(p, devId){
+    var fp = clean(p.fp, 80);
+    if(!fp) return;
+    if(SM.docMatches(fp)){ SM.missingDoc = null; return; }
+    var localId = fpxGet(fp);
+    if(localId){
+      var bk = (S.library||[]).filter(function(b){ return b.id === localId; })[0];
+      if(bk){
+        SM.missingDoc = null;
+        if(SM.following === devId){
+          SM.applying++;
+          try{ openBook(bk); }catch(e){}
+          finally{ SM.applying--; }
+        }
+        return;
+      }
+    }
+    SM.missingDoc = { name: clean(p.name, 80) || 'That document', fp: fp };
+    SyncUI.render();
+  },
+
+  offerContinue: function(pos){
+    var fp = clean(pos.fp, 80);
+    var localId = fpxGet(fp);
+    if(!localId) return;
+    var bk = (S.library||[]).filter(function(b){ return b.id === localId; })[0];
+    if(!bk) return;
+    var page = (pos.page|0) + 1;
+    toast('Continue ' + clean(pos.name, 40) + ' — page ' + page + '?', 'Open', function(){
+      openBook(bk).then(function(){
+        SM.applying++;
+        try{ SyncStateAdapter.applyPosition(pos); } finally{ SM.applying--; }
+      });
+    });
+  },
+
+  /* ---- TTS in ----------------------------------------------------------- */
+  applyRemoteTts: function(tts, devId){
+    if(!tts) return;
+    if(SM.isAudioOwner()) return;         /* we are the one making the sound */
+    var g = (typeof tts.wordAnchor === 'number') ? tts.wordAnchor|0 : -1;
+    if(g < 0 || !S.ribbon || !S.ribbon[g]) return;
+    if(!SM.docMatches(tts.fp) && tts.fp) return;
+    SM.applying++;
+    try{ setActive(g); }catch(e){}
+    finally{ SM.applying--; }
+  },
+
+  onRemoteTtsControl: function(p){
+    var act = clean(p.action, 16);
+    /* Only the audio owner acts on transport commands. Everyone else just
+       keeps their highlight in step, which is what stops double narration. */
+    if(!SM.isAudioOwner()){
+      if(typeof p.rate === 'number') S.rate = num(p.rate, 0.5, 3, 1);
+      if(act === 'pause' || act === 'stop'){
+        SM.applying++; try{ if(S.playing){ S.playing = false; onPlayStop();
+          var pb = el('play'); if(pb) pb.textContent = '▶'; } } finally{ SM.applying--; }
+      }
+      if(act === 'play' || act === 'resume'){
+        SM.applying++; try{ S.playing = true; var pb2 = el('play');
+          if(pb2) pb2.textContent = '❚❚'; onPlayStart(); } finally{ SM.applying--; }
+      }
+      return;
+    }
+    SM.applying++;
+    try{
+      var g = (typeof p.wordAnchor === 'number') ? p.wordAnchor|0 : -1;
+      if(typeof p.rate === 'number') S.rate = num(p.rate, 0.5, 3, 1);
+      if(act === 'play' || act === 'resume'){
+        if(g >= 0 && S.ribbon && S.ribbon[g]) startAt(g); else play();
+      }
+      else if(act === 'pause') pause();
+      else if(act === 'stop')  stop();
+      else if(act === 'seek'){ if(g >= 0 && S.ribbon && S.ribbon[g]) startAt(g); }
+      else if(act === 'rate'){
+        var rs = el('mRate'); if(rs) rs.value = String(S.rate);
+        var rv = el('mRateV'); if(rv) rv.textContent = S.rate.toFixed(2) + '×';
+        if(S.playing && typeof restartHere === 'function') restartHere();
+        if(typeof saveSettings === 'function') saveSettings();
+      }
+    }catch(e){}
+    finally{ SM.applying--; }
+  },
+
+  /* ---- follow (§9, §10, §29) -------------------------------------------- */
+  startFollowing: function(devId){
+    this.following = devId || null;
+    this.emit('follow.set', { navigationLeaderDeviceId: devId || '' });
+    SyncUI.render(); SyncUI.pill();
+    if(this.lastRemotePos && devId){
+      this.applying++;
+      try{
+        if(this.docMatches(this.lastRemotePos.fp)) SyncStateAdapter.applyPosition(this.lastRemotePos);
+        else this.onRemoteDocument(this.lastRemotePos, devId);
+      } finally{ this.applying--; }
+    }
+  },
+  stopFollowing: function(){
+    if(!this.following) return;
+    this.following = null;
+    this.emit('follow.set', { navigationLeaderDeviceId: '' });
+    SyncUI.render(); SyncUI.pill();
+  },
+
+  /* ---- lifecycle -------------------------------------------------------- */
+  paired: function(){ var d = devLoad(); return !!(d.secret && d.sessionId); },
+  connect: function(){
+    if(!this.paired()) return;
+    this.tx.open();
+  },
+  disconnect: function(){
+    this.connected = false;
+    this.stopFollowing();
+    this.tx.close();
+    SyncUI.render(); SyncUI.pill();
+  },
+  forget: function(){
+    this.disconnect();
+    var d = devLoad();
+    /* Forgetting a pairing means becoming a new device, not a device with a
+       blank secret: the server keeps a record per deviceId, and re-pairing
+       under the old id without the old secret would only ever get a fresh
+       session anyway. Rotating here keeps that flow clean. */
+    d.secret = ''; d.sessionId = '';
+    DEV = null;
+    try{ mirror.del('nbsync.device'); }catch(e){}
+    var fresh = devLoad();
+    fresh.deviceName = d.deviceName;
+    fresh.server = d.server;
+    devSave(fresh);
+    d = fresh;
+    this.peers = {};
+    try{ mirror.del('nbsync.rev'); }catch(e){}
+    SyncUI.render();
+  },
+  ping: function(){
+    if(this.connected) this.emit('sync.ping', { t: nowMs() });
+  }
+};
+
+SM.tx.onMessage = SM.onMessage;
+SM.tx.onState = function(s){
+  if(s !== 'CONNECTED') SM.connected = false;
+  SyncUI.render(); SyncUI.pill();
+};
+
+/* ============================================================================
+   9. ANNOTATIONS  (§12, §13, §14, §16, §27)
+
+   Local rendering never waits for any of this. Everything below runs after the
+   reader has already drawn.
+============================================================================ */
+var AnnotationSync = {
+
+  /* shadow id-sets, so any mutation path at all — undo, clear, erase, a
+     future one — is detected by difference rather than by being hooked */
+  inkShadow: {},               /* page -> {id:1}                            */
+  hlShadow:  null,             /* {id:1} across kept + draft                */
+  tombstones: Object.create(null),   /* id -> at, so a late add cannot resurrect */
+  pendingAcks: Object.create(null),
+
+  bookKey: function(){ return S.book ? (S.book.fp || S.book.id) : ''; },
+  /* deliberately NOT gated on SM.connected: ink and highlight ops are sent
+     durable, and SyncTransport.send queues those while the socket is down so
+     reconnect can replay them (§15, test K) */
+  syncable: function(){
+    return !!(S.book && S.book.fp && S.book.fp.indexOf('sha256:') === 0 &&
+              S.book.kind !== 'epub');
+  },
+
+  reset: function(){
+    this.inkShadow = {};
+    this.hlShadow = null;
+    this.tombstones = Object.create(null);
+    this.pending = [];
+  },
+
+  /* Ops that arrived mid-open. Replayed once the book's own annotation arrays
+     are in place; dropped if the open never completes. */
+  pending: [],
+  defer: function(type, p, replay){
+    if(this.pending.length > 400) this.pending.shift();
+    this.pending.push({ type:type, p:p, replay:replay, at:nowMs() });
+  },
+  flushPending: function(){
+    var q = this.pending;
+    this.pending = [];
+    for(var i=0;i<q.length;i++){
+      if(nowMs() - q[i].at > 30000) continue;
+      try{ this.apply(q[i].type, q[i].p, q[i].replay); }catch(e){}
+    }
+  },
+
+  /* ---- ink: outgoing ---------------------------------------------------- */
+  live: null,                  /* {id,page,sent,raf}                        */
+
+  beginStroke: function(st){
+    if(!this.syncable() || !st || st.mode === 'erase') return;
+    /* Only stream while there is somebody listening. syncable() deliberately
+       ignores the connection so the FINAL vector still queues while offline
+       (§15), but running a per-frame pump into a dropped queue would be work
+       on the stylus path for nothing (§20). */
+    if(!SM.connected) return;
+    this.live = { id: st.id, page: S.page|0, sent: 0, raf: 0, seq: 0 };
+    SM.emit('ink.start', {
+      fp: S.book.fp, page: S.page|0, strokeId: st.id,
+      c: st.c, w: st.w, mode: st.mode, fn: st.fn ? 1 : 0
+    });
+    this.pump();
+  },
+
+  /* Reads whichever buffer the pen pipeline is filling and ships the new tail
+     once a frame. penMove itself is not touched — this is the whole point of
+     doing it here rather than there (§13, §20). */
+  pump: function(){
+    var self = this;
+    if(!this.live) return;
+    this.live.raf = requestAnimationFrame(function(){
+      if(!self.live) return;
+      self.drain();
+      if(self.live) self.pump();
+    });
+  },
+  drain: function(){
+    var L = this.live;
+    if(!L || !SM.connected) return;
+    var pts = [], i;
+    if(typeof TURBO !== 'undefined' && TURBO.live && typeof PB !== 'undefined' && PB.n > L.sent){
+      for(i = L.sent; i < PB.n; i++)
+        pts.push({ x: Math.round(PB.x[i]*10)/10, y: Math.round(PB.y[i]*10)/10,
+                   p: Math.round(PB.p[i]*100)/100 });
+      L.sent = PB.n;
+    } else if(typeof cur !== 'undefined' && cur && cur.pts && cur.pts.length > L.sent){
+      for(i = L.sent; i < cur.pts.length; i++){
+        var q = cur.pts[i];
+        pts.push({ x: Math.round(q.x*10)/10, y: Math.round(q.y*10)/10,
+                   p: Math.round(q.p*100)/100 });
+      }
+      L.sent = cur.pts.length;
+    }
+    if(!pts.length) return;
+    SM.emit('ink.points', { fp: S.book.fp, page: L.page, strokeId: L.id,
+                            seq: ++L.seq, pts: pts });
+  },
+  endStroke: function(){
+    var L = this.live;
+    if(!L) return;
+    if(L.raf) cancelAnimationFrame(L.raf);
+    this.drain();
+    this.live = null;
+    /* The reader throws away a stroke that turns out to be a tap (endPen's
+       wasTap branch), so no ink.end follows and the peer would keep a
+       half-drawn provisional stroke for ever. Once the commit has had its
+       chance, retract anything that never landed. */
+    var self = this, id = L.id, page = L.page;
+    setTimeout(function(){
+      var list = (S.strokes && S.strokes[page]) || [];
+      for(var i=0;i<list.length;i++) if(list[i] && list[i].id === id) return;
+      SM.emit('ink.delete', { fp: (S.book && S.book.fp) || '', page: page, strokeId: id }, true);
+    }, 400);
+  },
+
+  /* ---- ink: the shadow diff (covers undo, clear, erase, everything) ----- */
+  snapshotInk: function(page){
+    var list = (S.strokes && S.strokes[page]) || [];
+    var m = Object.create(null);
+    for(var i=0;i<list.length;i++) if(list[i] && list[i].id) m[list[i].id] = list[i];
+    return m;
+  },
+  diffInk: function(){
+    if(!this.syncable()) return;
+    var page = S.page|0;
+    var now = this.snapshotInk(page);
+    var was = this.inkShadow[page] || Object.create(null);
+    var id;
+    for(id in now) if(!was[id]){
+      var st = now[id];
+      SM.emit('ink.end', {
+        fp: S.book.fp, page: page, strokeId: id,
+        stroke: { id:id, t:st.t||nowMs(), fn: st.fn?1:0, mode:st.mode, c:st.c, w:st.w,
+                  pts: this.trimPts(st.pts) }
+      }, true);
+    }
+    for(id in was) if(!now[id]){
+      this.tombstones[id] = nowMs();
+      SM.emit('ink.delete', { fp: S.book.fp, page: page, strokeId: id }, true);
+    }
+    var keep = Object.create(null);
+    for(id in now) keep[id] = 1;
+    this.inkShadow[page] = keep;
+  },
+  trimPts: function(pts){
+    var out = [];
+    for(var i=0;i<(pts||[]).length;i++)
+      out.push({ x: Math.round(pts[i].x*10)/10, y: Math.round(pts[i].y*10)/10,
+                 p: Math.round(pts[i].p*100)/100 });
+    return out;
+  },
+
+  /* ---- highlights: shadow diff over both collections (audit R11) -------- */
+  snapshotHl: function(){
+    var m = Object.create(null), i;
+    var kept = S.hl || [], draft = S.hlDraft || [];
+    for(i=0;i<kept.length;i++){ if(!kept[i].id) kept[i].id = nbNewId('h'); m[kept[i].id] = { m:kept[i], kept:true }; }
+    for(i=0;i<draft.length;i++){ if(!draft[i].id) draft[i].id = nbNewId('h'); m[draft[i].id] = { m:draft[i], kept:false }; }
+    return m;
+  },
+  diffHl: function(){
+    if(!this.syncable()) return;
+    var now = this.snapshotHl();
+    var was = this.hlShadow;
+    if(!was){ this.hlShadow = this.keysOf(now); return; }   /* first look: adopt */
+    var id;
+    for(id in now) if(!was[id] || was[id] !== (now[id].kept ? 2 : 1)){
+      var rec = now[id];
+      SM.emit('highlight.add', {
+        fp: S.book.fp, id: id, kept: rec.kept,
+        m: { id:id, page:rec.m.page|0, a:rec.m.a|0, b:rec.m.b|0,
+             text: clean(rec.m.text, 4000), at: rec.m.at || nowMs(),
+             c: clean(rec.m.c, 12), manual: !!rec.m.manual }
+      }, true);
+    }
+    for(id in was) if(!now[id]){
+      this.tombstones[id] = nowMs();
+      SM.emit('highlight.delete', { fp: S.book.fp, id: id }, true);
+    }
+    this.hlShadow = this.keysOf(now);
+  },
+  keysOf: function(now){
+    var k = Object.create(null);
+    for(var id in now) k[id] = now[id].kept ? 2 : 1;
+    return k;
+  },
+
+  acked: function(eventId){ if(eventId) delete this.pendingAcks[eventId]; },
+
+  /* ---- incoming (§14: idempotent, tombstoned) --------------------------- */
+  remoteLive: {},              /* strokeId -> {pts, c, w, page}             */
+
+  apply: function(type, p, replay){
+    /* openBook sets S.book several awaits before it replaces S.strokes/S.hl
+       (index.html ~:4307 vs :4321), so applying during that window would merge
+       into the previous book's arrays and persist them under the new book's
+       keys. Hold ops until the swap has happened. */
+    if(SM.restoring){ AnnotationSync.defer(type, p, replay); return; }
+    if(!S.book || !S.book.fp) return;
+    if(p.fp && p.fp !== S.book.fp) return;             /* different document */
+    var page = num(p.page, 0, 100000, 0)|0;
+    var id = clean(p.strokeId || p.id, 48);
+    if(!id) return;
+
+    if(type === 'ink.start'){
+      if(replay) return;
+      this.remoteLive[id] = { page:page, c:clean(p.c,12)||'#e02424',
+                              w:num(p.w,0.1,40,2.3), fn:p.fn?1:0, pts:[] };
+      return;
+    }
+    if(type === 'ink.points'){
+      if(replay) return;
+      var L = this.remoteLive[id];
+      if(!L) return;
+      var pts = p.pts;
+      if(!pts || !pts.length || pts.length > 5000) return;
+      for(var i=0;i<pts.length;i++){
+        var q = pts[i];
+        if(typeof q.x !== 'number' || typeof q.y !== 'number') continue;
+        L.pts.push({ x:q.x, y:q.y, p:num(q.p,0,1,0.5) });
+      }
+      this.paintProvisional(L);
+      return;
+    }
+    if(type === 'ink.end'){
+      delete this.remoteLive[id];
+      /* A tombstone stops a DELAYED packet resurrecting deleted ink (§14), but
+         must not block a deliberate re-add — the reader's Undo puts the same
+         id back. Compare versions rather than mere membership. */
+      var tsI = this.tombstones[id];
+      if(tsI && !(p.stroke && (p.stroke.t|0) > tsI)) return;
+      var st = p.stroke;
+      if(!st || !st.pts || !st.pts.length || st.pts.length > 20000) return;
+      var list = (S.strokes[page] = S.strokes[page] || []);
+      for(var j=0;j<list.length;j++) if(list[j].id === id) return;   /* idempotent */
+      list.push({ id:id, t:st.t||nowMs(), fn: st.fn?1:0,
+                  mode: (st.mode === 'erase' ? 'erase' : 'pen'),
+                  c: clean(st.c,12) || '#e02424', w: num(st.w,0.1,40,2.3),
+                  pts: this.sanePts(st.pts) });
+      this.adopt(page);
+      this.repaint(page);
+      this.persistInk(page);
+      return;
+    }
+    if(type === 'ink.delete'){
+      this.tombstones[id] = nowMs();
+      delete this.remoteLive[id];
+      var l2 = S.strokes[page];
+      if(l2){
+        for(var k=l2.length-1;k>=0;k--) if(l2[k].id === id) l2.splice(k,1);
+      }
+      this.adopt(page);
+      this.repaint(page);
+      this.persistInk(page);
+      return;
+    }
+
+    if(type === 'highlight.add'){
+      var tsH = this.tombstones[id];
+      if(tsH && !(p.m && (p.m.at|0) > tsH)) return;
+      var m = p.m;
+      if(!m) return;
+      var maxG = (S.ribbon && S.ribbon.length) ? S.ribbon.length - 1 : 0;
+      var ra = num(m.a, 0, maxG, 0)|0, rb = num(m.b, 0, maxG, 0)|0;
+      var rec = { id:id, page:num(m.page,0,100000,0)|0, a:ra, b:rb,
+                  text: clean(m.text, 4000), at: m.at || nowMs(),
+                  c: clean(m.c, 12) || '#FFE08A' };
+      if(m.manual) rec.manual = true;
+      /* §16 — merge by id, never replace the collection */
+      var into = p.kept ? (S.hl = S.hl || []) : (S.hlDraft = S.hlDraft || []);
+      var other = p.kept ? (S.hlDraft = S.hlDraft || []) : (S.hl = S.hl || []);
+      for(var x=other.length-1;x>=0;x--) if(other[x].id === id) other.splice(x,1);
+      for(var y=0;y<into.length;y++) if(into[y].id === id){ into[y] = rec; this.afterHl(p.kept); return; }
+      into.push(rec);
+      this.afterHl(p.kept);
+      return;
+    }
+    if(type === 'highlight.delete'){
+      this.tombstones[id] = nowMs();
+      var hit = false, arr;
+      arr = S.hl || [];      for(var a2=arr.length-1;a2>=0;a2--) if(arr[a2].id === id){ arr.splice(a2,1); hit = true; }
+      arr = S.hlDraft || []; for(var b2=arr.length-1;b2>=0;b2--) if(arr[b2].id === id){ arr.splice(b2,1); hit = true; }
+      if(hit) this.afterHl(true);
+      return;
+    }
+  },
+
+  sanePts: function(pts){
+    var out = [];
+    for(var i=0;i<pts.length;i++){
+      var q = pts[i];
+      if(typeof q.x !== 'number' || typeof q.y !== 'number' || !isFinite(q.x) || !isFinite(q.y)) continue;
+      out.push({ x:q.x, y:q.y, p:num(q.p,0,1,0.5) });
+    }
+    return out;
+  },
+
+  /* remote in-progress stroke, drawn straight onto the ink layer so it shows
+     up while the pen is still moving on the other device (§13) */
+  paintProvisional: function(L){
+    try{
+      if(L.page !== (S.page|0)) return;
+      /* the reader's ink context is `ictx` (index.html:4632, rebound per slot
+         at :7166) — draw the newest segment onto it, never a whole-page redraw */
+      if(typeof ictx === 'undefined' || !ictx) return;
+      var pts = L.pts;
+      if(pts.length < 2) return;
+      var mm = (typeof PX_PER_MM === 'number') ? PX_PER_MM : 3.7795;
+      var s = S.scale || 1;
+      ictx.save();
+      ictx.strokeStyle = L.c;
+      ictx.lineCap = 'round'; ictx.lineJoin = 'round';
+      ictx.lineWidth = Math.max(0.6, L.w * mm) * s;
+      ictx.beginPath();
+      ictx.moveTo(pts[pts.length-2].x * s, pts[pts.length-2].y * s);
+      ictx.lineTo(pts[pts.length-1].x * s, pts[pts.length-1].y * s);
+      ictx.stroke();
+      ictx.restore();
+    }catch(e){}
+  },
+
+  adopt: function(page){
+    var m = Object.create(null);
+    var list = (S.strokes && S.strokes[page]) || [];
+    for(var i=0;i<list.length;i++) if(list[i].id) m[list[i].id] = 1;
+    this.inkShadow[page] = m;
+  },
+  repaint: function(page){
+    if(page !== (S.page|0) && !(typeof IS !== 'undefined' && IS.on)) return;
+    try{
+      if(typeof IS !== 'undefined' && IS.on && typeof isRedrawInk === 'function') isRedrawInk(page);
+      else if(typeof redrawInk === 'function') redrawInk();
+    }catch(e){}
+  },
+  /* §28 — a remote change is persisted through NeoBook's own writer, so a
+     reload right afterwards still has it */
+  persistInk: function(page){
+    try{
+      if(!S.book) return;
+      var list = S.strokes[page];
+      var key = 'ink:' + S.book.id + ':' + page;
+      if(list && list.length) store.set(key, inkTrim(list));
+      else store.del(key);
+    }catch(e){}
+  },
+  afterHl: function(kept){
+    this.hlShadow = this.keysOf(this.snapshotHl());   /* adopt, do not re-emit */
+    try{
+      if(S.book){
+        mirror.set('marks:'+S.book.id, S.hl);
+        store.set('marks:'+S.book.id, S.hl);
+        mirror.set('draft:'+S.book.id, S.hlDraft || []);
+        store.set('draft:'+S.book.id, S.hlDraft || []);
+      }
+      if(typeof paintMarks === 'function') paintMarks();
+      if(typeof refreshHighlights === 'function') refreshHighlights();
+    }catch(e){}
+  }
+};
+
+/* ============================================================================
+   10. HOOKS INTO THE EXISTING READER
+
+   Wrappers, not edits. Each one calls the original first so local behaviour is
+   completely unchanged, then tells sync what happened. If sync is off, every
+   one of these is a function call and a boolean test.
+============================================================================ */
+var _schedulePos = schedulePos;
+schedulePos = function(){
+  _schedulePos.apply(this, arguments);
+  if(SM.muted() || SM.restoring) return;
+  SM.sendPosition(false);
+};
+
+var _savePosNow = savePosNow;
+savePosNow = function(){
+  _savePosNow.apply(this, arguments);
+  if(SM.muted() || SM.restoring) return;
+  SM.sendPosition(true);
+};
+
+var _scheduleInk = scheduleInk;
+scheduleInk = function(){
+  _scheduleInk.apply(this, arguments);
+  if(SM.applying > 0) return;
+  AnnotationSync.diffInk();
+};
+
+var _saveMarks = saveMarks;
+saveMarks = function(){
+  _saveMarks.apply(this, arguments);
+  if(SM.applying > 0) return;
+  AnnotationSync.diffHl();
+};
+var _saveMarksQuiet = saveMarksQuiet;
+saveMarksQuiet = function(){
+  _saveMarksQuiet.apply(this, arguments);
+  if(SM.applying > 0) return;
+  AnnotationSync.diffHl();
+};
+var _saveDrafts = saveDrafts;
+saveDrafts = function(){
+  _saveDrafts.apply(this, arguments);
+  if(SM.applying > 0) return;
+  AnnotationSync.diffHl();
+};
+
+/* live ink: begin and end only — the middle is sampled on rAF (§13).
+   These are listeners rather than wrappers around penBegin/endPen, because
+   those two are handed to addEventListener by reference (index.html:8225,
+   :8389) so reassigning the binding would never be seen. Listening on document
+   also covers the per-page canvases that continuous scroll creates, which
+   bind their own handlers.
+     pointerdown  bubble  — runs after the reader's, so `cur` exists
+     pointerup    capture — runs before it, while the stroke is still open */
+document.addEventListener('pointerdown', function(e){
+  /* penBegin ignores touch (index.html:8144) without clearing `cur`, so a
+     finger landing during a pen stroke would otherwise reopen the same stroke
+     and re-stream it from point 0. */
+  if(e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+  try{
+    if(AnnotationSync.live) return;
+    if(typeof cur !== 'undefined' && cur && S.drawing && cur.mode !== 'erase')
+      AnnotationSync.beginStroke(cur);
+  }catch(err){}
+}, false);
+document.addEventListener('pointerup', function(){
+  try{ AnnotationSync.endStroke(); }catch(err){}
+}, true);
+document.addEventListener('pointercancel', function(){
+  try{ AnnotationSync.endStroke(); }catch(err){}
+}, true);
+
+/* §17.7 — the single gate that decides whether this device makes a sound */
+var _playChunk = playChunk;
+playChunk = function(ci, offset){
+  if(SM.connected && !SM.isAudioOwner()){
+    S.curChunk = ci;                     /* keep the UI honest, stay silent */
+    return;
+  }
+  return _playChunk.apply(this, arguments);
+};
+
+/* transport buttons mirror to the audio owner (§17.8) */
+var _play = play;
+play = function(){
+  if(SM.connected && !SM.isAudioOwner() && SM.applying === 0){
+    SM.claimAudio();
+    if(SM.isAudioOwner()){ _play.apply(this, arguments); SM.sendTts('play'); return; }
+    S.playing = true;
+    var b = el('play'); if(b){ b.textContent = '❚❚'; b.setAttribute('aria-label','Pause'); }
+    onPlayStart();
+    SM.sendTts('play');
+    return;
+  }
+  _play.apply(this, arguments);
+  if(SM.applying === 0) SM.sendTts('play');
+};
+var _pause = pause;
+pause = function(){
+  _pause.apply(this, arguments);
+  if(SM.applying === 0) SM.sendTts('pause');
+};
+var _stop = stop;
+stop = function(){
+  _stop.apply(this, arguments);
+  if(SM.applying === 0 && SM.connected) SM.sendTts('stop');
+};
+var _startAt = startAt;
+startAt = function(g){
+  if(SM.connected && !SM.isAudioOwner() && SM.applying === 0){
+    SM.applying++;
+    try{ setActive(g); }finally{ SM.applying--; }
+    S.playing = true;
+    var b = el('play'); if(b) b.textContent = '❚❚';
+    onPlayStart();
+    SM.emit('tts.control', { action:'seek', wordAnchor:g|0, rate:num(S.rate,0.5,3,1), at:nowMs() });
+    return;
+  }
+  _startAt.apply(this, arguments);
+  if(SM.applying === 0 && SM.connected)
+    SM.emit('tts.control', { action:'seek', wordAnchor:g|0, rate:num(S.rate,0.5,3,1), at:nowMs() });
+};
+
+/* Opening a book: fingerprint it, tell the peer, reset the annotation shadows.
+
+   Deliberately NOT chained onto openBook's promise. openBook awaits renderPage,
+   and renderPage returns early whenever a newer render supersedes it, so that
+   promise legitimately may never settle — which would leave the peer never
+   learning which document is open. What we actually need is the ribbon, and
+   that is built synchronously early on, so watch for it instead. */
+var _openBook = openBook;
+openBook = function(bk, autoResume){
+  SM.restoring = true;
+  AnnotationSync.reset();
+
+  var ran = false;
+  var after = function(){
+    if(ran) return;
+    ran = true;
+    SM.restoring = false;
+    try{
+      if(S.book){
+        S.book.ribbonSig = NBFP.ribbonSig(S.book);
+        AnnotationSync.adoptAll();
+        AnnotationSync.flushPending();
+        if(!S.book.fp){
+          store.get('card:'+S.book.id).then(function(card){
+            if(card && card.fp){ S.book.fp = card.fp; fpxSet(card.fp, S.book.id); SM.sendDocument(); }
+            else fpEnqueue(S.book);
+          }).catch(function(){});
+        } else {
+          fpxSet(S.book.fp, S.book.id);
+          SM.sendDocument();
+        }
+      }
+    }catch(e){}
+    SyncUI.render(); SyncUI.pill();
+  };
+
+  /* Wait for the ribbon AND for this book's annotations. openBook replaces
+     S.strokes/S.hl/S.hlDraft (index.html ~:4187) several awaits after it builds
+     the ribbon, so adopting the shadows at ribbon-time would capture the
+     PREVIOUS book's ids — and the next diff would then emit deletes for
+     annotations that merely belong to a different book. Comparing object
+     identity is the precise signal: loadInk/store.get hand back fresh objects. */
+  var prevStrokes = S.strokes, prevHl = S.hl;
+  var waited = 0;
+  var poll = setInterval(function(){
+    waited += 80;
+    var ready = S.book && S.ribbon && S.ribbon.length &&
+                S.strokes !== prevStrokes && S.hl !== prevHl;
+    if(ready || waited > 20000){
+      clearInterval(poll);
+      after();
+    }
+  }, 80);
+
+  var r = _openBook.apply(this, arguments);
+  if(r && r.then) r.then(function(){ clearInterval(poll); after(); },
+                         function(){ clearInterval(poll); SM.restoring = false; ran = true; });
+  return r;
+};
+
+AnnotationSync.adoptAll = function(){
+  this.inkShadow = {};
+  for(var p in (S.strokes||{})) this.adopt(p|0);
+  /* legacy strokes have no id — give them one now so they can be referred to */
+  for(var q in (S.strokes||{})){
+    var list = S.strokes[q] || [];
+    var changed = false;
+    for(var i=0;i<list.length;i++) if(!list[i].id){ list[i].id = nbNewId('s'); changed = true; }
+    if(changed) this.adopt(q|0);
+  }
+  this.hlShadow = this.keysOf(this.snapshotHl());
+};
+
+/* ingest: fingerprint the bytes we already have in hand */
+var _ingest = ingest;
+ingest = function(file){
+  var r = _ingest.apply(this, arguments);
+  return r.then(function(bk){
+    try{
+      if(bk && !bk.fp && bk.kind !== 'epub'){
+        store.get('bytes:'+bk.id).then(function(bytes){
+          if(!bytes) return;
+          /* provisional straight away so the book is usable, real hash on idle */
+          bk.fp = NBFP.provisional(bytes);
+          NBFP.full(bytes, function(fp){
+            bk.fp = fp;
+            fpxSet(fp, bk.id);
+            store.get('card:'+bk.id).then(function(card){
+              if(card){ card.fp = fp; store.set('card:'+bk.id, card); }
+            }).catch(function(){});
+            if(S.book === bk) SM.sendDocument();
+          });
+        }).catch(function(){});
+      }
+    }catch(e){}
+    return bk;
+  });
+};
+
+/* §29 — deliberate local navigation quietly ends follow mode rather than
+   fighting the person holding the device */
+function localNav(){
+  if(SM.following && SM.applying === 0){
+    SM.stopFollowing();
+    toast('Stopped following — you took over.');
+  }
+}
+['pgNext','pgPrev'].forEach(function(id){
+  var b = el(id);
+  if(b) b.addEventListener('click', localNav, true);
+});
+(function(){
+  var v = el('viewer');
+  if(v) v.addEventListener('pointerdown', function(e){
+    if(e.pointerType === 'touch' || e.pointerType === 'pen') localNav();
+  }, true);
+  if(v) v.addEventListener('wheel', localNav, { passive:true, capture:true });
+})();
+
+/* §30 — visibility, network and unload */
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden) return;
+  if(SM.paired() && SM.tx.wantOpen){
+    if(SM.tx.state !== 'CONNECTED'){ SM.tx.tries = 0; SM.tx.open(); }
+    else SM.emit('sync.requestMissing', { sinceRev: SM.knownRev() });
+  }
+});
+window.addEventListener('online',  function(){ if(SM.paired() && SM.tx.wantOpen){ SM.tx.tries = 0; SM.tx.open(); } });
+window.addEventListener('offline', function(){ SM.connected = false; SyncUI.render(); SyncUI.pill(); });
+window.addEventListener('pagehide', function(){ try{ SM.tx.close(); }catch(e){} });
+
+setInterval(function(){ SM.ping(); }, 15000);
+
+/* ============================================================================
+   11. UI  (§1, §23, §29)
+============================================================================ */
+var SyncUI = {
+  open: function(){
+    devLoad();
+    var u = el('syncUrl');
+    if(u && !u.value) u.value = DEV.server || location.host || '';
+    el('syncSheet').classList.add('show');
+    if(typeof homeMenuAutoClose === 'function') homeMenuAutoClose();
+    this.render();
+  },
+  close: function(){ el('syncSheet').classList.remove('show'); this.say(false); },
+
+  say: function(msg, kind){
+    var m = el('syncMsg');
+    if(!m) return;
+    if(msg === false){ m.style.display = 'none'; setText(m, ''); return; }
+    m.style.display = '';
+    m.className = 'syncmsg' + (kind ? ' ' + kind : '');
+    setText(m, msg);
+  },
+
+  /* A wss:// handshake to an untrusted certificate fails with no interstitial
+     and no error the page can read, so an unexplained "Offline" is the default
+     failure of this whole setup. The probe narrows it down; this turns the
+     result into something actionable. */
+  troubleText: function(){
+    var tx = SM.tx, base = tx.base();
+    var https = tx.http();
+    switch(tx.lastError){
+      case 'noaddress':
+        return 'No sync service set.\n\n' +
+               'This copy of NeoBook is hosted, so it cannot guess where your ' +
+               'laptop is. Enter its address above — for example 192.168.1.12:8787.';
+      case 'badaddress':
+        return 'That address cannot be reached: ' + base;
+      case 'notsync':
+        return 'Something answered at ' + base + ', but it is not a NeoBook sync service.';
+      case 'timeout':
+        return 'No answer from ' + base + '.\n\n' +
+               'Is the laptop awake, on the same network, and running:\n' +
+               'node sync-server/server.js';
+      case 'blocked':
+        return 'Could not reach ' + base + '. Any of three things, in this order:\n\n' +
+               '1  The certificate is not trusted yet. Open ' + https + '/health ' +
+               'in a tab on this device and accept it, or install rootCA.pem.\n\n' +
+               '2  This browser is blocking a hosted page from reaching your local ' +
+               'network. Allow local network access for this site when asked.\n\n' +
+               '3  The service is not running, or a firewall is in the way.';
+      default:
+        return '';
+    }
+  },
+  peerList: function(){
+    var out = [];
+    for(var id in SM.peers) if(id && id !== SM.deviceId()) out.push({ id:id, p:SM.peers[id] });
+    return out;
+  },
+  onlinePeers: function(){ return this.peerList().filter(function(x){ return x.p.online; }); },
+
+  btn: function(label, cls, fn){
+    var b = document.createElement('button');
+    if(cls) b.className = cls;
+    setText(b, label);
+    b.onclick = fn;
+    return b;
+  },
+
+  render: function(){
+    var sheet = el('syncSheet');
+    if(!sheet) return;
+    devLoad();
+
+    var dot = el('syncDot'), st = el('syncStatus'), acts = el('syncActions');
+    var paired = SM.paired(), state = SM.tx.state;
+    var peers = this.peerList(), online = this.onlinePeers();
+    var peerName = peers.length ? (peers[0].p.deviceName || 'the other device') : 'the other device';
+
+    /* ---- headline ------------------------------------------------------- */
+    var pairing = el('syncPairView').classList.contains('show');
+    dot.className = 'sdot';
+    if(pairing){ dot.className = 'sdot busy'; setText(st, 'Waiting for the other device…'); }
+    else if(!paired){ setText(st, 'Not connected'); }
+    else if(SM.connected && online.length){ dot.className = 'sdot on'; setText(st, peerName + ' ● Connected'); }
+    else if(SM.connected && !peers.length){ dot.className = 'sdot busy'; setText(st, 'Waiting for the other device…'); }
+    else if(SM.connected){ dot.className = 'sdot warn'; setText(st, peerName + ' paired · Offline'); }
+    else if(state === 'CONNECTING' || state === 'RECONNECTING'){ dot.className = 'sdot busy'; setText(st, 'Connecting…'); }
+    else { dot.className = 'sdot warn'; setText(st, peerName + ' paired · Offline'); }
+
+    var nd = el('navSyncDot');
+    if(nd) nd.className = 'syncdot' + (SM.connected && online.length ? ' on' : (paired ? ' on warn' : ''));
+
+    setText(el('syncBlurb'), paired
+      ? 'Page, position, highlights, ink and narration stay in step with ' + peerName + '.'
+      : 'Keep this device and one other in step — page, position, highlights, ink and narration.');
+
+    /* ---- server field is only interesting before pairing ---------------- */
+    /* A hosted reader can never guess the service address, so the field stays
+       reachable even after pairing — the laptop's LAN address can change. */
+    el('syncServerRow').style.display = (paired && !hostedElsewhere()) ? 'none' : '';
+
+    /* ---- peers (§23) ---------------------------------------------------- */
+    var pl = el('syncPeers');
+    pl.textContent = '';
+    if(paired && peers.length){
+      pl.classList.add('show');
+      peers.forEach(function(x){
+        var row = document.createElement('div');
+        row.className = 'syncpeer';
+        var d2 = document.createElement('span'); d2.className = 'sdot' + (x.p.online ? ' on' : '');
+        var nm = document.createElement('span'); nm.className = 'nm'; setText(nm, x.p.deviceName || 'Device');
+        row.appendChild(d2); row.appendChild(nm);
+        var wh = document.createElement('span'); wh.className = 'wh';
+        if(x.p.where && x.p.where.name)
+          setText(wh, x.p.where.name + (x.p.where.page >= 0 ? ' · p.' + (x.p.where.page+1) : ''));
+        else setText(wh, x.p.online ? 'online' : 'offline');
+        row.appendChild(wh);
+        if(x.p.online && SM.connected && x.p.where){
+          row.appendChild(SyncUI.btn('Go to', '', function(){
+            if(!SM.lastRemotePos) return;
+            SM.applying++;
+            try{
+              if(SM.docMatches(SM.lastRemotePos.fp)) SyncStateAdapter.applyPosition(SM.lastRemotePos);
+              else SM.onRemoteDocument(SM.lastRemotePos, x.id);
+            } finally{ SM.applying--; }
+            SyncUI.close();
+          }));
+        }
+        pl.appendChild(row);
+      });
+    } else pl.classList.remove('show');
+
+    /* ---- why are we not connected? -------------------------------------- */
+    if(!SM.connected && SM.tx.lastError && SM.tx.wantOpen){
+      this.say(this.troubleText(), 'bad');
+    }
+
+    /* ---- missing document (§22) ----------------------------------------- */
+    if(SM.missingDoc && SM.connected){
+      this.say(SM.missingDoc.name + ' is open on ' + peerName + '.\n\n' +
+               'This document is not available on this device. Add the same PDF to continue here.', 'bad');
+    }
+
+    /* ---- audio device (§17.1) ------------------------------------------- */
+    var ar = el('syncAudioRow'), ap = el('syncAudioPick');
+    if(paired && SM.connected){
+      ar.style.display = '';
+      ap.textContent = '';
+      var mk = function(label, id){
+        var b = SyncUI.btn(label, (SM.audioOwner || SM.deviceId()) === id ? 'on' : '', function(){
+          SM.setAudioOwner(id, true);
+          SyncUI.say('Narration now plays on ' + label + '.', 'good');
+        });
+        ap.appendChild(b);
+      };
+      mk(DEV.deviceName + ' (this device)', SM.deviceId());
+      online.forEach(function(x){ mk(x.p.deviceName || 'Other device', x.id); });
+    } else ar.style.display = 'none';
+
+    /* ---- actions (§1) ---------------------------------------------------- */
+    acts.textContent = '';
+    var self = this;
+    if(!paired){
+      if(el('syncPairView').classList.contains('show')){
+        acts.appendChild(this.btn('Cancel', '', function(){ self.showView(null); }));
+      } else if(el('syncClaimView').classList.contains('show')){
+        acts.appendChild(this.btn('Connect', 'primary', function(){ self.doClaim(); }));
+        acts.appendChild(this.btn('Cancel', '', function(){ self.showView(null); }));
+      } else {
+        acts.appendChild(this.btn('Pair a device', 'primary', function(){ self.doPair(); }));
+        acts.appendChild(this.btn('Enter a code', '', function(){ self.showView('claim'); }));
+      }
+    } else if(!SM.connected){
+      acts.appendChild(this.btn('Connect', 'primary', function(){
+        self.say('Connecting…'); SM.tx.tries = 0; SM.connect();
+      }));
+      acts.appendChild(this.btn('Forget device', '', function(){ self.doForget(); }));
+    } else {
+      if(SM.following) acts.appendChild(this.btn('Stop following', 'primary', function(){ SM.stopFollowing(); }));
+      else if(online.length) acts.appendChild(this.btn('Follow ' + peerName, 'primary', function(){
+        SM.startFollowing(online[0].id); self.close();
+      }));
+      acts.appendChild(this.btn('Disconnect', '', function(){ SM.disconnect(); }));
+      acts.appendChild(this.btn('Forget device', '', function(){ self.doForget(); }));
+    }
+    this.debug();
+  },
+
+  showView: function(which){
+    el('syncPairView').classList.toggle('show', which === 'pair');
+    el('syncClaimView').classList.toggle('show', which === 'claim');
+    if(which !== 'pair'){ el('syncQr').textContent = ''; setText(el('syncCode'), '------'); }
+    this.say(false);
+    this.render();
+    if(which === 'claim'){ var i = el('syncCodeIn'); if(i){ i.value=''; i.focus(); } }
+  },
+
+  saveServer: function(){
+    var u = el('syncUrl');
+    var d = devLoad();
+    d.server = clean(u ? u.value : '', 120).trim();
+    devSave(d);
+  },
+
+  doPair: function(){
+    var self = this;
+    this.saveServer();
+    this.say('Asking the sync service for a code…');
+    SyncPairing.newCode().then(function(r){
+      var d = devLoad();
+      d.sessionId = clean(r.sessionId, 64);
+      d.secret    = clean(r.secret, 128);
+      devSave(d);
+      self.showView('pair');
+      setText(el('syncCode'), clean(r.code, 6));
+      /* The other device has to end up on a copy of NeoBook it can load. When
+         this reader is hosted (GitHub Pages) that is this very URL; when the
+         service is serving it, that is the service. Either way the pairing code
+         and the service address ride in the fragment, and the receiving device
+         shows the address before it sends anything. */
+      var reader = hostedElsewhere()
+        ? (location.origin + location.pathname)
+        : (SM.tx.http() + '/');
+      var svc = SM.tx.base() || location.host;
+      var link = reader + '#nbpair=' + encodeURIComponent(r.code) +
+                 '&s=' + encodeURIComponent(svc);
+      var box = el('syncQr');
+      box.textContent = '';
+      var cv = null;
+      try{ cv = NBQR.toCanvas(link, 220); }catch(e){ cv = null; }
+      if(cv) box.appendChild(cv);
+      setText(el('syncCodeHint'),
+        'Scan this, or on the other device open NeoBook → Two-Way Sync → “Enter a code”. ' +
+        'Expires in two minutes.');
+      self.say(false);
+      SM.connect();                        /* be online when the peer claims */
+      /* the code is dead after two minutes; stop showing it as if it works */
+      setTimeout(function(){
+        if(el('syncPairView').classList.contains('show') && !SM.connected)
+          self.say('That code has expired. Tap “Pair a device” for a new one.', 'bad');
+      }, 120000);
+    }).catch(function(e){
+      self.say(e.message + '\n\nCheck the address above, and that the computer is running:\n' +
+               'node sync-server/server.js', 'bad');
+    });
+  },
+
+  doClaim: function(){
+    var self = this;
+    this.saveServer();
+    var v = (el('syncCodeIn').value || '').replace(/\D/g,'');
+    if(v.length !== 6){ this.say('Enter the six digits shown on the other device.', 'bad'); return; }
+    this.say('Pairing…');
+    SyncPairing.claim(v).then(function(r){
+      var d = devLoad();
+      d.sessionId = clean(r.sessionId, 64);
+      d.secret    = clean(r.secret, 128);
+      devSave(d);
+      if(r.peer) SM.peers[clean(r.peer.deviceId,64)] = {
+        deviceName: clean(r.peer.deviceName,40) || 'Device', online:false };
+      self.showView(null);
+      self.say('Paired. Connecting…', 'good');
+      SM.tx.tries = 0;
+      SM.connect();
+    }).catch(function(e){ self.say(e.message, 'bad'); });
+  },
+
+  doForget: function(){
+    SM.forget();
+    this.say('This device is no longer paired.', 'good');
+    this.showView(null);
+  },
+
+  /* §29 — the whole of sync's presence on the reading screen */
+  pill: function(){
+    var p = el('followPill');
+    if(!p) return;
+    var show = false, label = '';
+    if(SM.connected && SM.following){
+      var nm = (SM.peers[SM.following] && SM.peers[SM.following].deviceName) || 'device';
+      label = 'Following ' + nm; show = true;
+    } else if(SM.connected && !SM.isAudioOwner()){
+      var an = (SM.peers[SM.audioOwner] && SM.peers[SM.audioOwner].deviceName) || 'other device';
+      label = 'Audio on ' + an; show = true;
+    }
+    p.classList.toggle('audio', !SM.following);
+    setText(el('followPillText'), label);
+    p.classList.toggle('show', show && !!S.book);
+  },
+
+  debug: function(){
+    var d = el('syncDebug');
+    if(!d || d.style.display === 'none') return;
+    var s = SM.tx.stats;
+    setText(d,
+      'state        ' + SM.tx.state + (SM.connected ? ' (session live)' : '') + '\n' +
+      'device       ' + DEV.deviceName + '  ' + DEV.deviceId.slice(0,12) + '\n' +
+      'session      ' + (DEV.sessionId || '—').slice(0,16) + '   rev ' + SM.knownRev() + '\n' +
+      'rtt          ' + (s.rtt == null ? '—' : s.rtt + ' ms') + '\n' +
+      'sent / recv  ' + s.sent + ' / ' + s.recv + '\n' +
+      'queued       ' + s.queued + '\n' +
+      'reconnects   ' + s.reconnects + '\n' +
+      'following    ' + (SM.following || '—') + '\n' +
+      'audio owner  ' + (SM.audioOwner || 'this device') + '\n' +
+      'document     ' + (S.book ? (S.book.fp || 'not fingerprinted yet').slice(0,26) : '—') + '\n' +
+      'ribbon sig   ' + (S.book && S.book.ribbonSig ? S.book.ribbonSig : '—') + '\n' +
+      '\n' + LOG.slice(-14).join('\n'));
+  }
+};
+
+/* ---- wiring ------------------------------------------------------------- */
+(function(){
+  var b = el('navSync');
+  if(b) b.onclick = function(){ SyncUI.open(); };
+
+  var c = el('syncClose');
+  if(c) c.onclick = function(){ SyncUI.close(); };
+
+  var sheet = el('syncSheet');
+  if(sheet) sheet.addEventListener('click', function(e){ if(e.target === sheet) SyncUI.close(); });
+
+  document.addEventListener('keydown', function(e){
+    if(e.code === 'Escape' && sheet && sheet.classList.contains('show')) SyncUI.close();
+  });
+
+  var dbg = el('syncDebugBtn');
+  if(dbg) dbg.onclick = function(){
+    var d = el('syncDebug');
+    d.style.display = (d.style.display === 'none') ? '' : 'none';
+    SyncUI.debug();
+  };
+
+  var ci = el('syncCodeIn');
+  if(ci){
+    ci.addEventListener('input', function(){ ci.value = ci.value.replace(/\D/g,'').slice(0,6); });
+    ci.addEventListener('keydown', function(e){ if(e.key === 'Enter') SyncUI.doClaim(); });
+  }
+  var su = el('syncUrl');
+  if(su) su.addEventListener('change', function(){ SyncUI.saveServer(); });
+
+  var pill = el('followPill');
+  if(pill) pill.onclick = function(){
+    if(SM.following) SM.stopFollowing();
+    else if(!SM.isAudioOwner()) SM.setAudioOwner(SM.deviceId(), true);
+  };
+
+  setInterval(function(){
+    var d = el('syncDebug');
+    if(d && d.style.display !== 'none' && el('syncSheet').classList.contains('show')) SyncUI.debug();
+  }, 1000);
+})();
+
+/* ---- boot --------------------------------------------------------------- */
+(function(){
+  devLoad();
+
+  /* a pairing link opened on the second device: prefill and go */
+  try{
+    var h = location.hash || '';
+    var mm = h.match(/nbpair=(\d{6})/);
+    var ms = h.match(/[?&#]s=([^&]+)/);
+    if(mm){
+      /* A hosted reader cannot guess where the laptop is, so the pairing link
+         has to be allowed to carry the address — but a link is attacker-supplied
+         input, and this device's pair secret gets posted to whatever address is
+         set. So the value is only ever PRE-FILLED and shown; it is not persisted,
+         and nothing is sent, until the address is on screen and Connect is
+         tapped deliberately. */
+      var suggested = '';
+      if(ms){
+        try{ suggested = clean(decodeURIComponent(ms[1]), 120).trim(); }catch(e){ suggested = ''; }
+      }
+      setTimeout(function(){
+        SyncUI.open();
+        SyncUI.showView('claim');
+        var i = el('syncCodeIn'); if(i) i.value = mm[1];
+        if(suggested){
+          var u = el('syncUrl');
+          if(u) u.value = suggested;
+          el('syncServerRow').style.display = '';
+          SyncUI.say('Pair with the sync service at:\n\n' + suggested +
+                     '\n\nCheck that address is your own laptop, then tap Connect.');
+        }else{
+          SyncUI.say('Enter your laptop’s address above, then tap Connect.');
+        }
+      }, 500);
+      try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+    }
+  }catch(e){}
+
+  /* reconnect to a device we already know (§2: later use is one click, and
+     usually none at all) */
+  if(SM.paired()) setTimeout(function(){ SM.connect(); }, 900);
+
+  /* fingerprint whatever is already in the library, gently */
+  setTimeout(function(){
+    try{
+      (S.library || []).forEach(function(bk){ if(!bk.fp && bk.kind !== 'epub') fpEnqueue(bk); });
+    }catch(e){}
+  }, 4000);
+
+  SyncUI.render();
+})();
+
+/* a small handle for the diagnostics panel and for testing from the console */
+window.NBSync = { SM:SM, UI:SyncUI, FP:NBFP, QR:NBQR, Ann:AnnotationSync, dev:devLoad };
+
+})();
+
 </script>
