@@ -2194,8 +2194,10 @@ const FN = {
   heights:null,                /* funnelled height of every page, in page units */
   cache:Object.create(null), order:[], max:10,
   grade:Object.create(null),   /* how far each page's geometry can be trusted  */
-  cuts:Object.create(null), cutsKey:'',    /* where one word stops, in pixels  */
-  rows:Object.create(null), rowsKey:'',    /* where one line stops, in pixels  */
+  cutPages:Object.create(null), cutOrder:[], cutKey:'',   /* per page: where a
+     word stops and where a line stops, in scratch pixels. Kept for as many
+     pages as can be live at once, so scrolling does not re-ask the same
+     questions of the same pixels. */
   scratch:null, sctx:null, gen:0, busy:null,
   anchor:-1
 };
@@ -2726,8 +2728,7 @@ function fnGet(p){
 function fnForget(){
   FN.cache = Object.create(null); FN.order.length = 0;
   FN.grade = Object.create(null);
-  FN.cuts  = Object.create(null); FN.cutsKey = '';
-  FN.rows  = Object.create(null); FN.rowsKey = '';
+  FN.cutPages = Object.create(null); FN.cutOrder.length = 0; FN.cutKey = '';
   FN.gen++;                       /* renders already in flight must not commit */
 }
 function fnHeight(p){
@@ -2939,9 +2940,21 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
      to, and fnForget never cleared this map, so the second book opened at the
      same page and the same scale inherited the first book's cut positions and
      was sliced at columns that meant nothing in it. */
-  const ckey = (S.book ? S.book.id : '?') + '|' + FN.gen + '|' + p + '|' + Math.round(k*1000);
-  if(FN.cutsKey !== ckey){ FN.cuts = Object.create(null); FN.cutsKey = ckey; }
-  if(FN.rowsKey !== ckey){ FN.rows = Object.create(null); FN.rowsKey = ckey; }
+  const skey = (S.book ? S.book.id : '?') + '|' + FN.gen + '|' + Math.round(k*1000);
+  if(FN.cutKey !== skey){ FN.cutPages = Object.create(null); FN.cutOrder.length = 0; FN.cutKey = skey; }
+  let mem = FN.cutPages[p];
+  if(!mem){
+    mem = FN.cutPages[p] = { cuts:Object.create(null), rows:Object.create(null) };
+    FN.cutOrder.push(p);
+    /* as many pages as can be on screen at once, plus the neighbours a scroll
+       is about to reach back for */
+    const keepN = Math.max(4, ((typeof IS !== 'undefined' && IS.on) ? IS.poolN : 2) + 2);
+    while(FN.cutOrder.length > keepN){
+      const old = FN.cutOrder.shift();
+      if(old !== p) delete FN.cutPages[old];
+    }
+  }
+  const CUTS = mem.cuts, ROWS = mem.rows;
 
   /* one ink profile, read once, summed either down the columns or across the
      rows depending on which way the cut runs */
@@ -2988,7 +3001,7 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
 
   const snapCut = function(id, nominal, bandTop, bandH, win, side){
     if(id < 0) return nominal;
-    const hit = FN.cuts[id];
+    const hit = CUTS[id];
     if(hit !== undefined) return hit;
     /* The window has to be wide enough to reach the real gap. A box estimated
        by character count can be a whole letter out, so the search spans about
@@ -3008,11 +3021,11 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
     let ty = bandTop, th = bandH;
     if(ty < 0){ th += ty; ty = 0; }
     if(ty + th > sh0) th = sh0 - ty;
-    if(x1 - x0 < 2 || th < 1){ FN.cuts[id] = nominal; return nominal; }
+    if(x1 - x0 < 2 || th < 1){ CUTS[id] = nominal; return nominal; }
     let best = nominal;
     try{ best = pickRun(profile(x0, ty, x1-x0, th, true), x0, nominal); }
     catch(e){ best = nominal; }
-    FN.cuts[id] = best;
+    CUTS[id] = best;
     return best;
   };
 
@@ -3029,7 +3042,7 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
      look it up under the same id and get the same answer — the crops meet
      exactly, with nothing dropped and nothing copied twice. */
   const rowCut = function(id, lo, hi, x0, x1, nominal){
-    if(id >= 0){ const hit = FN.rows[id]; if(hit !== undefined) return hit; }
+    if(id >= 0){ const hit = ROWS[id]; if(hit !== undefined) return hit; }
     let y0 = Math.round(lo), y1 = Math.round(hi);
     let a = Math.round(x0), b = Math.round(x1);
     if(y0 < 0) y0 = 0;
@@ -3041,7 +3054,7 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
       try{ best = pickRun(profile(a, y0, b-a, y1-y0, false), y0, nominal); }
       catch(e){ best = nominal; }
     }
-    if(id >= 0) FN.rows[id] = best;
+    if(id >= 0) ROWS[id] = best;
     return best;
   };
   const bandOf = function(ln){
@@ -4321,7 +4334,7 @@ async function ingest(file){
 
   const edgeThreshold = Math.max(3, Math.ceil(doc.numPages*0.25));
 
-  pages.forEach(function(pg){
+  const cleanPage = function(pg){
     const H=pg.H, medH=pg.medH;
 
     if(!isEpubBook){
@@ -4377,7 +4390,24 @@ async function ingest(file){
       delete w.fh;
     });
     delete pg.lines;
-  });
+  };
+  let cleanSaid = 0;
+  for(let i = 0; i < pages.length; ){
+    /* Twelve milliseconds, not the whole pass: comfortably inside a frame, so
+       nothing is dropped, but few enough turns that handing the thread back
+       does not end up costing more than the work being handed back for. */
+    const until = performance.now() + 12;
+    while(i < pages.length && performance.now() < until) cleanPage(pages[i++]);
+    if(i < pages.length){
+      /* the toast is DOM work of its own; four times a second is plenty */
+      const now = performance.now();
+      if(N > 24 && now - cleanSaid > 250){
+        cleanSaid = now;
+        toast('Reading \u201C'+file.name+'\u201D \u2014 '+Math.round(90 + i*10/N)+'%');
+      }
+      await yieldToUI();
+    }
+  }
 
   /* Identity is settled BEFORE anything is written.
 
@@ -4762,6 +4792,7 @@ async function openBook(bk, autoResume){
   }
 
   FT.on = false; FT.ok = false; document.body.classList.remove('fittext');
+  PC.clear();
   S.book=bk; S.ribbon=[]; S.byPage=[]; S.chunks=[]; S.wordIdx=-1; S.page=0;
 
   bk.pages.forEach(function(pg,pi){
@@ -5103,6 +5134,119 @@ function afterPaint(fn){
    one. pdf.js caches it, so the tap that follows has less to do. Cheap, and
    it holds no extra canvas memory. */
 let warmedPage = -1;
+/* ── THE NEXT PAGE, ALREADY DRAWN ────────────────────────────────────────────
+   warmNextPage asks pdf.js for the next page OBJECT during a quiet moment,
+   which saves the fetch and the parse. It does not draw anything, so a page
+   turn still paid for a full rasterisation after the tap — around 20ms on a
+   laptop and several times that on the tablet this is written for, and more
+   again with the funnel on, where the page is rasterised and then re-set.
+
+   So the page is now DRAWN ahead of time as well, into its own canvas, during
+   idle time, and a turn becomes one blit. Two rules keep it honest:
+
+     · Two pages at most — the one you are heading for and the one you came
+       from. Speculation is not worth a third canvas on a 4GB tablet, and the
+       memory is handed back the moment an entry is evicted.
+     · It never gets in the way. It waits for idle, it stops the moment a real
+       render starts (the render token moved) or the pen goes down, and the
+       funnel's own queue is told to abandon it rather than draw it.
+
+   The key carries everything that changes what a page LOOKS like — the book,
+   the page, its size in device pixels, the funnel generation and dark mode —
+   so a stale entry cannot be found rather than having to be hunted down. */
+const PC = {
+  max: 2,
+  order: [], map: Object.create(null),
+  key: function(p, vp, dpr){
+    return (S.book ? S.book.id : '?') + '|' + p + '|' +
+           Math.round(vp.width) + 'x' + Math.round(vp.height) + '|' + dpr + '|' +
+           (FN.on ? ('f' + FN.gen) : 'n') + '|' + (S.dark ? 'd' : 'l');
+  },
+  get: function(k){
+    const c = PC.map[k];
+    if(c){ const i = PC.order.indexOf(k); if(i >= 0){ PC.order.splice(i,1); PC.order.push(k); } }
+    return c || null;
+  },
+  put: function(k, cv){
+    if(PC.map[k]){ if(PC.map[k] !== cv){ cv.width = cv.height = 1; } return; }
+    PC.map[k] = cv; PC.order.push(k);
+    while(PC.order.length > PC.max){
+      const old = PC.order.shift(), c = PC.map[old];
+      if(c) c.width = c.height = 1;            /* hand it back now, not at collection */
+      delete PC.map[old];
+    }
+  },
+  clear: function(){
+    PC.order.forEach(function(k){ const c = PC.map[k]; if(c) c.width = c.height = 1; });
+    PC.map = Object.create(null); PC.order.length = 0;
+  }
+};
+function pageSnapshot(cv){
+  const c = document.createElement('canvas');
+  c.width = cv.width; c.height = cv.height;
+  c.getContext('2d').drawImage(cv, 0, 0);
+  return c;
+}
+
+let turnDir = 1, prefetchIdle = null, prefetchBusy = false, prefetchTask = null;
+function prefetchPage(n){
+  /* continuous scroll has its own pool and its own look-ahead */
+  if(!S.book || !S.book.doc || IS.on) return;
+  if(n < 0 || n >= S.book.numPages) return;
+  if(prefetchBusy) return;
+  if(prefetchIdle !== null){
+    if(window.cancelIdleCallback) cancelIdleCallback(prefetchIdle); else clearTimeout(prefetchIdle);
+    prefetchIdle = null;
+  }
+  const mine = S.renderToken;
+  const alive = function(){ return S.renderToken === mine && !TURBO.on && !!S.book && !!S.book.doc; };
+  const go = async function(){
+    prefetchIdle = null;
+    if(!alive() || IS.on) return;
+    prefetchBusy = true;
+    let cv = null;
+    try{
+      const page = await S.book.doc.getPage(n+1);
+      if(!alive()) return;
+      const viewer = $('#viewer');
+      const fit  = Math.min(viewer.clientWidth-40, 900);
+      const base = page.getViewport({ scale:1 });
+      const bw   = (FN.on && FN.pageW) ? FN.pageW : base.width;
+      const sc   = (fit/bw) * S.zoom;
+      if(!(sc > 0)) return;
+      const vp   = fnViewport(page, n, sc);
+      const dpr  = pageDpr(vp.width, vp.height);
+      const key  = PC.key(n, vp, dpr);
+      if(PC.map[key]) return;
+      cv = document.createElement('canvas');
+      cv.width  = Math.max(1, Math.round(vp.width*dpr));
+      cv.height = Math.max(1, Math.round(vp.height*dpr));
+      const c2 = cv.getContext('2d');
+      c2.setTransform(dpr,0,0,dpr,0,0);
+      if(FN.on){
+        const keepDpr = S.dpr; S.dpr = dpr;
+        try{ await fnDrawPage(c2, n, sc, vp.width, vp.height, alive); }
+        finally{ S.dpr = keepDpr; }
+      }else{
+        prefetchTask = page.render({ canvasContext:c2, viewport:vp });
+        try{ await prefetchTask.promise; }
+        catch(e){ return; }                 /* cancelled by a real page turn */
+        finally{ prefetchTask = null; }
+      }
+      if(!alive()) return;
+      tintPaper(c2, cv);
+      PC.put(key, cv); cv = null;
+    }catch(e){}
+    finally{
+      if(cv) cv.width = cv.height = 1;         /* abandoned: give it straight back */
+      prefetchBusy = false;
+    }
+  };
+  prefetchIdle = window.requestIdleCallback
+    ? requestIdleCallback(function(){ go(); }, { timeout:1500 })
+    : setTimeout(go, 350);
+}
+
 function warmNextPage(n){
   if(!S.book || !S.book.doc || n === warmedPage) return;
   if(n < 0 || n >= S.book.numPages) return;
@@ -5234,6 +5378,8 @@ async function renderPage(pageIdx){
   /* in continuous mode there is no page to swap in — just travel to it */
   if(IS.on){ isGoToPage(pageIdx); return; }
   const token = ++S.renderToken;
+  /* which way you are reading, so the right page is prepared next */
+  if(pageIdx !== S.page) turnDir = (pageIdx > S.page) ? 1 : -1;
   S.page = pageIdx;
 
   const page = await S.book.doc.getPage(pageIdx+1);
@@ -5279,7 +5425,26 @@ async function renderPage(pageIdx){
   lastHL = null; inkRect = null;
 
   if(renderTask){ try{ renderTask.cancel(); }catch(e){} }
-  if(FN.on){
+  /* Already drawn during an idle moment? Then the turn is one blit. The copy
+     is the page exactly as tintPaper left it, so everything below runs the
+     same way it does after a real render. */
+  const pcKey = PC.key(pageIdx, vp, dpr);
+  const prepared = PC.get(pcKey);
+  /* A page that is already drawn asks nothing of the engine, so a speculative
+     render keeps its turn. Cancelling one on every turn — including the turns
+     it had just made instant — measured worse than not cancelling at all: each
+     hit killed the NEXT page's render, so every second turn missed. It is only
+     in the way when this page has to be drawn for real. */
+  if(!prepared && prefetchTask){
+    try{ prefetchTask.cancel(); }catch(e){}
+    prefetchTask = null;
+  }
+  if(prepared){
+    renderTask = null;
+    pctx.save(); pctx.setTransform(1,0,0,1,0,0);
+    try{ pctx.drawImage(prepared, 0, 0); }catch(e){}
+    pctx.restore();
+  }else if(FN.on){
     renderTask = null;
     /* Funnel renders take the scratch in turn. Five quick page turns must not
        mean five full renders drawn one after another and then thrown away by
@@ -5294,7 +5459,11 @@ async function renderPage(pageIdx){
   }
   if(token !== S.renderToken) return;
 
-  tintPaper(pctx, pdfCanvas);
+  if(!prepared){
+    tintPaper(pctx, pdfCanvas);
+    /* keep it for the way back, before ink or highlights are on it */
+    PC.put(pcKey, pageSnapshot(pdfCanvas));
+  }
   paintBionic();
   redrawInk(); paintVeil(); paintMarks(); paintHighlight();
 
@@ -5303,7 +5472,8 @@ async function renderPage(pageIdx){
     if(token !== S.renderToken) return;
     $('#pgNum').textContent = 'Page '+(pageIdx+1)+' / '+S.book.numPages+' · '+Math.round(S.zoom*100)+'%';
     updateProgress(); schedulePos();
-    warmNextPage(pageIdx + 1);
+    warmNextPage(pageIdx + turnDir);
+    prefetchPage(pageIdx + turnDir);
   });
 }
 
@@ -7933,13 +8103,31 @@ function isSync(force){
     updateProgress(); schedulePos();
   }
 
-  /* the pages we would like drawn, nearest the middle of the screen first */
+  /* The pages we would like drawn. Reading runs one way, so the pool leans
+     that way: two pages ahead of the screen and one behind while you travel
+     down, the mirror image going up, and even either side when still. The pool
+     itself does not grow — this only changes WHICH pages fill it, and in what
+     order, so the page you are about to reach is usually already drawn. */
+  /* scrollSpeed is the finger's velocity, not the document's: the flick that
+     carries you FORWARD is a drag upward, so dy — and therefore scrollSpeed —
+     is negative, and the glide spends it as `scrollTop -= v`. Written in the
+     finger's terms this leans the pool behind you exactly while you read on,
+     so it is stated in the document's terms instead. */
+  const dir = scrollSpeed < -0.02 ? 1 : (scrollSpeed > 0.02 ? -1 : 0);
+  const ahead = dir < 0 ? 1 : 2, behind = dir > 0 ? 1 : 2;
   const want = [];
-  for(let p = vis.a - 1; p <= vis.b + 1; p++){
+  for(let p = vis.a - behind; p <= vis.b + ahead; p++){
     if(p < 0 || p >= n) continue;
     want.push(p);
   }
-  want.sort(function(x, y){ return Math.abs(x-cur) - Math.abs(y-cur); });
+  const onScreen = function(p){ return (p >= vis.a && p <= vis.b) ? 0 : 1; };
+  want.sort(function(x, y){
+    const vx = onScreen(x), vy = onScreen(y);
+    if(vx !== vy) return vx - vy;                        /* visible first */
+    const ax = Math.abs(x-cur), ay = Math.abs(y-cur);
+    if(ax !== ay) return ax - ay;                        /* then the nearest */
+    return dir < 0 ? (y - x) : (x - y);                  /* then the way you are going */
+  });
   const keep = want.slice(0, IS.poolN);
 
   for(let i=0;i<IS.slots.length;i++){
@@ -12934,6 +13122,74 @@ var NBFP = (function(){
     schedule();
   }
 
+  /* ---- the same hash, on another thread -----------------------------------
+     crypto.subtle is missing on a plain-http LAN address, because that is not
+     a secure context, and there the arithmetic above is ours to run: measured
+     at about 104 MB/s on a laptop, so a 20 MB book is roughly 200ms of CPU —
+     and several times that on the tablet this reader is written for. Slicing
+     it through idle callbacks keeps the frames, but it still spends the
+     reader's own thread on it. A worker spends nobody's.
+
+     The worker's source is BUILT FROM THE FUNCTIONS ABOVE rather than written
+     out a second time, so there is exactly one implementation of SHA-256 in
+     this file and no way for the two to drift apart.
+
+     The bytes are COPIED, not transferred: ingest stores this same buffer
+     afterwards, and a transferred ArrayBuffer is detached in the sender. The
+     copy is one memcpy — the same cost a structured clone would pay anyway —
+     and it is handed over as a transfer so the worker's side is released the
+     moment it answers. */
+  var shaSrc = null, shaW = null, shaJobs = Object.create(null), shaSeq = 0, shaOff = false;
+  function shaWorkerSource(){
+    if(shaSrc) return shaSrc;
+    shaSrc = 'var K=' + JSON.stringify(K) + ';\n' +
+             'var Sha=' + Sha.toString() + ';\n' +
+             'Sha.prototype._block=' + Sha.prototype._block.toString() + ';\n' +
+             'Sha.prototype.update=' + Sha.prototype.update.toString() + ';\n' +
+             'Sha.prototype.hex='    + Sha.prototype.hex.toString() + ';\n' +
+             'self.onmessage=function(e){var h=new Sha();' +
+             'h.update(new Uint8Array(e.data.buf));' +
+             'self.postMessage({id:e.data.id,hex:h.hex()});};';
+    return shaSrc;
+  }
+  function shaInWorker(buf, onDone){
+    if(shaOff || !window.Worker || !buf || !buf.byteLength) return false;
+    var copy;
+    try{ copy = buf.slice(0); }catch(e){ return false; }
+    try{
+      if(!shaW){
+        var url = URL.createObjectURL(new Blob([shaWorkerSource()], { type:'text/javascript' }));
+        shaW = new Worker(url);
+        shaW.onmessage = function(ev){
+          var j = shaJobs[ev.data.id];
+          if(!j) return;
+          delete shaJobs[ev.data.id];
+          clearTimeout(j.t);
+          j.fin('sha256:' + ev.data.hex);
+        };
+        /* a worker that will not start must not cost the book its identity */
+        shaW.onerror = function(){
+          shaOff = true;
+          var ids = Object.keys(shaJobs);
+          try{ shaW.terminate(); }catch(e){}
+          shaW = null;
+          for(var i=0;i<ids.length;i++){
+            var j = shaJobs[ids[i]]; delete shaJobs[ids[i]];
+            clearTimeout(j.t); sha256Idle(j.buf, j.fin);
+          }
+        };
+      }
+      var id = ++shaSeq, fired = false;
+      var fin = function(v){ if(fired) return; fired = true; onDone(v); };
+      shaJobs[id] = { fin:fin, buf:buf, t:setTimeout(function(){
+        delete shaJobs[id];
+        sha256Idle(buf, fin);                 /* the original was never given away */
+      }, 20000) };
+      shaW.postMessage({ id:id, buf:copy }, [copy]);
+      return true;
+    }catch(e){ shaOff = true; return false; }
+  }
+
   function full(buf, onDone){
     /* native where the origin allows it — far faster, and it does not block */
     if(window.crypto && crypto.subtle && crypto.subtle.digest){
@@ -12942,10 +13198,11 @@ var NBFP = (function(){
           var v = new Uint8Array(d), s = '';
           for(var i=0;i<v.length;i++) s += ('0'+v[i].toString(16)).slice(-2);
           onDone('sha256:' + s);
-        }, function(){ sha256Idle(buf, onDone); });
+        }, function(){ if(!shaInWorker(buf, onDone)) sha256Idle(buf, onDone); });
         return;
       }catch(e){}
     }
+    if(shaInWorker(buf, onDone)) return;
     sha256Idle(buf, onDone);
   }
 
