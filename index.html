@@ -2061,6 +2061,343 @@
   </div>
 </div>
 
+<!-- NEOBOOK CORE — generated from src/ by build.mjs. Do not edit by hand. -->
+<script>
+"use strict";
+var NBCore = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/index.ts
+  var index_exports = {};
+  __export(index_exports, {
+    CORE_BUILD: () => CORE_BUILD,
+    DURABLE_TYPES: () => DURABLE_TYPES,
+    GEOMETRY_FIELDS: () => GEOMETRY_FIELDS,
+    KNOWN_TYPES: () => KNOWN_TYPES,
+    PROTOCOL: () => PROTOCOL,
+    asBookId: () => asBookId,
+    asDeviceId: () => asDeviceId,
+    asPageIndex: () => asPageIndex,
+    asRenderGeneration: () => asRenderGeneration,
+    asRevision: () => asRevision,
+    asSessionId: () => asSessionId,
+    asWordAnchor: () => asWordAnchor,
+    clean: () => clean,
+    documentKind: () => documentKind,
+    geometryDiffers: () => geometryDiffers,
+    hasExactWordBoxes: () => hasExactWordBoxes,
+    isDocumentFingerprint: () => isDocumentFingerprint,
+    isDurable: () => isDurable,
+    isKnownType: () => isKnownType,
+    isOpaqueId: () => isOpaqueId,
+    isPageIndex: () => isPageIndex,
+    isPiperResponse: () => isPiperResponse,
+    isShaResponse: () => isShaResponse,
+    isWordAnchor: () => isWordAnchor,
+    normalizeReaderState: () => normalizeReaderState,
+    num: () => num,
+    repairCard: () => repairCard,
+    repairHighlights: () => repairHighlights,
+    repairPos: () => repairPos,
+    repairStrokes: () => repairStrokes,
+    reportOn: () => reportOn,
+    safeDeviceName: () => safeDeviceName,
+    validateEnvelope: () => validateEnvelope,
+    withinSizeLimit: () => withinSizeLimit,
+    worthAWorker: () => worthAWorker
+  });
+
+  // src/ids.ts
+  var asBookId = (s) => s;
+  var asDeviceId = (s) => s;
+  var asSessionId = (s) => s;
+  var asPageIndex = (n) => n;
+  var asWordAnchor = (n) => n;
+  var asRevision = (n) => n;
+  var asRenderGeneration = (n) => n;
+  var HEX64 = /^[0-9a-f]{64}$/;
+  function isDocumentFingerprint(v) {
+    return typeof v === "string" && v.length === 71 && v.slice(0, 7) === "sha256:" && HEX64.test(v.slice(7));
+  }
+  function isPageIndex(v, numPages) {
+    return typeof v === "number" && Number.isInteger(v) && v >= 0 && v < numPages;
+  }
+  function isWordAnchor(v, ribbonLength) {
+    return typeof v === "number" && Number.isInteger(v) && v >= 0 && v < ribbonLength;
+  }
+  function isOpaqueId(v, max = 128) {
+    return typeof v === "string" && v.length > 0 && v.length <= max;
+  }
+  function num(v, lo, hi, dflt) {
+    const n = typeof v === "number" ? v : parseFloat(String(v));
+    if (!isFinite(n)) return dflt;
+    return n < lo ? lo : n > hi ? hi : n;
+  }
+  function clean(v, max) {
+    if (typeof v !== "string") return "";
+    let s = "";
+    for (let i = 0; i < v.length; i++) {
+      const c = v.charCodeAt(i);
+      if (c < 32 || c === 127) continue;
+      s += v.charAt(i);
+    }
+    const cap = max || 64;
+    return s.length > cap ? s.slice(0, cap) : s;
+  }
+
+  // src/envelope.ts
+  var PROTOCOL = 1;
+  var KNOWN_TYPES = [
+    "sync.hello",
+    "sync.welcome",
+    "sync.ack",
+    "sync.ping",
+    "sync.pong",
+    "sync.requestMissing",
+    "sync.replay",
+    "sync.snapshot",
+    "device.presence",
+    "reader.document",
+    "reader.position",
+    "reader.mode",
+    "tts.state",
+    "tts.audioOwner",
+    "ink.start",
+    "ink.points",
+    "ink.end",
+    "ink.delete",
+    "highlight.add",
+    "highlight.delete",
+    "highlight.promote"
+  ];
+  var DURABLE_TYPES = [
+    "ink.end",
+    "ink.delete",
+    "highlight.add",
+    "highlight.delete"
+  ];
+  var MAX_PAYLOAD_BYTES = 512 * 1024;
+  function validateEnvelope(m) {
+    if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+    const e = m;
+    if (e["protocol"] !== PROTOCOL) return null;
+    if (typeof e["type"] !== "string" || e["type"].length === 0 || e["type"].length >= 40) return null;
+    if (e["payload"] != null && (typeof e["payload"] !== "object" || Array.isArray(e["payload"]))) return null;
+    for (const k of ["eventId", "sessionId", "deviceId", "epoch", "intentDev"]) {
+      const v = e[k];
+      if (v != null && !isOpaqueId(v)) return null;
+    }
+    for (const k of ["sequence", "intent", "sentAt", "rev"]) {
+      const v = e[k];
+      if (v != null && (typeof v !== "number" || !isFinite(v))) return null;
+    }
+    return e;
+  }
+  function withinSizeLimit(m) {
+    try {
+      const s = JSON.stringify(m);
+      return typeof s === "string" && s.length <= MAX_PAYLOAD_BYTES;
+    } catch (e) {
+      return false;
+    }
+  }
+  function isDurable(type) {
+    return DURABLE_TYPES.indexOf(type) >= 0;
+  }
+  function isKnownType(type) {
+    return KNOWN_TYPES.indexOf(type) >= 0;
+  }
+  function safeDeviceName(v) {
+    return clean(v, 40) || "Device";
+  }
+
+  // src/readerstate.ts
+  function normalizeReaderState(v, numPages = 1, ribbonLength = 0) {
+    const p = v && typeof v === "object" ? v : {};
+    const lastPage = Math.max(0, (numPages | 0) - 1);
+    const lastWord = Math.max(-1, (ribbonLength | 0) - 1);
+    const mode = clean(p["zoomMode"], 12);
+    const zoomMode = mode === "fitText" || mode === "funnel" || mode === "manual" ? mode : "manual";
+    const tts = clean(p["ttsState"], 10);
+    const ttsState = tts === "playing" || tts === "paused" || tts === "stopped" ? tts : "stopped";
+    return {
+      fp: typeof p["fp"] === "string" ? p["fp"] : "",
+      bookId: clean(p["bookId"], 200),
+      wordSig: clean(p["wordSig"], 64),
+      pageSig: clean(p["pageSig"], 64),
+      numPages: num(p["numPages"], 0, 1e6, numPages) | 0,
+      page: num(p["page"], 0, lastPage, 0) | 0,
+      wordAnchor: lastWord < 0 ? -1 : num(p["wordAnchor"], -1, lastWord, -1) | 0,
+      withinPage: num(p["withinPage"], 0, 1, 0),
+      globalProgress: num(p["globalProgress"], 0, 1, 0),
+      zoom: num(p["zoom"], 0.1, 12, 1),
+      zoomMode,
+      inf: !!p["inf"],
+      funnel: !!p["funnel"],
+      fitText: !!p["fitText"],
+      focus: !!p["focus"],
+      tele: !!p["tele"],
+      teleLvl: clean(p["teleLvl"], 24),
+      bionic: !!p["bionic"],
+      sr: !!p["sr"],
+      wpm: num(p["wpm"], 60, 900, 300),
+      srBreak: clean(p["srBreak"], 24),
+      dark: !!p["dark"],
+      darkVar: clean(p["darkVar"], 24),
+      hlStyle: clean(p["hlStyle"], 16),
+      ttsState,
+      rate: num(p["rate"], 0.5, 3, 1),
+      revision: num(p["revision"], 0, Number.MAX_SAFE_INTEGER, 0) | 0
+    };
+  }
+  var GEOMETRY_FIELDS = ["funnel", "inf", "fitText", "zoom"];
+  function geometryDiffers(a, b) {
+    if (!!a.funnel !== !!b.funnel) return true;
+    if (!!a.inf !== !!b.inf) return true;
+    if (!!a.fitText !== !!b.fitText) return true;
+    const za = typeof a.zoom === "number" ? a.zoom : 1;
+    const zb = typeof b.zoom === "number" ? b.zoom : 1;
+    return Math.abs(za - zb) > 1e-3;
+  }
+
+  // src/records.ts
+  var isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  var copyOf = (v) => isObj(v) ? Object.assign({}, v) : {};
+  function repairCard(v) {
+    const r = copyOf(v);
+    r["name"] = clean(r["name"], 300);
+    r["title"] = clean(r["title"], 300);
+    r["author"] = clean(r["author"], 200);
+    r["year"] = clean(r["year"], 12);
+    r["genre"] = clean(r["genre"], 60);
+    r["cover"] = typeof r["cover"] === "string" ? r["cover"] : "";
+    r["fp"] = typeof r["fp"] === "string" ? r["fp"] : "";
+    r["kind"] = clean(r["kind"], 12);
+    r["paged"] = !!r["paged"];
+    r["done"] = !!r["done"];
+    return r;
+  }
+  function repairPos(v, numPages = 1, ribbonLength = 0) {
+    const r = copyOf(v);
+    const lastPage = Math.max(0, (numPages | 0) - 1);
+    const lastWord = Math.max(-1, (ribbonLength | 0) - 1);
+    r["wordIdx"] = lastWord < 0 ? -1 : num(r["wordIdx"], -1, lastWord, -1) | 0;
+    r["page"] = num(r["page"], 0, lastPage, 0) | 0;
+    r["zoom"] = num(r["zoom"], 0.1, 12, 1);
+    r["at"] = num(r["at"], 0, Number.MAX_SAFE_INTEGER, 0);
+    r["pct"] = num(r["pct"], 0, 1, 0);
+    r["anchor"] = lastWord < 0 ? -1 : num(r["anchor"], -1, lastWord, -1) | 0;
+    r["inf"] = !!r["inf"];
+    r["funnel"] = !!r["funnel"];
+    r["focus"] = !!r["focus"];
+    return r;
+  }
+  function repairHighlights(v, ribbonLength = 0) {
+    if (!Array.isArray(v)) return [];
+    const last = Math.max(0, (ribbonLength | 0) - 1);
+    const out = [];
+    for (const raw of v) {
+      if (!isObj(raw)) continue;
+      const r = copyOf(raw);
+      const a = num(r["a"], 0, last, -1) | 0;
+      const b = num(r["b"], 0, last, -1) | 0;
+      if (a < 0 || b < 0) continue;
+      r["a"] = Math.min(a, b);
+      r["b"] = Math.max(a, b);
+      r["page"] = num(r["page"], 0, 1e6, 0) | 0;
+      r["text"] = typeof r["text"] === "string" ? r["text"] : "";
+      r["at"] = num(r["at"], 0, Number.MAX_SAFE_INTEGER, 0);
+      r["c"] = clean(r["c"], 32) || "#FFE08A";
+      out.push(r);
+    }
+    return out;
+  }
+  function repairStrokes(v) {
+    if (!Array.isArray(v)) return [];
+    const out = [];
+    for (const raw of v) {
+      if (!isObj(raw)) continue;
+      const r = copyOf(raw);
+      const pts = [];
+      const rawPts = Array.isArray(r["pts"]) ? r["pts"] : [];
+      for (const rp of rawPts) {
+        if (!isObj(rp)) continue;
+        const x = num(rp["x"], -1e6, 1e6, NaN);
+        const y = num(rp["y"], -1e6, 1e6, NaN);
+        if (!isFinite(x) || !isFinite(y)) continue;
+        pts.push({ x, y, p: num(rp["p"], 0, 1, 0.5) });
+      }
+      if (!pts.length) continue;
+      r["pts"] = pts;
+      r["t"] = num(r["t"], 0, Number.MAX_SAFE_INTEGER, 0);
+      r["fn"] = num(r["fn"], 0, 1, 0) | 0;
+      r["mode"] = clean(r["mode"], 16) || "pen";
+      r["c"] = clean(r["c"], 32) || "#E02424";
+      r["w"] = num(r["w"], 0.1, 40, 2.3);
+      out.push(r);
+    }
+    return out;
+  }
+  function reportOn(before, after) {
+    const n = Array.isArray(before) ? before.length : 0;
+    return { kept: after.length, dropped: Math.max(0, n - after.length) };
+  }
+
+  // src/document.ts
+  function documentKind(doc) {
+    if (!doc) return "pdf";
+    if (doc.__epub) return "epub";
+    if (doc.__image) return "image";
+    return "pdf";
+  }
+  function hasExactWordBoxes(doc) {
+    return !!(doc && doc.__epub);
+  }
+
+  // src/workers.ts
+  function isShaResponse(v) {
+    if (!v || typeof v !== "object") return false;
+    const m = v;
+    return typeof m["id"] === "number" && typeof m["hex"] === "string" && /^[0-9a-f]{64}$/.test(m["hex"]);
+  }
+  function isPiperResponse(v) {
+    if (!v || typeof v !== "object") return false;
+    const m = v;
+    const t = m["type"];
+    if (t === "ready") return true;
+    if (typeof m["id"] !== "number") return false;
+    if (t === "progress") return typeof m["loaded"] === "number" && typeof m["total"] === "number";
+    if (t === "wav") return m["buf"] instanceof ArrayBuffer;
+    if (t === "err") return typeof m["msg"] === "string";
+    return false;
+  }
+  function worthAWorker(bytes, estimatedComputeMs) {
+    const copyMs = bytes / (1024 * 1024);
+    return estimatedComputeMs > copyMs * 4;
+  }
+
+  // src/index.ts
+  var CORE_BUILD = "d468fca83164";
+  return __toCommonJS(index_exports);
+})();
+</script>
+<!-- /NEOBOOK CORE -->
 <script>
 "use strict";
 /* ============================================================================
@@ -2879,7 +3216,13 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
     const w0 = Math.max(1, Math.round(vp0.width*dpr)), h0 = Math.max(1, Math.round(vp0.height*dpr));
     if(!FN.scratch){
       FN.scratch = document.createElement('canvas');
-      FN.sctx = FN.scratch.getContext('2d');
+      /* The scratch is written once per page and then READ about 140 times,
+         once around each cut. Chrome says so itself, and an interleaved A/B
+         agrees: those readbacks cost 46.9ms per five pages on the default
+         canvas and 26.3ms on this one, with no measurable penalty to the
+         render into it. The first reading of this was reasoned rather than
+         measured, and was wrong. */
+      FN.sctx = FN.scratch.getContext('2d', { willReadFrequently: true });
     }
     if(FN.scratch.width !== w0 || FN.scratch.height !== h0){
       FN.scratch.width = w0; FN.scratch.height = h0;
@@ -4810,9 +5153,19 @@ async function openBook(bk, autoResume){
   /* before anything measures or draws a page of this book */
   if(FN.on) await fnAdopt();
 
+  /* Everything below has been on disk for as long as the user has had the
+     book, written by builds whose shapes have changed more than once. It is
+     coerced into range rather than validated: a mark in slightly the wrong
+     place can be fixed by hand, a mark this code decided to delete cannot.
+     Unknown fields ride through untouched — `manual` is what makes a highlight
+     a note, and a repair that only kept the fields it recognised would have
+     quietly thrown it away. */
   S.strokes = await loadInk(bk);
-  S.hl = (await store.get('marks:'+bk.id)) || [];
-  S.hlDraft = mirror.get('draft:'+bk.id) || (await store.get('draft:'+bk.id)) || [];
+  for(const pg in S.strokes) S.strokes[pg] = NBCore.repairStrokes(S.strokes[pg]);
+  S.hl = NBCore.repairHighlights((await store.get('marks:'+bk.id)) || [], S.ribbon.length);
+  S.hlDraft = NBCore.repairHighlights(
+                mirror.get('draft:'+bk.id) || (await store.get('draft:'+bk.id)) || [],
+                S.ribbon.length);
 
   $('#nowTitle').innerHTML='';
   $('#nowTitle').appendChild(document.createTextNode(bookTitle(bk)));
@@ -4823,7 +5176,8 @@ async function openBook(bk, autoResume){
   $('#play').disabled = !S.chunks.length;
   if(!S.chunks.length) toast('No selectable text in this PDF — it looks like scanned images.');
 
-  const saved = mirror.get('pos:'+bk.id) || (await store.get('pos:'+bk.id));
+  const savedRaw = mirror.get('pos:'+bk.id) || (await store.get('pos:'+bk.id));
+  const saved = savedRaw ? NBCore.repairPos(savedRaw, bk.numPages, S.ribbon.length) : null;
   S.zoom = (saved && saved.zoom) || 1;
 
   let target = -1;
@@ -13161,6 +13515,7 @@ var NBFP = (function(){
         var url = URL.createObjectURL(new Blob([shaWorkerSource()], { type:'text/javascript' }));
         shaW = new Worker(url);
         shaW.onmessage = function(ev){
+          if(!NBCore.isShaResponse(ev.data)) return;
           var j = shaJobs[ev.data.id];
           if(!j) return;
           delete shaJobs[ev.data.id];
@@ -13587,12 +13942,16 @@ var SyncProtocol = {
   },
   /* Structural checks only; each handler validates its own payload fields.
      Anything that fails is dropped silently — a malformed packet is never
-     allowed to become an exception in the reader. */
+     allowed to become an exception in the reader.
+
+     The rules live in src/envelope.ts and are compiled into the core block at
+     the top of this file, so there is one copy of them here. The SERVER keeps
+     its own, deliberately: across a trust boundary neither side may assume the
+     other checked. That is the opposite of the SHA-256 case, where one
+     implementation shared between the page and its worker is what stops the
+     two from drifting. */
   valid: function(m){
-    return !!m && typeof m === 'object'
-        && m.protocol === PROTOCOL
-        && typeof m.type === 'string' && m.type.length < 40
-        && (m.payload == null || typeof m.payload === 'object');
+    return !!NBCore.validateEnvelope(m);
   }
 };
 
@@ -13805,36 +14164,95 @@ var SyncStateAdapter = {
     return 'manual';
   },
 
-  /* §7 — a semantic anchor. There is deliberately no scrollTop in here. */
-  position: function(){
+  /* ── THE CANONICAL READER STATE ─────────────────────────────────────────
+     Where the reader is and how it is set, in one place, so that the panel,
+     what gets persisted and what crosses the wire are three views of the same
+     answer rather than three answers that have to be kept in step. Its shape
+     is declared in src/readerstate.ts.
+
+     It is SEMANTIC on purpose: there is no scrollTop in here and there never
+     will be, because two devices do not share a viewport and a pixel offset
+     means nothing on the other one. What is left out is as considered as what
+     is in: the narration voice, the engine and the audio device belong to the
+     device rather than the session — handing narration over is precisely so
+     the other device can read in its own voice — and canvas internals, render
+     generations and slot assignments change many times a second and mean
+     nothing off the machine they happen on.
+
+     The anchor is optional because finding it measures the page, and the mode
+     payload has no use for it. */
+  readerState: function(opts){
     if(!S.book) return null;
     var g = -1;
-    try{ g = readingAnchor(); }catch(e){ g = -1; }
-    if(g < 0) g = (typeof lastAnchor === 'number' ? lastAnchor : -1);
+    if(!opts || opts.anchor !== false){
+      try{ g = readingAnchor(); }catch(e){ g = -1; }
+      if(g < 0) g = (typeof lastAnchor === 'number' ? lastAnchor : -1);
+    }
+    return {
+      fp:        S.book.fp || '',
+      bookId:    S.book.id || '',            /* local only — never sent */
+      ribbonSig: S.book.ribbonSig || '',
+      wordSig:   S.book.wordSig || '',
+      pageSig:   S.book.pageSig || '',
+      numPages:  S.book.numPages|0,
+      name:      clean(bookTitle(S.book), 80),
+
+      page:       S.page|0,
+      wordAnchor: g,
+      withinPage: SyncStateAdapter.pageFraction(),
+      globalProgress: (S.ribbon && S.ribbon.length && g >= 0)
+                        ? (g / (S.ribbon.length - 1 || 1)) : 0,
+      progress:   (typeof pctNow === 'function') ? pctNow() : 0,
+
+      zoom:     num(S.zoom, 0.1, 12, 1),
+      zoomMode: SyncStateAdapter.zoomMode(),
+      inf:      !!(typeof IS !== 'undefined' && IS.on),
+      funnel:   !!(typeof FN !== 'undefined' && FN.on),
+      fitText:  !!(typeof FT !== 'undefined' && FT.on),
+      focus:    !!S.focusRead,
+      bionic:   !!S.bionic,
+      tele:     !!S.tele,
+      teleLvl:  clean(S.teleLvl, 24),
+      sr:       !!S.sr,
+      wpm:      num(S.wpm, 60, 900, 300),
+      srBreak:  clean(S.srBreak, 24),
+      dark:     !!S.dark,
+      darkVar:  clean(S.darkVar, 24),
+      hlStyle:  clean(S.hlStyle, 16),
+      rate:     num(S.rate, 0.5, 3, 1),
+
+      revision: SM.intent|0
+    };
+  },
+
+  /* §7 — a semantic anchor. There is deliberately no scrollTop in here. */
+  position: function(){
+    var st = SyncStateAdapter.readerState();
+    if(!st) return null;
+    var g = st.wordAnchor;
     var pageWord = -1;
     if(g >= 0 && S.byPage[S.page]){
       var idx = S.byPage[S.page].indexOf(g);
       if(idx >= 0) pageWord = idx;
     }
     return {
-      fp: S.book.fp || '',
-      ribbonSig: S.book.ribbonSig || '',
-      wordSig: S.book.wordSig || '',
-      pageSig: S.book.pageSig || '',
+      fp: st.fp,
+      ribbonSig: st.ribbonSig,
+      wordSig: st.wordSig,
+      pageSig: st.pageSig,
       /* meaningful even when two devices paginate the same book differently */
-      globalProgress: (S.ribbon && S.ribbon.length && g >= 0)
-                        ? (g / (S.ribbon.length - 1 || 1)) : 0,
-      name: clean(bookTitle(S.book), 80),
-      page: S.page|0,
-      numPages: S.book.numPages|0,
-      pageProgress: SyncStateAdapter.pageFraction(),
-      wordAnchor: g,
+      globalProgress: st.globalProgress,
+      name: st.name,
+      page: st.page,
+      numPages: st.numPages,
+      pageProgress: st.withinPage,
+      wordAnchor: st.wordAnchor,
       pageWordAnchor: pageWord,
-      zoom: num(S.zoom, 0.1, 12, 1),
-      zoomMode: SyncStateAdapter.zoomMode(),
-      inf: !!(typeof IS !== 'undefined' && IS.on),
-      funnel: !!(typeof FN !== 'undefined' && FN.on),
-      progress: (typeof pctNow === 'function') ? pctNow() : 0,
+      zoom: st.zoom,
+      zoomMode: st.zoomMode,
+      inf: st.inf,
+      funnel: st.funnel,
+      progress: st.progress,
       at: nowMs()
     };
   },
@@ -13863,22 +14281,26 @@ var SyncStateAdapter = {
      audio hardware are deliberately absent: those belong to the device, not
      to the session (§17.4, §17.11). */
   modes: function(){
+    /* no anchor: this payload has no use for one, and finding it measures
+       the page — which would put a layout pass on every settings change */
+    var st = SyncStateAdapter.readerState({ anchor:false });
+    if(!st) return {};
     return {
-      inf:      !!(typeof IS !== 'undefined' && IS.on),
-      funnel:   !!(typeof FN !== 'undefined' && FN.on),
-      fitText:  !!(typeof FT !== 'undefined' && FT.on),
-      zoom:     num(S.zoom, 0.1, 12, 1),
-      focus:    !!S.focusRead,
-      bionic:   !!S.bionic,
-      tele:     !!S.tele,
-      teleLvl:  clean(S.teleLvl, 24),
-      sr:       !!S.sr,
-      wpm:      num(S.wpm, 60, 900, 300),
-      srBreak:  clean(S.srBreak, 24),
-      dark:     !!S.dark,
-      darkVar:  clean(S.darkVar, 24),
-      hlStyle:  clean(S.hlStyle, 16),
-      rate:     num(S.rate, 0.5, 3, 1)
+      inf:      st.inf,
+      funnel:   st.funnel,
+      fitText:  st.fitText,
+      zoom:     st.zoom,
+      focus:    st.focus,
+      bionic:   st.bionic,
+      tele:     st.tele,
+      teleLvl:  st.teleLvl,
+      sr:       st.sr,
+      wpm:      st.wpm,
+      srBreak:  st.srBreak,
+      dark:     st.dark,
+      darkVar:  st.darkVar,
+      hlStyle:  st.hlStyle,
+      rate:     st.rate
     };
   },
 
@@ -16110,7 +16532,8 @@ var SyncUI = {
 /* a small handle for the diagnostics panel and for testing from the console */
 window.NBSync = { SM:SM, UI:SyncUI, FP:NBFP, QR:NBQR, Ann:AnnotationSync, dev:devLoad,
                   fpxGet:fpxGet, fpxSet:fpxSet, fpxRebuild:fpxRebuild,
-                  live: function(){ SM.streamPosition(); } };
+                  live: function(){ SM.streamPosition(); },
+                  Adapter: SyncStateAdapter, Protocol: SyncProtocol };
 
 })();
 
