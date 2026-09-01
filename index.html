@@ -2531,6 +2531,9 @@ const FN = {
   heights:null,                /* funnelled height of every page, in page units */
   cache:Object.create(null), order:[], max:10,
   grade:Object.create(null),   /* how far each page's geometry can be trusted  */
+  gradeWhy:Object.create(null),/* and why, when it is not the sharpest treatment */
+  debug:false, lastDebug:null, /* see fnDebugPage; never on by default          */
+  snap:{ near:0, wide:0, kept:0, crossed:0, unproven:0 },  /* how the cuts were settled */
   cutPages:Object.create(null), cutOrder:[], cutKey:'',   /* per page: where a
      word stops and where a line stops, in scratch pixels. Kept for as many
      pages as can be live at once, so scrolling does not re-ask the same
@@ -2576,7 +2579,7 @@ function fnGradeOf(p){
   }
   /* a page with almost no text is a plate, a scan or a cover: there is nothing
      to re-set, and pretending otherwise is how a scan gets shredded */
-  if(ws.length < 6) return 'page';
+  if(ws.length < 6){ FN.gradeWhy[p] = 'too little text to re-set'; return 'page'; }
 
   let bad = 0, outside = 0;
   for(let i = 0; i < ws.length; i++){
@@ -2589,7 +2592,10 @@ function fnGradeOf(p){
     const per = w.w / Math.max(1, w.text.length);
     if(w.w > pageW * 0.98 || per > w.h * 3.2 || per < w.h * 0.04) bad++;
   }
-  if((bad + outside) > ws.length * 0.35) return 'page';
+  if((bad + outside) > ws.length * 0.35){
+    FN.gradeWhy[p] = 'most boxes unusable (' + (bad+outside) + ' of ' + ws.length + ')';
+    return 'page';
+  }
 
   /* lines: how the words actually sit together */
   const lines = [];
@@ -2604,7 +2610,7 @@ function fnGradeOf(p){
     }
   }
   /* every word on a line of its own means the text layer has no lines in it */
-  if(lines.length > ws.length * 0.8) return 'page';
+  if(lines.length > ws.length * 0.8){ FN.gradeWhy[p] = 'no lines in the text layer'; return 'page'; }
 
   let pairs = 0, clash = 0, spread = 0;
   for(let i = 0; i < lines.length; i++){
@@ -2622,15 +2628,78 @@ function fnGradeOf(p){
     }
     if(ord.length > 1 && (ymax - ymin) > ln.h * 0.8) spread++;
   }
+  /* ── immutable source units ──────────────────────────────────────────────
+     A PDF text run often holds several words, and rawWords splits it by giving
+     each token a share of the run's width in proportion to its CHARACTER COUNT.
+     Every boundary inside such a run is therefore invented: an "i" is billed the
+     same as a "W". Those boundaries are not evidence that there is whitespace
+     between the glyphs, and they must never be treated as one.
+
+     They can be recognised exactly rather than guessed at. The splitter gives
+     every token of one run the SAME per-character width — literally the same two
+     floats, span/chars — and lays them end to end. Two neighbours whose
+     per-character widths agree to float precision, and which tile without a
+     measurable gap, came out of one run. In a proportional face two genuinely
+     separate runs do not do that.
+
+     A chain of such neighbours is an IMMUTABLE SOURCE UNIT: the funnel may move
+     it, but nothing inside it can be shown to be a space without asking the
+     pixels, so it may not be counted as somewhere a line could be broken. */
+  const sameRun = function(a, b){
+    if(!a.text.length || !b.text.length) return false;
+    const pa = a.w / a.text.length, pb = b.w / b.text.length;
+    if(!isFinite(pa) || !isFinite(pb) || pa <= 0) return false;
+    if(Math.abs(pa - pb) > pa * 1e-6) return false;
+    /* laid end to end, with exactly the run's own idea of a space between */
+    const gap = b.x - (a.x + a.w);
+    return gap >= -0.01 && Math.abs(gap - pa) < Math.max(0.01, pa * 1e-3);
+  };
+
+  /* rule 6 signals that the word map itself can show, without a raster */
+  let oddW = 0, pairsInRun = 0;
+  const perc = [];
+  for(let i = 0; i < ws.length; i++){
+    const w = ws[i];
+    if(w.w > 0 && w.text.length > 0) perc.push(w.w / w.text.length);
+  }
+  perc.sort(function(a,b){ return a-b; });
+  const medPer = perc.length ? perc[perc.length >> 1] : 1;
+  for(let i = 0; i < ws.length; i++){
+    const w = ws[i];
+    if(!w.text.length) continue;
+    const per = w.w / w.text.length;
+    if(medPer > 0 && (per > medPer * 3 || per < medPer / 3)) oddW++;
+  }
+  /* Text placed glyph by glyph has no words in it to reconstruct. Counting
+     one-character words does not find it: an answer key — "1 A 16 D 2 B" — is
+     half of them and is perfectly ordinary text set in a table. What marks real
+     glyph-by-glyph placement is short tokens sitting HARD AGAINST each other,
+     with no space where a space would be if they were separate words. */
+  let shattered = 0, adj = 0;
+  for(let i = 0; i < lines.length; i++){
+    const ord = lines[i].ws.slice().sort(function(a,b){ return a.x - b.x; });
+    for(let j = 1; j < ord.length; j++){
+      const a2 = ord[j-1], b2 = ord[j];
+      adj++;
+      if(a2.text.length <= 2 && b2.text.length <= 2 &&
+         (b2.x - (a2.x + a2.w)) < Math.max(0.5, a2.h * 0.12)) shattered++;
+    }
+  }
+  const glyphByGlyph = adj > 20 && shattered > adj * 0.3;
+  /* width estimates that disagree wildly with the rest of the page */
+  const wobbly = oddW > ws.length * 0.2;
+
+  if(glyphByGlyph){ FN.gradeWhy[p] = 'glyph-by-glyph placement'; return 'page'; }
+
   const shaky = (pairs > 0 && clash > pairs * 0.2)
              || (spread > lines.length * 0.25)
-             || (bad + outside > ws.length * 0.1);
-  if(!shaky) return 'seg';
+             || (bad + outside > ws.length * 0.1)
+             || wobbly;
+  if(!shaky){ FN.gradeWhy[p] = ''; return 'seg'; }
 
-  /* Would line-level reflow even fit? A run with no confident gap inside it
-     cannot be broken, so if the longest one is wider than the funnel's page it
-     would hang off both edges and be clipped. Showing the sheet intact is the
-     better answer. */
+  /* Would line-level reflow even fit? An immutable unit cannot be broken, so if
+     the longest one is wider than the funnel's page it would hang off both edges
+     and be clipped. Showing the sheet intact is the better answer. */
   const room = (FN.boxW || FN.pageW || pageW) * 0.94;
   let widest = 0;
   for(let i = 0; i < lines.length; i++){
@@ -2642,11 +2711,21 @@ function fnGradeOf(p){
       if(span > widest) widest = span;
       const nx = ord[j+1];
       if(!nx) break;
+      if(sameRun(w, nx)){ pairsInRun++; continue; }   /* invented: not a break */
       /* a gap this size is a space the splitter can be believed about */
       if((nx.x - (w.x + w.w)) > Math.max(1, w.h * 0.16)) x0 = nx.x;
     }
   }
+  FN.gradeWhy[p] = widest > room
+    ? ('no breakable point narrow enough (' + Math.round(widest) + ' > ' + Math.round(room) + ')')
+    : (wobbly ? 'inconsistent width estimates' : 'unreliable boxes');
   return widest > room ? 'page' : 'line';
+}
+
+/* why a page was graded down, for the debug panel; '' when it was not */
+function fnGradeReason(p){
+  fnGrade(p);
+  return FN.gradeWhy[p] || '';
 }
 
 /* Which style band a word belongs to. EPUB records the real font, so headings
@@ -3064,7 +3143,7 @@ function fnGet(p){
 }
 function fnForget(){
   FN.cache = Object.create(null); FN.order.length = 0;
-  FN.grade = Object.create(null);
+  FN.grade = Object.create(null); FN.gradeWhy = Object.create(null);
   FN.cutPages = Object.create(null); FN.cutOrder.length = 0; FN.cutKey = '';
   FN.gen++;                       /* renders already in flight must not commit */
 }
@@ -3133,6 +3212,82 @@ function wbox(g){
   if(!FN.on || !r) return r;
   const lay = FN.cache[r.page];
   return (lay && lay.box[g]) || r;
+}
+
+/* ── funnel diagnostics ───────────────────────────────────────────────────
+   Off unless somebody turns it on (`FN.debug = true` from the console, or
+   NBFunnel.debug(true)). It reports, per source line that had a problem, what
+   the layout proposed and what the pixels allowed — which is the only way to
+   tell "the crop is wrong" from "the estimate was wrong and the crop saved it".
+
+   Never on by default: it reads the profile back for every boundary it prints,
+   and the whole point of the line profile is to stop doing that. */
+function fnDebugPage(p, lay, plan, groups, UNSAFE, LP, k, sw0, sh0, drawn){
+  const rows = [];
+  const merged = Object.create(null);
+  for(let i = 0; i < groups.length; i++){
+    if(groups[i].last > groups[i].first){
+      for(let j = groups[i].first; j <= groups[i].last; j++) merged[j] = groups[i];
+    }
+  }
+  const textOf = function(seg){
+    const t = [];
+    for(let i = 0; i < seg.ws.length; i++){
+      const r = S.ribbon[seg.ws[i]];
+      if(r) t.push(r.text);
+    }
+    return t.join(' ');
+  };
+  const inkAt = function(P, c){
+    if(!P) return null;
+    const j = Math.round(c) - P.a;
+    return (j >= 0 && j < P.ink.length) ? P.ink[j] : null;
+  };
+  for(let i = 0; i < plan.length; i++){
+    const q = plan[i], P = LP[q.ln.i];
+    const iL = inkAt(P, q.sx), iR = inkAt(P, q.ex);
+    const badL = (iL !== null && P && iL > P.thr);
+    const badR = (iR !== null && P && iR > P.thr);
+    const uns  = !!(UNSAFE[q.idL] || UNSAFE[q.idR]);
+    const grp  = merged[i];
+    if(!badL && !badR && !uns && !grp) continue;      /* nothing to say */
+    rows.push({
+      page: p + 1,
+      grade: lay.grade,
+      sourceLine: q.ln.i,
+      sourceText: textOf(q.it),
+      sourceUnits: q.it.ws.length,
+      proposedCut: { left: q.nx0, right: Math.round(q.it.x1 * k) },
+      rejectedUnsafe: [ UNSAFE[q.idL] ? q.idL : null, UNSAFE[q.idR] ? q.idR : null ]
+                        .filter(function(v){ return v !== null; }),
+      snapped: { sx: q.sx, ex: q.ex },
+      edgeInk: { sx: iL, ex: iR, paperThreshold: P ? Math.round(P.thr) : null,
+                 sxOnInk: badL, exOnInk: badR },
+      finalCrop: grp ? { sx: plan[grp.first].sx, ex: plan[grp.last].ex }
+                     : { sx: q.sx, ex: q.ex },
+      mergedWith: grp ? (grp.last - grp.first + 1) + ' segments' : null,
+      band: [ q.sy, q.ey ]
+    });
+  }
+  const dg = (typeof fnGradeOf === 'function' && !(S.book && S.book.doc && S.book.doc.__epub))
+               ? fnGradeReason(p) : null;
+  /* eslint-disable no-console */
+  console.log('[funnel] page ' + (p+1) + ' grade=' + lay.grade +
+              ' segs=' + plan.length + ' crops=' + groups.length +
+              ' flagged=' + rows.length + (dg ? ' downgrade=' + dg : ''));
+  if(rows.length) console.table ? console.table(rows) : console.log(rows);
+  /* the whole plan, not just the flagged rows: the regression harness reads
+     this to check every crop that was actually painted */
+  FN.lastDebug = { page: p, grade: lay.grade, rows: rows, downgrade: dg,
+                   k: k, sw0: sw0, sh0: sh0, crops: drawn || [],
+                   segs: plan.map(function(q, i){
+                     return { i:i, line:q.ln.i, top:q.it.top,
+                              words:q.it.ws.map(function(g){
+                                const r = S.ribbon[g]; return r ? r.text : ''; }),
+                              sx:q.sx, ex:q.ex, sy:q.sy, ey:q.ey,
+                              idL:q.idL, idR:q.idR,
+                              unsafeL:!!UNSAFE[q.idL], unsafeR:!!UNSAFE[q.idR] }; }) };
+  return rows;
 }
 
 /* Draw a funnelled page. An EPUB is re-set with its real fonts, so it stays
@@ -3283,11 +3438,13 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
      to, and fnForget never cleared this map, so the second book opened at the
      same page and the same scale inherited the first book's cut positions and
      was sliced at columns that meant nothing in it. */
-  const skey = (S.book ? S.book.id : '?') + '|' + FN.gen + '|' + Math.round(k*1000);
+  const skey = (S.book ? S.book.id : '?') + '|' + FN.gen + '|' + Math.round(k*1000)
+             + '|' + Math.round(FN.colW) + 'x' + Math.round(FN.boxW);
   if(FN.cutKey !== skey){ FN.cutPages = Object.create(null); FN.cutOrder.length = 0; FN.cutKey = skey; }
   let mem = FN.cutPages[p];
   if(!mem){
-    mem = FN.cutPages[p] = { cuts:Object.create(null), rows:Object.create(null) };
+    mem = FN.cutPages[p] = { cuts:Object.create(null), rows:Object.create(null),
+                             unsafe:Object.create(null) };
     FN.cutOrder.push(p);
     /* as many pages as can be on screen at once, plus the neighbours a scroll
        is about to reach back for */
@@ -3297,7 +3454,7 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
       if(old !== p) delete FN.cutPages[old];
     }
   }
-  const CUTS = mem.cuts, ROWS = mem.rows;
+  const CUTS = mem.cuts, ROWS = mem.rows, UNSAFE = mem.unsafe;
 
   /* one ink profile, read once, summed either down the columns or across the
      rows depending on which way the cut runs */
@@ -3314,72 +3471,322 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
     }
     return out;
   };
-  /* A space between words — or between lines — is a RUN of blank slices; the
-     gap between two letters, or between an ascender and the descender above it,
-     is a slice or two at most. So the widest blank run wins, not the single
-     emptiest slice: that is what tells a boundary apart from the notch inside
-     an "rn" or beside an apostrophe. */
-  const pickRun = function(ink, origin, nominal){
-    let bestLen = -1, bestDist = Infinity, best = nominal, run = 0;
-    for(let i = 0; i <= ink.length; i++){
-      if(i < ink.length && ink[i] === 0){ run++; continue; }
-      if(run > 0){
-        const mid = origin + i - (run/2);
-        const dist = Math.abs(mid - nominal);
+
+  /* ── what counts as blank ───────────────────────────────────────────────
+     PAPER IS NOT WHITE. A tinted panel, a watermark, a scan's off-white sheet,
+     a coloured callout box — on a page like that not one column of one line has
+     zero ink in it. The test for blank used to be `ink === 0`, so on every such
+     page the corridor search below never ran at all. It fell through to a
+     fallback that took the single emptiest COLUMN, with no requirement that the
+     column belong to anything wide enough to be a space — and the notch between
+     two letters reaches paper level as readily as a word space does. That is
+     what cut "Modi" into "Mod" and "i" and left them on separate lines.
+
+     Measured on the page that reported it: paper rgb(217,226,243), ZERO columns
+     of zero ink anywhere on the sheet, and 18 of 148 cuts sitting in a corridor
+     one or two pixels wide.
+
+     So blankness is measured against the paper THIS band is printed on, taken
+     over the whole band — where paper is the majority. A window centred on a
+     boundary can be mostly glyph, and a percentile of that describes ink. */
+  const paperOf = function(ink){
+    const n = ink.length;
+    if(!n) return { floor:0, thr:0 };
+    const s = new Int32Array(ink); s.sort();
+    const floor = s[Math.floor(n*0.15)], peak = s[Math.floor(n*0.95)];
+    return { floor:floor, thr: floor + Math.max(4, (peak-floor)*0.06) };
+  };
+
+  /* The widest blank run in [lo,hi) that is at least minRun across, nearest the
+     nominal when two are equally wide. A word space is a corridor about a fifth
+     of an em wide; the gap between two letters is a pixel or two. Demanding a
+     real width is the whole of what tells them apart.
+
+     null means THIS WINDOW CANNOT PROVE THERE IS A SPACE IN IT. That is a
+     first-class answer, not a failure: an unprovable boundary must not become a
+     cut, because a cut there is a cut through a word. */
+  const widestRun = function(ink, origin, lo, hi, thr, minRun, nominal){
+    const i0 = Math.max(0, Math.round(lo) - origin);
+    const i1 = Math.min(ink.length, Math.round(hi) - origin);
+    let bestLen = -1, bestDist = Infinity, best = null, run = 0;
+    for(let i = i0; i <= i1; i++){
+      if(i < i1 && ink[i] <= thr){ run++; continue; }
+      if(run >= minRun){
+        const mid = origin + i - (run/2), dist = Math.abs(mid - nominal);
         if(run > bestLen || (run === bestLen && dist < bestDist)){
           bestLen = run; bestDist = dist; best = Math.round(mid);
         }
-        run = 0;
       }
+      run = 0;
     }
-    if(bestLen < 0){                    /* nothing blank: take the thinnest slice */
-      let lo = Infinity;
-      for(let i = 0; i < ink.length; i++){
-        const s2 = ink[i]*1000 + Math.abs((origin+i) - nominal);
-        if(s2 < lo){ lo = s2; best = origin + i; }
+    return best;
+  };
+  /* The corridor CLOSEST to the nominal, rather than the widest. Once the search
+     has been widened the widest run in reach may be a different word's space
+     altogether, and taking it would carry a whole word to the wrong side of the
+     cut. The nearest proven space is the smallest change that is still safe. */
+  const nearestRun = function(ink, origin, lo, hi, thr, minRun, nominal){
+    const i0 = Math.max(0, Math.round(lo) - origin);
+    const i1 = Math.min(ink.length, Math.round(hi) - origin);
+    let best = null, bestDist = Infinity, run = 0;
+    for(let i = i0; i <= i1; i++){
+      if(i < i1 && ink[i] <= thr){ run++; continue; }
+      if(run >= minRun){
+        const mid = origin + i - (run/2), dist = Math.abs(mid - nominal);
+        if(dist < bestDist){ bestDist = dist; best = Math.round(mid); }
       }
+      run = 0;
     }
     return best;
   };
 
-  const snapCut = function(id, nominal, bandTop, bandH, win, side){
+  /* last resort, and only where a cut has to happen somewhere: the emptiest
+     slice, preferring the one nearest the nominal */
+  const leastInk = function(ink, origin, lo, hi, nominal){
+    const i0 = Math.max(0, Math.round(lo) - origin);
+    const i1 = Math.min(ink.length, Math.round(hi) - origin);
+    let best = Math.round(nominal), lowest = Infinity;
+    for(let i = i0; i < i1; i++){
+      const s2 = ink[i]*1000 + Math.abs((origin+i) - nominal);
+      if(s2 < lowest){ lowest = s2; best = origin + i; }
+    }
+    return best;
+  };
+
+  /* One profile per source line, for this draw only. Every cut on a line is
+     answered from it, so a page costs one readback per LINE instead of two per
+     WORD — and, because the threshold comes from the whole line, every cut on
+     that line is judged against the same paper. A page whose cuts are already
+     cached never builds one at all.
+
+     RULES ARE NOT TEXT. An underlined heading, a table border, a strike-through
+     or a boxed callout paints ink clear across the line, and a column profile
+     that includes it shows ink in EVERY column — so no corridor exists anywhere,
+     the search gives up on a line that is in fact perfectly separable, and the
+     cut falls back to a guess. On the page that reported this, that is what a
+     dashed underline did to the heading.
+
+     Neither of the obvious tests for a rule survives measurement. "Inked nearly
+     all the way across" misses a DASHED rule, and misses an underline that runs
+     under only part of the line. "More than N per cent filled" cannot work at
+     all: measured here, body text rows fill 0.56–0.82 of their line and the
+     dashed rule filled 0.81 — the two populations sit on top of each other.
+
+     What does separate them is the SHAPE down the page. Text occupies one tall
+     run of inked rows; a rule is a short run, one to four rows, fenced off by
+     near-empty rows above and below. So the rows are grouped into runs, the
+     tallest run is the text, and any run a fraction of its height is a rule and
+     is left out. Cutting a rule is harmless anyway — it is continuous, so the
+     halves meet again at the new position exactly as they were. */
+  const LP = Object.create(null);
+  const lineProfile = function(ln){
+    const hit = LP[ln.i];
+    if(hit !== undefined) return hit;
+    let P = null;
+    const ty = Math.max(0, ln.bandT), th = Math.min(sh0 - ty, ln.bandB - ln.bandT);
+    /* Two ems of margin either side, not half of one. It gives the line-end
+       cuts room to open outward onto blank paper, and — the reason it had to
+       grow — it lets a rule be SEEN as a rule: a fill-in-the-blank underscore
+       reaching in from outside a narrow window looks like a short run inside it,
+       and is then mistaken for a glyph. */
+    const pad = Math.max(8, Math.round(ln.h * k * 2));
+    const a = Math.max(0, Math.round(ln.x0s*k) - pad);
+    const b = Math.min(sw0, Math.round(ln.x1s*k) + pad);
+    const w = b - a;
+    if(w >= 2 && th >= 1){
+      try{
+        const d = FN.sctx.getImageData(a, ty, w, th).data;
+        const n = w * th;
+        const lum = new Uint8Array(n);
+        /* the paper this line is printed on: the commonest tone in it. Paper is
+           not white — a tinted panel, a watermark, an off-white scan — and an
+           absolute test for blank fails on every one of those. */
+        const hist = new Int32Array(256);
+        for(let i = 0; i < n; i++){
+          const o = i << 2;
+          const L = (d[o]*77 + d[o+1]*151 + d[o+2]*28) >> 8;
+          lum[i] = L; hist[L]++;
+        }
+        let paper = 255, most = -1;
+        for(let L = 0; L < 256; L++) if(hist[L] > most){ most = hist[L]; paper = L; }
+        const dark = Math.max(1, Math.round(paper * 0.04));
+
+        /* runs of inked rows: the tallest is the text, the short ones are rules */
+        const filled = new Int32Array(th);
+        for(let r = 0; r < th; r++){
+          const base = r * w;
+          let c2 = 0;
+          for(let c = 0; c < w; c++) if(lum[base+c] < paper - dark) c2++;
+          filled[r] = c2;
+        }
+        const lo = Math.max(1, Math.round(w * 0.12));
+        const skip = new Uint8Array(th);
+        const runs = [];
+        let r0 = -1;
+        for(let r = 0; r <= th; r++){
+          const on = r < th && filled[r] >= lo;
+          if(on && r0 < 0) r0 = r;
+          else if(!on && r0 >= 0){ runs.push([r0, r-1]); r0 = -1; }
+        }
+        let tall = 0;
+        for(let i = 0; i < runs.length; i++){
+          const len = runs[i][1] - runs[i][0] + 1;
+          if(len > tall) tall = len;
+        }
+        let rules = 0;
+        if(runs.length > 1){
+          const cap = Math.max(1, Math.floor(tall * 0.4));
+          for(let i = 0; i < runs.length; i++){
+            const len = runs[i][1] - runs[i][0] + 1;
+            if(len <= cap){
+              for(let r = runs[i][0]; r <= runs[i][1]; r++) skip[r] = 1;
+              rules++;
+            }
+          }
+        }
+
+        /* A column is judged by its DARKEST pixel, not by its total. A sum
+           scales with how tall the band happens to be, so the same antialiasing
+           fringe reads as paper on a short band and as ink on a tall one, and
+           the threshold would have to be retuned for every type size. A column
+           crossing a glyph has a pixel near full ink in it; a column in a space
+           has nothing above the fringe, whatever the band height. */
+        /* A rule that shares its rows with the text survives the pass above —
+           the underscore of a fill-in-the-blank sits on the baseline, inside the
+           same run as the letters. But no GLYPH is two ems of unbroken ink
+           across a single row, and a rule is nothing else. So within each row,
+           runs of ink longer than that are left out too. An em dash is one em
+           and is safely under it. */
+        const ruleLen = Math.max(8, Math.round(ln.h * k * 1.6));
+        const ink = new Int32Array(w);
+        for(let r = 0; r < th; r++){
+          if(skip[r]) continue;
+          const base = r * w;
+          let c = 0;
+          while(c < w){
+            if(lum[base+c] >= paper - dark){ c++; continue; }
+            let e = c;
+            while(e < w && lum[base+e] < paper - dark) e++;
+            if(e - c < ruleLen){
+              for(let i = c; i < e; i++){
+                const v = paper - lum[base+i];
+                if(v > ink[i]) ink[i] = v;
+              }
+            }
+            c = e;
+          }
+        }
+        const s2 = new Int32Array(ink); s2.sort();
+        const peak = s2[Math.floor(w*0.95)] || 0;
+        P = { ink:ink, a:a, thr: Math.max(6, Math.round(peak*0.22)), rules:rules,
+              fh: Math.max(1, ln.h*k) };
+      }catch(e){ P = null; }
+    }
+    LP[ln.i] = P;
+    return P;
+  };
+
+  /* A word space, as a fraction of the type size. Measured on the reporting
+     document at its own render scale: real spaces ran 4–12 px against a 20.8 px
+     type size (0.14–0.58 em) and the bad cuts sat at 1–2 px (0.05–0.10 em). The
+     two populations do not overlap; this sits in the gap between them. */
+  const GAP_EM = 0.15;
+
+  /* The estimated centres of the two words a cut sits between. The boxes are
+     not to be trusted about where a word ENDS — that is the whole reason for
+     this pass — but they are quite good enough to say roughly where each word
+     IS, and that is all this needs. Staying between the two centres means the
+     cut cannot carry a word across to the other crop, which keeps the word's
+     laid-out box (what highlights, ink and the spoken-word marker read through
+     wbox) describing the place its ink is actually drawn.
+
+     It is a PREFERENCE, not a rule. Where the only provable space lies past a
+     centre, the space wins: the layout policy puts intact words above stable
+     highlight coordinates, and a highlight a token out is a smaller harm than a
+     split word. Measured on this corpus it happens to about four cuts in six
+     hundred, always on a one- or two-character token. */
+  const centreOf = function(g){
+    const w = S.ribbon[g];
+    return w ? (w.x + w.w/2) * k : null;
+  };
+  const between = function(ln, g, leftOf){
+    if(!ln.at || ln.at[g] == null || !ln.order) return null;
+    const i = ln.at[g];
+    const a = leftOf ? (i > 0 ? ln.order[i-1] : null) : g;
+    const b = leftOf ? g : (i < ln.order.length - 1 ? ln.order[i+1] : null);
+    if(a == null || b == null) return null;
+    const ca = centreOf(a), cb = centreOf(b);
+    if(ca == null || cb == null || !(cb > ca)) return null;
+    return [ca, cb];
+  };
+
+  const snapCut = function(id, nominal, ln, win, side, keep){
     if(id < 0) return nominal;
     const hit = CUTS[id];
     if(hit !== undefined) return hit;
-    /* The window has to be wide enough to reach the real gap. A box estimated
-       by character count can be a whole letter out, so the search spans about
-       half a line height either side rather than a fixed handful of pixels.
-
-       At the two ENDS of a line the window only opens outward. A line's first
+    const P = lineProfile(ln);
+    if(!P){ CUTS[id] = nominal; return nominal; }
+    const minRun = Math.max(2, Math.round(P.fh * GAP_EM));
+    /* At the two ENDS of a line the window only opens outward. A line's first
        word can sit hard against the edge of the sheet, and there the widest
-       blank run in a symmetric window is the space AFTER that word — which
-       would put the cut past it and drop it from the page. Searching outward
-       only, the cut can add blank paper and catch an overhanging italic, and
-       can never take a letter away. */
-    const CUT_WIN = Math.max(12, Math.round(win));
-    let x0 = nominal - (side > 0 ? 0 : CUT_WIN);
-    let x1 = nominal + (side < 0 ? 0 : CUT_WIN);
-    if(x0 < 0) x0 = 0;
-    if(x1 > sw0) x1 = sw0;
-    let ty = bandTop, th = bandH;
-    if(ty < 0){ th += ty; ty = 0; }
-    if(ty + th > sh0) th = sh0 - ty;
-    if(x1 - x0 < 2 || th < 1){ CUTS[id] = nominal; return nominal; }
-    let best = nominal;
-    try{ best = pickRun(profile(x0, ty, x1-x0, th, true), x0, nominal); }
-    catch(e){ best = nominal; }
+       blank run in a symmetric window is the space AFTER that word — which would
+       put the cut past it and drop it from the page. Searching outward only, the
+       cut can add blank paper and catch an overhanging italic, and can never
+       take a letter away. */
+    const lo1 = nominal - (side > 0 ? 0 : win),   hi1 = nominal + (side < 0 ? 0 : win);
+    let best = widestRun(P.ink, P.a, lo1, hi1, P.thr, minRun, nominal);
+    if(best !== null) FN.snap.near++; else FN.snap.wide++;
+    if(best === null){
+      /* The estimate can be a long way out. rawWords splits a run's width in
+         proportion to character count, and the error accumulates along the run:
+         measured on one line of display type here, the true space sat 32 px —
+         more than a whole em — from where the boxes said it was. So look
+         further, and out there take the NEAREST proven space rather than the
+         widest, which is the smallest correction that is still a real space.
+
+         The word on the far side of it then travels to the other crop whole.
+         That is the trade rule 1 asks for: a funnelled line a word narrower or
+         wider than the measurement expected, rather than a split word. Both
+         crops read the same cut id, so they still meet exactly — nothing is
+         dropped and nothing is drawn twice — and the line's HEIGHT does not
+         move, so nothing Infinite Scroll has reserved changes. */
+      const far = win * 3.5;
+      const lo2 = nominal - (side > 0 ? 0 : far), hi2 = nominal + (side < 0 ? 0 : far);
+      /* first inside the two word centres, where no word can change sides */
+      if(keep) best = nearestRun(P.ink, P.a, Math.max(lo2, keep[0]),
+                                 Math.min(hi2, keep[1]), P.thr, minRun, nominal);
+      if(best !== null) FN.snap.kept++;
+      if(best === null){
+        best = nearestRun(P.ink, P.a, lo2, hi2, P.thr, minRun, nominal);
+        if(best !== null) FN.snap.crossed++;
+      }
+    }
+    if(best === null){
+      /* Nothing within reach can be SHOWN to be a space. Do not invent one:
+         mark the boundary, and let the draw carry both words in a single crop
+         rather than split whatever is standing here. */
+      UNSAFE[id] = 1; FN.snap.unproven++;
+      CUTS[id] = leastInk(P.ink, P.a, lo1, hi1, nominal);
+      return CUTS[id];
+    }
     CUTS[id] = best;
     return best;
   };
 
   /* ── the band a line is cut from ────────────────────────────────────────
-     The horizontal cuts have been settled on the pixels since the tiling was
-     written; the vertical extent never was, and that was the damage. Bands now
-     tile the page down its length the way tiles already tile a line across it:
+     Bands tile the page down its length the way tiles tile a line across it:
      the boundary between two source lines is the emptiest run of rows between
-     them, measured only over the columns the two of them share. Every row of
-     ink then belongs to exactly one band, so no crop can carry a slice of its
+     them, measured only over the columns the two of them share. Every row of ink
+     then belongs to exactly one band, so no crop can carry a slice of its
      neighbour off to a new position.
+
+     This shared `pickRun` with the horizontal cuts and inherited its `=== 0`
+     test for blank, which means the whole of it was inert on any tinted page:
+     the vertical fix and the horizontal one failed together, and for the same
+     reason. Rows are judged against paper here too, but by their own width rule.
+     Between two lines any row that reaches paper is a real boundary, so the
+     widest such run wins and a single row is enough. Reusing the horizontal
+     0.17 em rule here would refuse every boundary on tightly set text.
 
      A boundary is named by the pair of lines that meet at it, so both of them
      look it up under the same id and get the same answer — the crops meet
@@ -3394,8 +3801,12 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
     if(b > sw0) b = sw0;
     let best = nominal;
     if(y1 - y0 >= 2 && b - a >= 2){
-      try{ best = pickRun(profile(a, y0, b-a, y1-y0, false), y0, nominal); }
-      catch(e){ best = nominal; }
+      try{
+        const ink = profile(a, y0, b-a, y1-y0, false);
+        const pa = paperOf(ink);
+        const w = widestRun(ink, y0, y0, y1, pa.thr, 1, nominal);
+        best = (w === null) ? leastInk(ink, y0, y0, y1, nominal) : w;
+      }catch(e){ best = nominal; }
     }
     if(id >= 0) ROWS[id] = best;
     return best;
@@ -3421,6 +3832,23 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
                  Math.max(ln.x0s, d.x0s) * k, Math.min(ln.x1s, d.x1s) * k,
                  Math.round(((ln.yb + d.y)/2) * k));
     }
+    /* A boundary with a neighbour is a real boundary. A boundary with NO
+       neighbour is not one: it is just how far rowCut had to look before it ran
+       out of page. A short line — a folio, a running head, a lone table cell —
+       shares columns with nothing near it, so ln.up and ln.dn reach right past
+       the body text, and the band grows to swallow whatever happens to sit
+       under it. Measured here: a page number "64" on a 21 px line was given a
+       152-row band, and its crop carried slices of the answer options below it
+       up to the folio's new position.
+
+       So a band may never reach further from its line's box than the default
+       padding above — the very distance this used before it asked the pixels
+       anything. Where there IS a neighbour, its boundary lies well inside that
+       and nothing changes; where there is not, the crop stops at the line. */
+    const capT = Math.round((ln.y  - pad) * k);
+    const capB = Math.round((ln.yb + pad) * k);
+    if(t < capT) t = capT;
+    if(b > capB) b = capB;
     if(b <= t) b = t + 1;
     ln.bandT = t; ln.bandB = b; ln.bandK = k;
   };
@@ -3430,26 +3858,66 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
   ctx2d.globalCompositeOperation = 'multiply';
   ctx2d.imageSmoothingEnabled = false;
   const segs = lay.segs || [];
+
+  /* ── first pass: settle every crop against the pixels ──────────────────── */
+  const plan = [];
   for(let i = 0; i < segs.length; i++){
     const it = segs[i];
     const ln = it.ln;
     bandOf(ln);
-    let sy = ln.bandT, ey = ln.bandB;
+    const sy = ln.bandT, ey = ln.bandB;
     const nx0 = Math.round(it.x0 * k), nx1 = Math.round(it.x1 * k);
     const win = (ey - sy) * 0.55;
     /* Interior cuts are named by the source line and the word to their right.
        The two ends of a line have no neighbour to agree with, so they are named
        separately — 0 and one past the last word, ids the interior can never
-       use — and they are snapped as well: an italic f or a swash overhangs its
-       nominal box, and a box that is short by half a letter used to shave it. */
+       use — and they are snapped as well. */
     const ends = ln.order ? ln.order.length : 0;
-    let sx = snapCut(it.kL >= 0 ? it.kL : (ln.i*4096 + 0),        nx0, sy, ey - sy, win, it.kL >= 0 ? 0 : -1);
-    let ex = snapCut(it.kR >= 0 ? it.kR : (ln.i*4096 + ends + 1), nx1, sy, ey - sy, win, it.kR >= 0 ? 0 :  1);
+    const idL = it.kL >= 0 ? it.kL : (ln.i*4096 + 0);
+    const idR = it.kR >= 0 ? it.kR : (ln.i*4096 + ends + 1);
+    const first = it.ws.length ? it.ws[0] : null;
+    const last  = it.ws.length ? it.ws[it.ws.length-1] : null;
+    const sx = snapCut(idL, nx0, ln, win, it.kL >= 0 ? 0 : -1,
+                       (it.kL >= 0 && first != null) ? between(ln, first, true)  : null);
+    const ex = snapCut(idR, nx1, ln, win, it.kR >= 0 ? 0 :  1,
+                       (it.kR >= 0 && last  != null) ? between(ln, last,  false) : null);
+    plan.push({ it:it, ln:ln, sy:sy, ey:ey, nx0:nx0, sx:sx, ex:ex, idL:idL, idR:idR });
+  }
+
+  /* ── second pass: a boundary nobody could prove is not a boundary ───────
+     Where the pixels could not show a space, the two words meeting there must
+     not be separated. When they are still side by side on the same funnelled
+     line — which is where nearly all of these land — ONE crop carries both.
+     Nothing is cut, so nothing can be split, and the book's own kerning between
+     them survives exactly as it was set.
+
+     The two crops shared the cut id, so they had the same number for it; taking
+     the pair together therefore drops no pixel and copies none twice. */
+  const groups = [];
+  for(let i = 0; i < plan.length; i++){
+    const g = { first:i, last:i };
+    while(g.last + 1 < plan.length){
+      const a = plan[g.last], b = plan[g.last+1];
+      if(a.ln !== b.ln) break;                 /* not the same original line  */
+      if(a.it.top !== b.it.top) break;         /* not the same funnelled line */
+      if(a.idR < 0 || a.idR !== b.idL) break;  /* not the same boundary       */
+      if(!UNSAFE[a.idR]) break;                /* the pixels proved this one  */
+      g.last++;
+    }
+    groups.push(g);
+    i = g.last;
+  }
+
+  const drawn = FN.debug ? [] : null;
+  for(let gi = 0; gi < groups.length; gi++){
+    const g = groups[gi];
+    const A = plan[g.first], B = plan[g.last];
+    let sx = A.sx, ex = B.ex, sy = A.sy, ey = A.ey;
     if(ex <= sx) ex = sx + 1;
     /* the destination moves by exactly what the source start moved, so the ink
        inside the crop never shifts relative to where the layout put it */
-    let dx = Math.round(it.dx * k) + (sx - nx0);
-    let dy = Math.round(it.top * k) + (sy - Math.round(ln.y * k));
+    let dx = Math.round(A.it.dx * k) + (sx - A.nx0);
+    let dy = Math.round(A.it.top * k) + (sy - Math.round(A.ln.y * k));
     /* clamp only here, at the real canvas edge, and move the destination by the
        same amount so the ink never slides relative to its box */
     if(sx < 0){ dx -= sx; sx = 0; }
@@ -3458,11 +3926,36 @@ async function fnDrawNow(ctx2d, p, sc, vpW, vpH, alive){
     if(ey > sh0) ey = sh0;
     const w = ex - sx, h = ey - sy;
     if(w <= 0 || h <= 0) continue;
+    if(drawn) drawn.push({ sx:sx, ex:ex, sy:sy, ey:ey, dx:dx, dy:dy,
+                           first:g.first, last:g.last, line:A.ln.i });
     try{ ctx2d.drawImage(src, sx, sy, w, h, dx, dy, w, h); }catch(e){}
   }
+
+  if(FN.debug) fnDebugPage(p, lay, plan, groups, UNSAFE, LP, k, sw0, sh0, drawn);
   ctx2d.restore();
   ctx2d.restore();
 }
+
+/* ── the funnel's diagnostics, for a console and nothing else ──────────────
+   Everything here is off until somebody asks for it. `NBFunnel.debug(true)`
+   turns on the per-line report in fnDebugPage; `NBFunnel.stats()` says how the
+   cuts on the pages drawn since the last reset were settled:
+
+     near      the corridor was found in the first window          (the normal case)
+     wide      the estimate had drifted and the search was widened
+     kept      a widened cut that stayed between the two word centres
+     crossed   a widened cut that had to pass a word centre to reach a real space
+     unproven  no corridor anywhere in reach; the crops were merged instead
+
+   Measured over six pages of the document that reported the split words:
+   near 710, wide 8, kept 8, crossed 0, unproven 0. */
+window.NBFunnel = {
+  debug: function(on){ FN.debug = !!on; return FN.debug; },
+  stats: function(){ return Object.assign({}, FN.snap); },
+  reset: function(){ FN.snap = { near:0, wide:0, kept:0, crossed:0, unproven:0 }; },
+  last:  function(){ return FN.lastDebug; },
+  grade: function(p){ return { grade: fnGrade(p), why: fnGradeReason(p) }; }
+};
 
 /* the funnelled height of a page, in the same units the rest of the app uses */
 /* The funnelled size of a page. It reads FN.pageW; it does not write it, so
