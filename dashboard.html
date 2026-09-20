@@ -326,16 +326,16 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;fo
 .qrow .lab{font-size:12px;font-weight:500;color:var(--ink-2)}
 .qrow .rng{font-size:11px;color:var(--ink-3);text-align:right;font-variant-numeric:tabular-nums}
 .qcells{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:2px}
-.qc{position:relative;aspect-ratio:1;border-radius:3px;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;line-height:1;background:var(--fill)}
-.qc.c{background:color-mix(in oklab,var(--good) 58%,var(--surface))}
-.qc.w{background:var(--bad)}
-.qc.w::before{content:"\00d7";font-size:12px}
-.qc.s{background:transparent;box-shadow:inset 0 0 0 1.5px var(--warn)}
-.qc.x{background:repeating-linear-gradient(135deg,var(--fill-2) 0 2px,transparent 2px 4px);box-shadow:inset 0 0 0 1px var(--fill-2)}
-.qc.t::after{content:"";position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 1.5px var(--surface)}
-.qc.hit{outline:2px solid var(--ink);outline-offset:1px;z-index:2}
-.qc.pad{background:transparent}
-.qc.link{cursor:pointer}
+.qcell{position:relative;aspect-ratio:1;border-radius:3px;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;line-height:1;background:var(--fill)}
+.qcell.c{background:color-mix(in oklab,var(--good) 58%,var(--surface))}
+.qcell.w{background:var(--bad)}
+.qcell.w::before{content:"\00d7";font-size:12px}
+.qcell.s{background:transparent;box-shadow:inset 0 0 0 1.5px var(--warn)}
+.qcell.x{background:repeating-linear-gradient(135deg,var(--fill-2) 0 2px,transparent 2px 4px);box-shadow:inset 0 0 0 1px var(--fill-2)}
+.qcell.t::after{content:"";position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 1.5px var(--surface)}
+.qcell.hit{outline:2px solid var(--ink);outline-offset:1px;z-index:2}
+.qcell.pad{background:transparent}
+.qcell.link{cursor:pointer}
 
 /* one attempt, in depth */
 .avhead{gap:10px}
@@ -383,10 +383,11 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;fo
 .avstep.revisit{background:color-mix(in oklab,var(--ord-2) 18%,var(--surface))}
 .avstep.idle,.avstep.background{background:color-mix(in oklab,var(--warn) 18%,var(--surface))}
 .avlink{padding:0;font-weight:600;text-align:left}
-.qc.link:active{transform:scale(.9)}
+.qcell.link:active{transform:scale(.9)}
+.qblocked{grid-column:1/-1;margin:0;padding:10px 12px;border-radius:10px;border:1px solid var(--warn);color:var(--ink-2);font-size:13px;line-height:1.5}
 .qlink{border:0;background:transparent;padding:2px 6px;border-radius:6px;color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
 .qlink:hover{background:var(--fill)}
-@container (max-width:400px){.qc.w::before{content:none}.qc.t::after{width:4px;height:4px}}
+@container (max-width:400px){.qcell.w::before{content:none}.qcell.t::after{width:4px;height:4px}}
 .qlegend .sw.c{background:color-mix(in oklab,var(--good) 58%,var(--surface))}
 .qlegend .sw.w{background:var(--bad)}
 .qlegend .sw.s{box-shadow:inset 0 0 0 1.5px var(--warn)}
@@ -7124,8 +7125,8 @@ function qmapCard(L) {
     rows.forEach(r => {
       const cells = H('div', { class: 'qcells', style: { '--n': String(n) } });
       const link = paperViewer(r.a) ? ' link' : '';
-      r.qs.forEach(q => cells.append(H('span', { class: `qc ${q.out}${q.tag ? ' t' : ''}${link}`, dataset: { id: r.a.id, q: String(q.q) } })));
-      for (let i = r.qs.length; i < n; i++) cells.append(H('span', { class: 'qc pad', 'aria-hidden': 'true' }));
+      r.qs.forEach(q => cells.append(H('span', { class: `qcell ${q.out}${q.tag ? ' t' : ''}${link}`, dataset: { id: r.a.id, q: String(q.q) } })));
+      for (let i = r.qs.length; i < n; i++) cells.append(H('span', { class: 'qcell pad', 'aria-hidden': 'true' }));
       block.append(H('div', { class: 'qrow' }, [H('span', { class: 'lab', text: r.a.short }), cells, H('span', { class: 'rng', text: `Q${r.qs[0].q}–${r.qs[r.qs.length - 1].q}` })]));
     });
     map.append(block);
@@ -7133,7 +7134,7 @@ function qmapCard(L) {
   const byId = Object.fromEntries(L.map(a => [a.id, a]));
   let last = null;
   const onMove = e => {
-    const c = e.target.closest ? e.target.closest('.qc[data-q]') : null;
+    const c = e.target.closest ? e.target.closest('.qcell[data-q]') : null;
     if (last && last !== c) last.classList.remove('hit');
     if (!c) { last = null; tip.hide(); return; }
     c.classList.add('hit'); last = c;
@@ -7149,11 +7150,18 @@ function qmapCard(L) {
   map.addEventListener('pointerdown', onMove);
   map.addEventListener('pointerleave', () => { if (last) last.classList.remove('hit'); last = null; tip.hide(); });
   map.addEventListener('click', e => {
-    const c = e.target.closest ? e.target.closest('.qc[data-q]') : null;
+    const c = e.target.closest ? e.target.closest('.qcell[data-q]') : null;
     if (!c) return;
     const at = byId[c.dataset.id];
     if (openQuestion(at, Number(c.dataset.q))) tip.hide();
     else if (at.telemetrySessionId && NB.bundles.has(at.telemetrySessionId)) openAttempt(at.telemetrySessionId, 'questions');
+  });
+  /* A content filter in the browser can hide elements by class name, and then the map is silently empty space.
+     Measure one real square once the card is on screen, and say what happened instead of showing nothing. */
+  requestAnimationFrame(() => {
+    const one = map.querySelector('.qcell[data-q]');
+    if (!one || !map.getBoundingClientRect().width || one.getBoundingClientRect().height) return;
+    map.prepend(H('p', { class: 'qblocked', text: 'The squares are being hidden by something in this browser — usually an ad blocker or content filter. Allow this page in it, then reload.' }));
   });
   const linked = L.some(a => paperViewer(a));
   return card('Question map', `One square per question, grouped by section; rows are ${listText(L.map(a => a.short))}. Hover for your answer and the key${linked ? '; click a square to open that exact question in the paper, in its own tab' : ''}. Attempts recorded in NeoBook also show how long each question took.`, [legend, H('div', { style: { height: '16px' } }), map], {
