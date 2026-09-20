@@ -598,7 +598,9 @@ footer.foot{padding-block:0 40px;font-size:12px;color:var(--ink-3)}
 "use strict";
 var NBCore = (() => {
   var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getOwnPropSymbols = Object.getOwnPropertySymbols;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
@@ -615,6 +617,7 @@ var NBCore = (() => {
       }
     return a;
   };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
@@ -949,6 +952,8 @@ var NBCore = (() => {
     EVENT_TYPES: () => EVENT_TYPES,
     FRICTION_SIGNALS: () => FRICTION_SIGNALS,
     FULL_LENGTH_MS: () => FULL_LENGTH_MS,
+    GUESS_MIN_CONF: () => GUESS_MIN_CONF,
+    GUESS_VERSION: () => GUESS_VERSION,
     INK_VERSION: () => INK_VERSION,
     KEY_MIN_CONF: () => KEY_MIN_CONF,
     KEY_STATUSES: () => KEY_STATUSES,
@@ -981,6 +986,7 @@ var NBCore = (() => {
     crossOf: () => crossOf,
     deriveAnswers: () => deriveAnswers,
     deriveAttempt: () => deriveAttempt,
+    deriveGuesses: () => deriveGuesses,
     distToRect: () => distToRect,
     durationFor: () => durationFor,
     eventIdOf: () => eventIdOf,
@@ -994,10 +1000,12 @@ var NBCore = (() => {
     mapConfidence: () => mapConfidence,
     mapIdFor: () => mapIdFor,
     mapNeedsReview: () => mapNeedsReview,
+    matchWord: () => matchWord,
     mean: () => mean,
     median: () => median,
     mergeKeyParses: () => mergeKeyParses,
     newAttemptId: () => newAttemptId,
+    numberBox: () => numberBox,
     openMockDB: () => openMockDB,
     optionAt: () => optionAt,
     optionsForBlock: () => optionsForBlock,
@@ -1015,14 +1023,17 @@ var NBCore = (() => {
     questionConfidence: () => questionConfidence,
     questionRects: () => questionRects,
     questionsOnPage: () => questionsOnPage,
+    removePassage: () => removePassage,
     removeQuestion: () => removeQuestion,
     renumberQuestion: () => renumberQuestion,
     repairKeyEntry: () => repairKeyEntry,
     repairSession: () => repairSession,
+    ringsNumber: () => ringsNumber,
     runsFromPdfItems: () => runsFromPdfItems,
     sd: () => sd,
     sectionOfText: () => sectionOfText,
     sectionsNamed: () => sectionsNamed,
+    setPassageStart: () => setPassageStart,
     setSectionStarts: () => setSectionStarts,
     spread: () => spread,
     strikeOf: () => strikeOf,
@@ -1033,7 +1044,7 @@ var NBCore = (() => {
 
   // src/mock/constants.ts
   var TELEMETRY_VERSION = 1;
-  var MAP_VERSION = 1;
+  var MAP_VERSION = 2;
   var METRICS_VERSION = 1;
   var MOCK_DB_NAME = "neobook-mock";
   var MOCK_DB_VERSION = 2;
@@ -1602,9 +1613,11 @@ var NBCore = (() => {
   }
   var OPENERS = /[(\[{“‘]$/;
   var CLOSERS = /^[)\]},.;:!?’”]/;
+  var NONPRINT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u180E\u200B-\u200F\u2028\u2029\uFEFF]/g;
+  var printable = (s) => s.replace(NONPRINT, " ");
   function pageLines(pg, page, source = "text") {
     const W = pg.w > 0 ? pg.w : Infinity, H = pg.h > 0 ? pg.h : Infinity;
-    const runs = (pg.runs || []).filter((r) => r && typeof r.s === "string" && r.s.trim() !== "" && isFinite(r.x) && isFinite(r.y) && isFinite(r.w) && r.h > 0 && r.x + r.w > 0 && r.x < W - 1 && r.y < H && r.y + r.h > 0 && !/^(\S)\1{3,}$/.test(r.s.trim()));
+    const runs = (pg.runs || []).map((r) => r && typeof r.s === "string" ? __spreadProps(__spreadValues({}, r), { s: printable(r.s) }) : r).filter((r) => r && typeof r.s === "string" && r.s.trim() !== "" && isFinite(r.x) && isFinite(r.y) && isFinite(r.w) && r.h > 0 && r.x + r.w > 0 && r.x < W - 1 && r.y < H && r.y + r.h > 0 && !/^(\S)\1{3,}$/.test(r.s.trim()));
     if (!runs.length) return { lines: [], medH: 11 };
     const hs = runs.map((r) => r.h).sort((a, b) => a - b);
     const medH = hs[hs.length >> 1] || 11;
@@ -2170,7 +2183,15 @@ var NBCore = (() => {
       const ev = k >= 4 ? 1 : k === 3 ? 0.8 : k === 2 ? 0.45 : k === 1 ? -0.1 : -0.3;
       c.q = ev + (c.punct ? 0.3 : 0);
     }
-    const chain = bestChain(cands, true).filter((c) => c.q > -0.3 || c.punct);
+    let chain = bestChain(cands, true).filter((c) => c.q > -0.3 || c.punct);
+    const evCount = /* @__PURE__ */ new Map();
+    cands.forEach((c, i) => evCount.set(c, LETTERS.filter((L) => seenBy[i].has(L)).length));
+    let frontMatter = 0;
+    for (let i = 1; i < chain.length; i++) {
+      const a = chain[i], b = chain[i - 1];
+      if (a.n <= 2 && b.n >= 4 && chain.slice(0, i).every((c) => !evCount.get(c))) frontMatter = i;
+    }
+    if (frontMatter) chain = chain.slice(frontMatter);
     const pageW = (p) => models[p].w;
     const strays = cands.filter((c) => c.q >= 1 && chain.indexOf(c) < 0 && c.x > pageW(all[c.g].page) * 0.4);
     if (strays.length >= 3) issues.push({ kind: "layout", msg: "Some questions seem to sit in a second column, which the map does not read yet." });
@@ -2309,6 +2330,7 @@ var NBCore = (() => {
         passageId: null,
         page: firstPage,
         rect: rround(rect),
+        numRect: rround({ x: c.tok.x, y: numLine.y, w: Math.max(c.r - c.tok.x, c.tok.w), h: numLine.h }),
         options: pick.regions,
         conf: 0
       };
@@ -2573,6 +2595,18 @@ var NBCore = (() => {
     }
     return "q" + (n + 1);
   }
+  function nextPassageId(map) {
+    let n = 0;
+    for (const p of map.passages) {
+      const m = /^p(\d+)$/.exec(p.id);
+      if (m && m[1]) n = Math.max(n, Number(m[1]));
+    }
+    return "p" + (n + 1);
+  }
+  var passageStart = (p) => {
+    const s = p.spans[0];
+    return s ? [s.page, s.rect.y] : null;
+  };
   function refresh(map) {
     const keep = (map.issues || []).filter((i) => i.kind === "passage" || i.kind === "layout");
     const issues = keep.slice();
@@ -2673,6 +2707,7 @@ var NBCore = (() => {
       passageId: prev ? prev.passageId : null,
       page: pages[0] != null ? pages[0] : page,
       rect: rround2(per.get(pages[0] != null ? pages[0] : page) || { x: line.x0, y: line.y, w: line.x1 - line.x0, h: line.h }),
+      numRect: rround2({ x: numTok.x, y: line.y, w: numTok.w, h: line.h }),
       options: opts.regions,
       conf: 0
     };
@@ -2733,6 +2768,39 @@ var NBCore = (() => {
     out.sections.forEach((s) => {
       s.conf = 1;
     });
+    return refresh(out);
+  }
+  function setPassageStart(map, models, page, y) {
+    const line = lineAt(models, page, y);
+    const m = models[page];
+    if (!line || !m) return map;
+    const out = clone(map);
+    const at = [page, line.y];
+    out.passages = out.passages.filter((p) => {
+      const s = passageStart(p);
+      return !s || cmp(s, at) !== 0;
+    });
+    const stop = out.passages.map(passageStart).filter((s) => !!s && cmp(s, at) > 0).sort(cmp)[0] || null;
+    const mine = out.questions.filter((q) => cmp(startOf(q), at) > 0 && (!stop || cmp(startOf(q), stop) < 0));
+    if (!mine.length) return map;
+    const first = mine[0];
+    const h = first.page === page ? first.rect.y - line.y : m.h - line.y;
+    const rect = rround2({ x: line.x0, y: line.y, w: Math.max(1, line.x1 - line.x0), h: Math.max(line.h, h) });
+    const id = nextPassageId(out);
+    out.passages.push({ id, label: "", sectionId: first.sectionId, spans: [{ page, rect }], questionIds: [], conf: 0.5 });
+    mine.forEach((q) => {
+      q.passageId = id;
+    });
+    out.passages.sort((a, b) => cmp(passageStart(a) || [0, 0], passageStart(b) || [0, 0]));
+    return refresh(out);
+  }
+  function removePassage(map, pid) {
+    const out = clone(map);
+    if (!out.passages.some((p) => p.id === pid)) return map;
+    out.questions.forEach((q) => {
+      if (q.passageId === pid) q.passageId = null;
+    });
+    out.passages = out.passages.filter((p) => p.id !== pid);
     return refresh(out);
   }
 
@@ -3403,6 +3471,225 @@ var NBCore = (() => {
     return { version: INK_VERSION, questions, unassignedBlue };
   }
 
+  // src/mock/guess.ts
+  var GUESS_VERSION = 1;
+  var GUESS_MIN_CONF = 0.72;
+  var KIND_OF = { eg: "educated", cg: "educated", rg: "random", g: "random" };
+  var pathLen2 = (pts) => {
+    let d = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      d += Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    return d;
+  };
+  var boxOf2 = (pts) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) {
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+    return isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : { x: 0, y: 0, w: 0, h: 0 };
+  };
+  var centre = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+  var inside2 = (r, x, y, pad = 0) => x >= r.x - pad && x <= r.x + r.w + pad && y >= r.y - pad && y <= r.y + r.h + pad;
+  var rectOf = (s) => ({ x: s.bbox[0], y: s.bbox[1], w: s.bbox[2], h: s.bbox[3] });
+  function numberBox(q) {
+    if (q.numRect && q.numRect.w > 0 && q.numRect.h > 0) return q.numRect;
+    const h = Math.min(q.rect.h, 16);
+    return { x: q.rect.x, y: q.rect.y, w: Math.min(q.rect.w, 22), h };
+  }
+  function ringsNumber(s, box) {
+    if (s.ink !== "red" || s.pts.length < 6) return false;
+    const first = s.pts[0], last = s.pts[s.pts.length - 1];
+    const len = pathLen2(s.pts);
+    if (len <= 0) return false;
+    const closed = Math.hypot(last[0] - first[0], last[1] - first[1]) <= len * 0.34;
+    if (!closed) return false;
+    const r = rectOf(s);
+    const [cx, cy] = centre(box);
+    if (!inside2(r, cx, cy)) return false;
+    const area2 = Math.max(1, r.w * r.h), numArea = Math.max(1, box.w * box.h);
+    if (area2 < numArea * 0.35 || area2 > numArea * 25) return false;
+    return len >= (r.w + r.h) * 1.2;
+  }
+  var SAMPLES = 32;
+  function resample(pts, n) {
+    const total = pathLen2(pts);
+    if (!(total > 0)) return Array.from({ length: n }, () => pts[0] || [0, 0]);
+    const step = total / (n - 1);
+    const out = [pts[0]];
+    let carry = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      let d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      let from = a;
+      while (carry + d >= step && out.length < n && d > 0) {
+        const t = (step - carry) / d;
+        const p = [from[0] + (b[0] - from[0]) * t, from[1] + (b[1] - from[1]) * t];
+        out.push(p);
+        from = p;
+        d = Math.hypot(b[0] - from[0], b[1] - from[1]);
+        carry = 0;
+      }
+      carry += d;
+    }
+    while (out.length < n) out.push(pts[pts.length - 1]);
+    return out.slice(0, n);
+  }
+  function rotateToZero(pts) {
+    const c = centroid(pts);
+    const first = pts[0];
+    const a = -Math.atan2(first[1] - c[1], first[0] - c[0]);
+    const cos = Math.cos(a), sin = Math.sin(a);
+    return pts.map(([x, y]) => [
+      (x - c[0]) * cos - (y - c[1]) * sin + c[0],
+      (x - c[0]) * sin + (y - c[1]) * cos + c[1]
+    ]);
+  }
+  function centroid(pts) {
+    let x = 0, y = 0;
+    for (const p of pts) {
+      x += p[0];
+      y += p[1];
+    }
+    return [x / Math.max(1, pts.length), y / Math.max(1, pts.length)];
+  }
+  function scaleAndCentre(pts) {
+    const b = boxOf2(pts);
+    const k = 100 / Math.max(1e-6, Math.max(b.w, b.h));
+    const scaled = pts.map(([x, y]) => [(x - b.x) * k, (y - b.y) * k]);
+    const c = centroid(scaled);
+    return scaled.map(([x, y]) => [x - c[0], y - c[1]]);
+  }
+  var prepare = (strokes) => {
+    const joined = [];
+    for (const s of strokes) for (const p of s) joined.push(p);
+    if (joined.length < 2) return [];
+    return scaleAndCentre(rotateToZero(resample(joined, SAMPLES)));
+  };
+  var meanDistance = (a, b) => {
+    let d = 0;
+    for (let i = 0; i < a.length; i++) {
+      const p = a[i], q = b[i];
+      d += Math.hypot(p[0] - q[0], p[1] - q[1]);
+    }
+    return d / Math.max(1, a.length);
+  };
+  var aspect = (strokes) => {
+    const all = [];
+    for (const s of strokes) for (const p of s) all.push(p);
+    const b = boxOf2(all);
+    return (b.w + 1) / (b.h + 1);
+  };
+  var confOf = (d) => Math.max(0, Math.min(1, 1 - d / (0.5 * Math.hypot(100, 100))));
+  var straightness2 = (strokes) => {
+    let direct = 0, along = 0;
+    for (const s of strokes) {
+      if (s.length < 2) continue;
+      const a = s[0], b = s[s.length - 1];
+      direct += Math.hypot(b[0] - a[0], b[1] - a[1]);
+      along += pathLen2(s);
+    }
+    return along > 0 ? direct / along : 0;
+  };
+  function matchWord(strokes, samples) {
+    const me = prepare(strokes);
+    if (!me.length || !samples.length) return { word: null, conf: 0 };
+    if (straightness2(strokes) > 0.85) return { word: null, conf: 0 };
+    const myAspect = aspect(strokes);
+    let best = null, bestD = Infinity;
+    const perKind = { educated: Infinity, random: Infinity, unknown: Infinity };
+    for (const s of samples) {
+      const them = prepare(s.strokes);
+      if (!them.length) continue;
+      const a = aspect(s.strokes);
+      const ratio2 = Math.max(myAspect, a) / Math.max(1e-6, Math.min(myAspect, a));
+      if (ratio2 > 2.2) continue;
+      const d = meanDistance(me, them);
+      const k = KIND_OF[s.word];
+      if (d < perKind[k]) perKind[k] = d;
+      if (d < bestD) {
+        bestD = d;
+        best = s.word;
+      }
+    }
+    if (!best) return { word: null, conf: 0 };
+    const kind = KIND_OF[best];
+    const other = kind === "educated" ? perKind.random : perKind.educated;
+    const conf = confOf(bestD);
+    if (isFinite(other) && confOf(other) > conf - 0.05) return { word: null, conf };
+    return { word: best, conf };
+  }
+  function numbersOn(map, page) {
+    const out = [];
+    for (const q of map.questions) {
+      if (q.page === page) out.push({ q, box: numberBox(q) });
+      else if ((q.extra || []).some((e) => e.page === page)) continue;
+    }
+    return out;
+  }
+  function onAnOption(s, q) {
+    const r = rectOf(s), [cx, cy] = centre(r);
+    for (const L of Object.keys(q.options)) {
+      const o = q.options[L];
+      if (o && o.page === s.page && inside2(o.region, cx, cy)) return true;
+    }
+    return false;
+  }
+  function deriveGuesses(strokes, map, samples = []) {
+    const out = { version: GUESS_VERSION, questions: {}, unassigned: [] };
+    if (!map || !map.questions.length) return out;
+    const live = strokes.filter((s) => s.removedAt == null && s.ink === "red");
+    const byPage = /* @__PURE__ */ new Map();
+    const numsOn = (page) => {
+      let v = byPage.get(page);
+      if (!v) {
+        v = numbersOn(map, page);
+        byPage.set(page, v);
+      }
+      return v;
+    };
+    const taken = /* @__PURE__ */ new Set();
+    const rings = [];
+    for (const s of live) {
+      let hit = null;
+      for (const n of numsOn(s.page)) if (ringsNumber(s, n.box)) {
+        hit = n;
+        break;
+      }
+      if (hit) {
+        rings.push({ s, q: hit.q, box: hit.box });
+        taken.add(s.id);
+      }
+    }
+    for (const { s, q, box } of rings) {
+      const r = rectOf(s);
+      const line = Math.max(box.h, r.h, 8);
+      const word = live.filter((o) => !taken.has(o.id) && o.page === s.page && Math.abs(o.t0 - s.t) < 3e4 && !onAnOption(o, q)).filter((o) => {
+        const ob = rectOf(o), [ox, oy] = centre(ob);
+        const near = Math.abs(oy - (r.y + r.h / 2)) <= line * 1.4;
+        const beside = ox > r.x - line * 6 && ox < r.x + r.w + line * 6;
+        return near && beside && ob.w < line * 6 && ob.h < line * 3;
+      }).sort((a, b) => a.t0 - b.t0);
+      word.forEach((w) => taken.add(w.id));
+      const m = word.length ? matchWord(word.map((w) => w.pts), samples) : { word: null, conf: 0 };
+      const ok = m.word && m.conf >= GUESS_MIN_CONF;
+      out.questions[q.id] = {
+        qid: q.id,
+        ringStrokeId: s.id,
+        t: s.t,
+        kind: ok ? KIND_OF[m.word] : "unknown",
+        word: ok ? m.word : null,
+        conf: ok ? m.conf : word.length ? m.conf : 0,
+        strokeIds: [s.id, ...word.map((w) => w.id)]
+      };
+    }
+    return out;
+  }
+
   // src/mock/keyparse.ts
   var LETTER = /^\(?([A-Da-d])\)?[.,;:]?$/;
   var NUMBERED_OPT = /^\(([1-4])\)[.,;:]?$/;
@@ -4033,6 +4320,7 @@ var NBCore = (() => {
     const ivs = tl.intervals;
     const ink = deriveAnswers(events, map);
     const strokes = strokesOf(events);
+    const guesses = deriveGuesses(strokes, map, input.guessSamples || []);
     const insufficient = [];
     const questions = map ? map.questions.slice().sort((a, b) => a.index - b.index) : [];
     const keyBy = /* @__PURE__ */ new Map();
@@ -4181,6 +4469,7 @@ var NBCore = (() => {
         else changeType = "wrong_to_wrong";
       }
       const firstT = k ? k.firstAnswerT : null;
+      const g = guesses.questions[q.id] || null;
       return {
         questionId: q.id,
         displayedQuestionNumber: q.n,
@@ -4211,6 +4500,7 @@ var NBCore = (() => {
         blueLockCount: k ? k.history.length : 0,
         eliminatedOptions: k ? k.eliminatedOptions.slice() : [],
         finalTwoOptions: k && k.finalTwo ? k.finalTwo.options.slice() : null,
+        /* the ring round the printed number, and the word written beside it */
         firstAnswer: first,
         firstAnswerTimestamp: firstT,
         finalAnswer: final,
@@ -4229,7 +4519,11 @@ var NBCore = (() => {
         changeType,
         marksEffectOfChange: changeType && changeType !== "unknown" && o.outcome !== "withdrawn" ? m2(marksFor(o.outcome, sc) - marksFor(of.outcome, sc)) : null,
         highFrictionSignals: [],
-        highFriction: false
+        highFriction: false,
+        guessKind: g ? g.kind : null,
+        guessWord: g ? g.word : null,
+        guessConf: g ? rnd(g.conf, 3) : null,
+        guessStrokeIds: g ? g.strokeIds.slice() : null
       };
     });
     const qById = new Map(qm.map((q) => [q.questionId, q]));
@@ -4654,6 +4948,20 @@ var NBCore = (() => {
     if (ub) notes.push(ub + " blue mark" + (ub === 1 ? "" : "s") + " touched no option and " + (ub === 1 ? "was" : "were") + " not counted as an answer.");
     if (customScoring) notes.push("Scored " + (sc.correct > 0 ? "+" : "") + sc.correct + " / " + sc.wrong + " / " + sc.skipped + "; the dashboard\u2019s totals assume +1 / \u22120.25.");
     if (s.endReason === "timeout") notes.push("The time ran out.");
+    const TAG_MEANING = {
+      EG: "Educated guess \u2014 you ringed the number and wrote eg or cg",
+      RG: "Random guess \u2014 you ringed the number and wrote rg or g",
+      Circled: "Ringed the number, with no word read beside it"
+    };
+    const tags = {};
+    qm.forEach((q, i) => {
+      const t = q.guessKind === "educated" ? "EG" : q.guessKind === "random" ? "RG" : q.guessKind === "unknown" ? "Circled" : null;
+      if (t) tags[String(i + 1)] = t;
+    });
+    const tagMeanings = {};
+    for (const t of Object.keys(TAG_MEANING)) if (Object.values(tags).indexOf(t) >= 0) tagMeanings[t] = TAG_MEANING[t];
+    const ringed = qm.filter((q) => q.guessKind).length, unread = qm.filter((q) => q.guessKind === "unknown").length;
+    if (ringed) notes.push(ringed + " question" + (ringed === 1 ? "" : "s") + " had the number ringed as a guess" + (unread ? ", " + (unread === ringed ? "none" : unread) + " without a word that could be read" : "") + ".");
     const record = {
       id: "nb-" + s.id,
       paper,
@@ -4670,8 +4978,8 @@ var NBCore = (() => {
       order: order.length ? order : null,
       intervals: pace30.map((b) => [b.attempted, b.correct, b.wrong, b.marks]),
       timeSec: Math.round(endT / 1e3),
-      log: { key: qm.map((q) => q.outcome === "withdrawn" ? "W" : q.officialAnswer || "-").join(""), ans: qm.map((q) => q.finalAnswer || "-").join(""), out: qm.map(outChar).join(""), tags: {} },
-      tagMeanings: {},
+      log: { key: qm.map((q) => q.outcome === "withdrawn" ? "W" : q.officialAnswer || "-").join(""), ans: qm.map((q) => q.finalAnswer || "-").join(""), out: qm.map(outChar).join(""), tags },
+      tagMeanings,
       notes,
       /* the telemetry extension: what links this record to its raw log */
       telemetrySessionId: s.id,
@@ -4809,7 +5117,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "ea2a64e31985";
+  var CORE_BUILD = "42cb77906b25";
   return __toCommonJS(index_exports);
 })();
 </script>
