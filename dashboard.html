@@ -51,6 +51,7 @@
   --warn-ink:#935f00;
 
   /* ordinal ramp — one line per timed PYQ, oldest → newest (validated) */
+  --opt-a:#3987e5;--opt-b:#8b5cf6;--opt-c:#e0952a;--opt-d:#12a594;
   --ord-1:#86b6ef;
   --ord-2:#3987e5;
   --ord-3:#184f95;
@@ -79,6 +80,7 @@
     --c-pyq:#3987e5;--c-mock:#d95926;--c-other:#8e8e93;--net:#d1d1d6;--on-net:#1c1c1e;
     --good-ink:#34c759;--bad-ink:#ff6b6b;--warn-ink:#ffcc4d;
     --bar:#3987e5;--bar-2:#199e70;--bench-1:#199e70;--bench-2:#8e8e93;--bar-cost:#7c7c80;--target:#f5f5f7;
+    --opt-a:#6aa9f0;--opt-b:#a78bfa;--opt-c:#eab75f;--opt-d:#3fc5b4;
     --ord-1:#184f95;--ord-2:#3987e5;--ord-3:#9ec5f4;
   }
 }
@@ -92,6 +94,7 @@
   --c-pyq:#3987e5;--c-mock:#d95926;--c-other:#8e8e93;--net:#d1d1d6;--on-net:#1c1c1e;
   --good-ink:#34c759;--bad-ink:#ff6b6b;--warn-ink:#ffcc4d;
   --bar:#3987e5;--bar-2:#199e70;--bench-1:#199e70;--bench-2:#8e8e93;--bar-cost:#7c7c80;--target:#f5f5f7;
+  --opt-a:#6aa9f0;--opt-b:#a78bfa;--opt-c:#eab75f;--opt-d:#3fc5b4;
   --ord-1:#184f95;--ord-2:#3987e5;--ord-3:#9ec5f4;
 }
 
@@ -315,6 +318,16 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;fo
 .rwb .track .c{background:color-mix(in oklab,var(--good) 62%,var(--surface))}
 .rwb .track .w{background:var(--bad)}
 .rwb .track .s{background:color-mix(in oklab,var(--warn) 70%,var(--surface))}
+
+/* ─────────────────────────── The option doughnut ─────────────────────────── */
+.donutwrap{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);align-items:start}
+@container (min-width:560px){.donutwrap{grid-template-columns:260px minmax(0,1fr)}}
+.donut{min-height:200px}
+.dseg{stroke:var(--surface);stroke-width:1}
+.dlabel{font-size:12px;font-weight:700;fill:#fff}
+.dmid{font-size:20px;font-weight:650;fill:var(--ink)}
+.dsub{font-size:11px;fill:var(--ink-3)}
+.donutwrap .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
 /* ─────────────────────────── Question map ─────────────────────────── */
 .qmap{display:grid;gap:22px 28px;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr))}
@@ -7397,6 +7410,7 @@ function renderQuestions(el) {
   fill(el,
     viewHead('Questions', `Every question from ${plural(L.length, 'attempt')} with an answer-key log: ${listText(L.map(a => `${a.paper} (${a.when})`))}.`),
     runCard(L),
+    optionDonutCard(L),
     qmapCard(L),
     H('div', { class: 'grid-2' }, [guessCard(L), optionsCard(L)]),
     paperNotesCard(L),
@@ -7412,6 +7426,363 @@ function runCard(L) {
     coach: coach('paperRun', L),
   });
 }
+/* ── the option doughnut ────────────────────────────────────────────────────
+   Two rings on the same angles: the outer one is how often each option was
+   picked, the inner one splits that wedge into the times it was right and the
+   times it was wrong. The base is attempted questions — a blank has no option
+   to count — and the middle says how many that is. */
+const OPT_COLOR = { A: 'var(--opt-a)', B: 'var(--opt-b)', C: 'var(--opt-c)', D: 'var(--opt-d)' };
+
+function arcPath(cx, cy, r0, r1, a0, a1) {
+  const p = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const big = a1 - a0 > Math.PI ? 1 : 0;
+  const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+  return `M${x0} ${y0}A${r1} ${r1} 0 ${big} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${big} 0 ${x3} ${y3}Z`;
+}
+
+function renderDonut(host, mix) {
+  const W = Math.max(200, host.clientWidth || 260), size = Math.min(W, 260);
+  const cx = size / 2, cy = size / 2, R = size / 2 - 4;
+  const svg = svgRoot(size, size, 'How often each option was picked, and how often it was right');
+  svg.style.display = 'block';
+  svg.style.margin = '0 auto';
+  const total = mix.rows.reduce((n, r) => n + r.picked, 0);
+  if (!total) { host.replaceChildren(H('div', { class: 'empty', text: 'No attempted questions yet.' })); return; }
+
+  const TAU = Math.PI * 2, GAP = 0.012;
+  let a = -Math.PI / 2;
+  const g = S('g', {});
+  mix.rows.forEach(r => {
+    if (!r.picked) return;
+    const span = (r.picked / total) * TAU;
+    const a0 = a + GAP / 2, a1 = a + span - GAP / 2;
+    if (a1 > a0) {
+      const outer = S('path', { d: arcPath(cx, cy, R * 0.66, R, a0, a1), fill: OPT_COLOR[r.option], class: 'dseg' });
+      outer.append(S('title', {}, `${r.option}: ${Math.round((r.picked / total) * 100)}% of what you picked (${r.picked} of ${total})`));
+      g.append(outer);
+      /* inner: right first, then wrong, on the same wedge */
+      const cut = a0 + (a1 - a0) * (r.picked ? r.right / r.picked : 0);
+      if (cut > a0) {
+        const good = S('path', { d: arcPath(cx, cy, R * 0.44, R * 0.62, a0, cut), fill: 'var(--good)', opacity: 0.85, class: 'dseg' });
+        good.append(S('title', {}, `${r.option} right: ${r.right}`));
+        g.append(good);
+      }
+      if (a1 > cut) {
+        const bad = S('path', { d: arcPath(cx, cy, R * 0.44, R * 0.62, cut, a1), fill: 'var(--bad)', opacity: 0.8, class: 'dseg' });
+        bad.append(S('title', {}, `${r.option} wrong: ${r.wrong}`));
+        g.append(bad);
+      }
+      /* the letter, on its own wedge, when there is room for it */
+      if (a1 - a0 > 0.28) {
+        const mid = (a0 + a1) / 2, lr = R * 0.83;
+        g.append(S('text', { x: cx + lr * Math.cos(mid), y: cy + lr * Math.sin(mid), class: 'dlabel', 'text-anchor': 'middle', 'dominant-baseline': 'central' }, r.option));
+      }
+    }
+    a += span;
+  });
+  svg.append(g);
+  const right = mix.rows.reduce((n, r) => n + r.right, 0);
+  svg.append(S('text', { x: cx, y: cy - 8, class: 'dmid', 'text-anchor': 'middle' }, String(total)));
+  svg.append(S('text', { x: cx, y: cy + 10, class: 'dsub', 'text-anchor': 'middle' }, 'attempted'));
+  svg.append(S('text', { x: cx, y: cy + 26, class: 'dsub', 'text-anchor': 'middle' }, `${pct(total ? right / total : null, 0)} right`));
+  host.replaceChildren(svg);
+}
+
+function optionDonutCard(L) {
+  const mix = optionMix(L);
+  const host = H('div', { class: 'chart donut' });
+  mountChart(host, () => renderDonut(host, mix));
+  const total = mix.n;
+  const table = H('div', { class: 'table-wrap' }, H('table', { class: 'tbl' }, [
+    H('thead', {}, H('tr', {}, [
+      H('th', { class: 'l', text: 'Option' }), H('th', { class: 'c', text: 'Picked' }), H('th', { class: 'c', text: 'Share' }),
+      H('th', { class: 'c', text: 'Right' }), H('th', { class: 'c', text: 'Wrong' }), H('th', { class: 'c', text: 'Accuracy' }),
+      H('th', { class: 'c', text: 'In the key' }),
+    ])),
+    H('tbody', {}, mix.rows.map(r => H('tr', {}, [
+      H('td', { class: 'l' }, [H('i', { class: 'sw', style: { background: OPT_COLOR[r.option] } }), b(r.option)]),
+      H('td', { class: 'c num', text: String(r.picked) }),
+      H('td', { class: 'c num', text: pct(r.share, 1) }),
+      H('td', { class: 'c num', text: String(r.right) }),
+      H('td', { class: 'c num', text: String(r.wrong) }),
+      H('td', { class: 'c' }, [H('span', { class: r.accuracy != null && r.accuracy < 0.5 ? 'tag warn' : 'num', text: pct(r.accuracy, 0) })]),
+      H('td', { class: 'c num', text: pct(r.keyShare, 1), title: `${r.inKey} of ${total} keys` }),
+    ]))),
+  ]));
+  return card('What you pick, and how it goes',
+    `Every option you marked across ${listText(mix.attempts)}, out of ${total} attempted questions. The outer ring is how often you picked each letter; the inner ring splits that into right and wrong. A blank or a withdrawn question has no option, so it is not counted here.`,
+    [H('div', { class: 'donutwrap' }, [host, table])],
+    { foot: 'A letter you pick far more often than the key uses it is a habit, not a pattern in the paper.' });
+}
+
+/* EXPORT:BEGIN — pure, DOM-free, checked in node by test/dashboard-export.test.mjs */
+/* ═══════════════════════════ Analysis export ═══════════════════════════
+   One file holding every number this dashboard shows, in the order it shows
+   them, so another reader — a person or a model — can work from exactly what
+   is on screen. Every figure comes from the same accessors the panes use
+   (metrics, secM, decodeLog, optionStats, guessStats), never from a second
+   calculation that could drift away from them.
+
+   `st` is the dashboard state and `bundles` the NeoBook telemetry by session
+   id, both passed in rather than read from the module, so the whole thing can
+   be checked outside a browser. */
+
+const EXPORT_VERSION = 1;
+
+/** A change between two readings, with both ways of saying it. */
+function deltaOf(before, after, kind) {
+  if (before == null || after == null || !isFinite(before) || !isFinite(after)) return null;
+  const d = after - before;
+  const out = { before: r4(before), after: r4(after), direction: d > 0 ? 'up' : d < 0 ? 'down' : 'flat' };
+  if (kind === 'ratio') {
+    out.deltaPoints = r4(d * 100);                       /* 0.52 → 0.65 is +13 points */
+    out.deltaRelative = before ? r4(d / before) : null;  /* … and +25% of what it was */
+    out.units = { deltaPoints: 'percentage points', deltaRelative: 'fraction of the earlier value' };
+  } else {
+    out.delta = r4(d);
+    out.deltaRelative = before ? r4(d / before) : null;
+    out.units = { delta: kind === 'marks' ? 'marks' : 'questions', deltaRelative: 'fraction of the earlier value' };
+  }
+  return out;
+}
+const r4 = v => (v == null || !isFinite(v) ? null : Math.round(v * 10000) / 10000);
+const r2 = v => (v == null || !isFinite(v) ? null : Math.round(v * 100) / 100);
+
+/** Every option picked across a set of attempts: the doughnut's own numbers. */
+function optionMix(list) {
+  const L = ['A', 'B', 'C', 'D'];
+  const rows = L.map(o => ({ option: o, picked: 0, right: 0, wrong: 0, inKey: 0 }));
+  const from = [];
+  let n = 0;
+  for (const a of list) {
+    const qs = decodeLog(a);
+    if (!qs) continue;
+    from.push(a);
+    for (const q of qs) {
+      if (q.out !== 'c' && q.out !== 'w') continue;
+      n++;
+      const pick = rows.find(r => r.option === q.ans);
+      if (pick) { pick.picked++; if (q.out === 'c') pick.right++; else pick.wrong++; }
+      const key = rows.find(r => r.option === q.key);
+      if (key) key.inKey++;
+    }
+  }
+  return {
+    base: 'attempted questions (a blank or a withdrawn question has no option to count)',
+    n, attempts: from.map(a => a.short),
+    rows: rows.map(r => Object.assign(r, {
+      share: n ? r4(r.picked / n) : null,
+      keyShare: n ? r4(r.inKey / n) : null,
+      bias: r.picked - r.inKey,
+      accuracy: r.picked ? r4(r.right / r.picked) : null,
+    })),
+  };
+}
+
+function buildAnalysisExport(st, bundles) {
+  const now = new Date();
+  /* the dashboard's own order — undated papers first, then by date — so the
+     file lines up with every chart in it rather than with a second idea of order */
+  const attempts = (st.attempts || []).slice();
+  const practice = (st.practice || []).slice();
+  const withLog = attempts.filter(a => a.log);
+
+  const secRows = a => SECS.map(s => {
+    const m = secM(a, s.k);
+    if (!m) return null;
+    const row = { section: s.k, name: s.name, exact: !!m.exact, accuracy: r4(m.acc) };
+    if (m.exact) Object.assign(row, {
+      questions: m.M, attempted: m.att, correct: m.C, wrong: m.W, blank: m.S, withdrawn: m.x,
+      score: r2(m.net), coverage: r4(m.cov),
+      marksLost: { wrong: r2(m.wrongCost), blank: r2(m.skipCost), total: r2(m.lost) },
+      timeSec: m.t == null ? null : m.t,
+      questionRange: m.q || null,
+    });
+    else row.note = 'only an accuracy was recorded for this section' + (m.flag ? ' (' + m.flag + ')' : '');
+    return row;
+  }).filter(Boolean);
+
+  const questionRows = a => {
+    const qs = decodeLog(a);
+    if (!qs) return null;
+    const d = a.telemetrySessionId && bundles ? bundles.get(a.telemetrySessionId) : null;
+    const tq = d && d.questions ? new Map(d.questions.map(q => [q.displayedQuestionNumber, q])) : null;
+    const OUT = { c: 'correct', w: 'wrong', s: 'blank', x: 'withdrawn' };
+    return qs.map(q => {
+      const row = {
+        position: q.q, section: q.sec, sectionName: q.sec ? SEC_NAME[q.sec] : null,
+        key: q.key, answer: q.ans, outcome: OUT[q.out] || q.out,
+        marks: q.out === 'c' ? 1 : q.out === 'w' ? -0.25 : 0,
+        tag: q.tag || null, tagMeaning: q.tag ? (a.tagMeanings || {})[q.tag] || null : null,
+      };
+      const t = tq && tq.get(q.q);
+      if (t) row.telemetry = {
+        questionNumber: t.displayedQuestionNumber, passage: t.passageId,
+        totalActiveTimeMs: t.totalActiveTimeMs, initialActiveTimeMs: t.initialActiveTimeMs,
+        timeToFirstAnswerMs: t.initialDecisionTimeMs,
+        passageLookupTimeMs: t.passageLookupTimeMs, passageRevisits: t.passageRevisitCount,
+        visits: t.visitCount, revisits: t.revisitCount, longestDwellMs: t.longestContinuousDwellMs,
+        firstAnswer: t.firstAnswer, finalAnswer: t.finalAnswer, answerChanges: t.answerChangeCount,
+        changeType: t.changeType, marksEffectOfChange: t.marksEffectOfChange,
+        eliminated: t.eliminatedOptions, finalTwo: t.finalTwoOptions, finalTwoMs: t.finalTwoDurationMs,
+        redStrokes: t.redStrokeCount, blueLocks: t.blueLockCount,
+        highFriction: t.highFriction, frictionSignals: t.highFrictionSignals,
+        guess: t.guessKind ? { kind: t.guessKind, word: t.guessWord, confidence: t.guessConf } : null,
+      };
+      return row;
+    });
+  };
+
+  const attemptRow = a => {
+    const m = metrics(a), g = guessStats(a), o = optionStats(a);
+    const d = a.telemetrySessionId && bundles ? bundles.get(a.telemetrySessionId) : null;
+    const row = {
+      id: a.id, paper: a.paper, set: a.set || null, short: a.short,
+      date: a.date || null, dateText: a.when, cohort: a.cohort, cohortName: a.cohortName,
+      origin: a.origin || null, sectionOrder: a.order || null,
+      has: {
+        questionLog: !!a.log, sectionCounts: a.secMode === 'counts', sectionAccuracyOnly: a.secMode === 'acc',
+        intervals: !!(a.intervals && a.intervals.length), topics: !!(a.tree || a.topics), telemetry: !!d,
+      },
+      totals: {
+        questionsOnPaper: a.paperQs || null, scorable: a.M,
+        correct: a.C, wrong: a.W, blank: a.S, withdrawn: (a.withdrawn || []).length,
+        attempted: m.att, score: r2(m.net), scoreOutOf: a.M,
+        accuracy: r4(m.acc), coverage: r4(m.cov), marksPerAttempt: r4(m.perAtt),
+        marksLost: { wrong: r2(m.wrongCost), blank: r2(m.skipCost), total: r2(m.gap) },
+      },
+      withdrawnQuestions: a.withdrawn || null,
+      timeSec: a.timeSec == null ? null : a.timeSec,
+      notes: a.notes || null,
+      sections: secRows(a),
+    };
+    if (a.intervals && a.intervals.length) row.intervals = a.intervals.map((iv, i) => ({
+      block: i + 1, minutesFrom: i * 30, minutesTo: (i + 1) * 30,
+      attempted: iv[0], correct: iv[1], wrong: iv[2], marks: r2(iv[3]),
+    }));
+    if (o) row.options = {
+      base: 'attempted questions', attempted: o.n,
+      rows: o.rows.map(r => ({ option: r.o, picked: r.picked, share: o.n ? r4(r.picked / o.n) : null, inKey: r.inKey, bias: r.bias, right: r.right, wrong: r.picked - r.right, accuracy: r4(r.acc) })),
+      confusionPickedByKey: { rows: ['A', 'B', 'C', 'D'], cols: ['A', 'B', 'C', 'D'], counts: o.conf },
+    };
+    if (g && !g.none) row.marks = { groups: g.groups.map(x => ({ tag: x.tag, meaning: x.meaning, n: x.n, correct: x.C, wrong: x.W, blank: x.S, accuracy: r4(x.acc), marksPerAttempt: r4(x.perAtt) })),
+      allMarked: { n: g.marked.n, accuracy: r4(g.marked.acc) }, unmarked: { n: g.unmarked.n, accuracy: r4(g.unmarked.acc) } };
+    const qs = questionRows(a);
+    if (qs) row.questions = qs;
+    if (a.tree) row.topics = a.tree.map(t => ({ section: t[0], area: t[1], topic: t[2], correct: t[3], wrong: t[4], blank: t[5], timeSec: t[6] }));
+    if (d) row.telemetrySummary = {
+      sessionId: a.telemetrySessionId, metricsVersion: d.metricsVersion || null,
+      timing: d.test && d.test.timing ? d.test.timing : null,
+      passages: d.passages ? d.passages.length : null,
+      checksFailed: (d.checks || []).filter(c => !c.ok).map(c => c.check),
+      insufficient: d.insufficient || null,
+    };
+    return row;
+  };
+
+  const rows = attempts.map(attemptRow);
+
+  /* how each figure moved from one attempt to the next, and from first to last */
+  /* a timeline needs dates: an undated paper is in the file, but not in a trend */
+  const series = rows.filter(r => r.totals.scorable && r.date);
+  const step = (get, kind) => {
+    const out = [];
+    for (let i = 1; i < series.length; i++) {
+      const d = deltaOf(get(series[i - 1]), get(series[i]), kind);
+      if (d) out.push(Object.assign({ from: series[i - 1].short, to: series[i].short, fromDate: series[i - 1].date, toDate: series[i].date }, d));
+    }
+    return out;
+  };
+  const span = (get, kind) => (series.length >= 2 ? Object.assign({ from: series[0].short, to: series[series.length - 1].short },
+    deltaOf(get(series[0]), get(series[series.length - 1]), kind) || {}) : null);
+  const secAcc = k => r => { const s = (r.sections || []).find(x => x.section === k); return s ? s.accuracy : null; };
+
+  const trends = {
+    note: 'Only attempts that carry a date, in date order. An undated paper is in `attempts` but cannot sit on a timeline. A ratio moves by percentage POINTS and also by a fraction of what it was; both are given.',
+    score: { stepByStep: step(r => r.totals.score, 'marks'), firstToLast: span(r => r.totals.score, 'marks') },
+    accuracy: { stepByStep: step(r => r.totals.accuracy, 'ratio'), firstToLast: span(r => r.totals.accuracy, 'ratio') },
+    coverage: { stepByStep: step(r => r.totals.coverage, 'ratio'), firstToLast: span(r => r.totals.coverage, 'ratio') },
+    attempted: { stepByStep: step(r => r.totals.attempted, 'count'), firstToLast: span(r => r.totals.attempted, 'count') },
+    marksLost: { stepByStep: step(r => r.totals.marksLost.total, 'marks'), firstToLast: span(r => r.totals.marksLost.total, 'marks') },
+    bySection: Object.fromEntries(SECS.map(s => [s.k, {
+      name: s.name, stepByStep: step(secAcc(s.k), 'ratio'), firstToLast: span(secAcc(s.k), 'ratio'),
+    }])),
+  };
+
+  const mix = optionMix(withLog);
+  const allQ = withLog.flatMap(a => decodeLog(a) || []);
+  const agg = outcomeAgg(allQ.filter(q => q.out !== 'x'));
+  const aggregate = {
+    acrossAttempts: withLog.map(a => a.short),
+    outcomes: { questions: agg.n, correct: agg.C, wrong: agg.W, blank: agg.S, attempted: agg.att, accuracy: r4(agg.acc), marksPerAttempt: r4(agg.perAtt) },
+    options: mix,
+    bySection: Object.fromEntries(SECS.map(s => {
+      const qs = allQ.filter(q => q.sec === s.k && q.out !== 'x');
+      const c = outcomeAgg(qs);
+      return [s.k, { name: s.name, questions: c.n, correct: c.C, wrong: c.W, blank: c.S, accuracy: r4(c.acc) }];
+    })),
+    marks: (() => {
+      const tagged = allQ.filter(q => q.out !== 'x' && q.tag);
+      if (!tagged.length) return null;
+      const tags = [...new Set(tagged.map(q => q.tag))].sort();
+      return { groups: tags.map(t => { const c = outcomeAgg(tagged.filter(q => q.tag === t)); return { tag: t, n: c.n, correct: c.C, wrong: c.W, accuracy: r4(c.acc) }; }),
+        unmarked: (() => { const c = outcomeAgg(allQ.filter(q => q.out !== 'x' && !q.tag)); return { n: c.n, accuracy: r4(c.acc) }; })() };
+    })(),
+  };
+
+  /* the numbers behind each chart, as arrays rather than pictures */
+  const charts = {
+    note: 'Each chart as its own data. x is the attempt (or block) in the same order the chart draws it.',
+    scoreOverAttempts: { x: series.map(r => r.short), y: series.map(r => r.totals.score), units: 'marks' },
+    accuracyOverAttempts: { x: series.map(r => r.short), y: series.map(r => r.totals.accuracy), units: 'fraction 0-1' },
+    coverageOverAttempts: { x: series.map(r => r.short), y: series.map(r => r.totals.coverage), units: 'fraction 0-1' },
+    sectionAccuracy: { x: series.map(r => r.short), series: SECS.map(s => ({ key: s.k, name: s.name, y: series.map(secAcc(s.k)) })), units: 'fraction 0-1' },
+    marksLost: { x: series.map(r => r.short), wrong: series.map(r => r.totals.marksLost.wrong), blank: series.map(r => r.totals.marksLost.blank), units: 'marks' },
+    paceByHalfHour: rows.filter(r => r.intervals).map(r => ({ attempt: r.short, blocks: r.intervals })),
+    optionMix: { labels: mix.rows.map(r => r.option), picked: mix.rows.map(r => r.picked), share: mix.rows.map(r => r.share), accuracy: mix.rows.map(r => r.accuracy) },
+  };
+
+  return {
+    file: {
+      kind: 'clat-ug-dashboard-analysis', version: EXPORT_VERSION, generatedAt: now.toISOString(),
+      readMe: 'Every figure this dashboard shows, for one reader to analyse. Attempts are in the dashboard’s own order (undated papers first, then by date), sections in paper order, questions by position. Nothing here is rounded below four decimal places, and nothing is recomputed: each number comes from the same function that draws it on screen.',
+      conventions: {
+        scoring: '+1 correct, -0.25 wrong, 0 blank; a withdrawn question is excluded from the scorable total',
+        accuracy: 'correct / attempted, as a fraction of 1',
+        coverage: 'attempted / scorable, as a fraction of 1',
+        marksLost: 'wrong = 1.25 per wrong answer (the mark and the penalty), blank = 1 per blank',
+        change: 'a ratio moves by percentage POINTS (deltaPoints) and by a fraction of its earlier value (deltaRelative)',
+        time: 'seconds unless the field name ends in Ms',
+        absent: 'null means not recorded, never zero',
+      },
+    },
+    totals: {
+      attempts: attempts.length, withQuestionLog: withLog.length,
+      recordedInNeoBook: attempts.filter(a => a.telemetrySessionId).length,
+      practiceSessions: practice.length,
+    },
+    target: st.prefs && st.prefs.target ? st.prefs.target : null,
+    sections: SECS.map(s => ({ key: s.k, name: s.name })),
+    attempts: rows,
+    trends,
+    aggregate,
+    charts,
+    practice: practice.map(p => ({ date: p.date || null, section: p.sec || p.section || null, topic: p.topic || null,
+      questions: p.n != null ? p.n : null, correct: p.C != null ? p.C : null, wrong: p.W != null ? p.W : null,
+      blank: p.S != null ? p.S : null, timeSec: p.timeSec != null ? p.timeSec : null, source: p.telemetrySessionId ? 'neobook' : 'entered' })),
+  };
+}
+
+/* EXPORT:END */
+async function downloadAnalysis() {
+  const data = buildAnalysisExport(state, NB.bundles);
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const link = H('a', { href: url, download: `clat-analysis-${todayISO()}.json` });
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`Exported ${data.totals.attempts} attempts, ${data.attempts.reduce((n, a) => n + (a.questions ? a.questions.length : 0), 0)} questions`);
+}
+
 function qmapCard(L) {
   const legend = H('div', { class: 'legend qlegend' }, [
     H('span', { class: 'k' }, [H('i', { class: 'sw c' }), 'Right']),
@@ -8464,6 +8835,7 @@ function manageCard() {
     H('div', { class: 'filter-group', style: { marginBottom: '14px' } }, [
       H('button', { class: 'btn primary', type: 'button', onclick: () => openSheet(), text: 'Add attempt' }),
       H('button', { class: 'btn', type: 'button', onclick: downloadBackup, text: 'Download backup' }),
+      H('button', { class: 'btn', type: 'button', onclick: downloadAnalysis, text: 'Export for analysis' }),
       H('button', { class: 'btn', type: 'button', onclick: () => restore.click(), text: 'Restore backup' }),
       restore,
     ]),
