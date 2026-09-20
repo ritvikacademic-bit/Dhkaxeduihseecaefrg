@@ -5411,10 +5411,7 @@ var NBCore = (() => {
   }
   function numbersOn(map, page) {
     const out = [];
-    for (const q of map.questions) {
-      if (q.page === page) out.push({ q, box: numberBox(q) });
-      else if ((q.extra || []).some((e) => e.page === page)) continue;
-    }
+    for (const q of map.questions) if (q.page === page) out.push({ q, box: numberBox(q) });
     return out;
   }
   function onAnOption(s, q) {
@@ -6903,7 +6900,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "42cb77906b25";
+  var CORE_BUILD = "43bfac6b9fac";
   return __toCommonJS(index_exports);
 })();
 </script>
