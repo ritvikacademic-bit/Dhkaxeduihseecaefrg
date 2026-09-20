@@ -7158,11 +7158,17 @@ function qmapCard(L) {
   });
   /* A content filter in the browser can hide elements by class name, and then the map is silently empty space.
      Measure one real square once the card is on screen, and say what happened instead of showing nothing. */
-  requestAnimationFrame(() => {
+  const seeSquares = () => {
     const one = map.querySelector('.qcell[data-q]');
-    if (!one || !map.getBoundingClientRect().width || one.getBoundingClientRect().height) return;
-    map.prepend(H('p', { class: 'qblocked', text: 'The squares are being hidden by something in this browser — usually an ad blocker or content filter. Allow this page in it, then reload.' }));
-  });
+    if (!one || !map.getBoundingClientRect().width) return false;   // the view is still hidden: nothing to measure yet
+    if (!one.getBoundingClientRect().height && !map.querySelector('.qblocked')) {
+      map.prepend(H('p', { class: 'qblocked', text: 'The squares are being hidden by something in this browser — usually an ad blocker or content filter. Allow this page in it, then reload.' }));
+    }
+    return true;
+  };
+  /* The card is often built while its view is still hidden, so wait until the map actually has a width. */
+  const watch = new ResizeObserver(() => { if (seeSquares()) watch.disconnect(); });
+  setTimeout(() => { if (!seeSquares()) watch.observe(map); }, 0);
   const linked = L.some(a => paperViewer(a));
   return card('Question map', `One square per question, grouped by section; rows are ${listText(L.map(a => a.short))}. Hover for your answer and the key${linked ? '; click a square to open that exact question in the paper, in its own tab' : ''}. Attempts recorded in NeoBook also show how long each question took.`, [legend, H('div', { style: { height: '16px' } }), map], {
     foot: 'Squares line up by position within each section, not by question number, because sections start at slightly different numbers on each paper.',
