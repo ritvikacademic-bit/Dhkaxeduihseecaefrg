@@ -319,6 +319,24 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;fo
 .rwb .track .w{background:var(--bad)}
 .rwb .track .s{background:color-mix(in oklab,var(--warn) 70%,var(--surface))}
 
+/* ─────────────────────────── Patterns ─────────────────────────── */
+.ptgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.ptcard{display:grid;gap:10px;align-content:start}
+.pttitle{margin:0;font-size:16px;line-height:1.35;font-weight:620;text-wrap:balance}
+.ptdetail{margin:0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.pteffect{margin:0;font-size:13px;font-variant-numeric:tabular-nums}
+.ptbars{display:grid;gap:6px}
+.ptrow{display:grid;grid-template-columns:minmax(80px,150px) minmax(0,1fr) 78px;align-items:center;gap:8px;font-size:12px}
+.ptlab{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pttrack{position:relative;height:12px;border-radius:6px;background:var(--fill);overflow:visible}
+.ptfill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--accent);opacity:.75}
+.ptci{position:absolute;top:-3px;bottom:-3px;border-left:2px solid var(--ink);border-right:2px solid var(--ink);background:color-mix(in oklab,var(--ink) 12%,transparent);border-radius:2px}
+.ptref{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);transform:translateX(-1px)}
+.ptval{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.ptlist{display:grid;gap:10px}
+.ptex{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+.ptex b{font-weight:560;font-size:13px}
+
 /* ─────────────────────────── The option doughnut ─────────────────────────── */
 .donutwrap{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);align-items:start}
 @container (min-width:560px){.donutwrap{grid-template-columns:260px minmax(0,1fr)}}
@@ -534,6 +552,7 @@ footer.foot{padding-block:0 40px;font-size:12px;color:var(--ink-3)}
         <button role="tab" id="tab-sections" data-view="sections" aria-controls="v-sections" aria-selected="false">Sections</button>
         <button role="tab" id="tab-questions" data-view="questions" aria-controls="v-questions" aria-selected="false">Questions</button>
         <button role="tab" id="tab-timing" data-view="timing" aria-controls="v-timing" aria-selected="false">Timing &amp; topics</button>
+        <button role="tab" id="tab-patterns" data-view="patterns" aria-controls="v-patterns" aria-selected="false">Patterns</button>
         <button role="tab" id="tab-practice" data-view="practice" aria-controls="v-practice" aria-selected="false" hidden>Practice</button>
         <button role="tab" id="tab-data" data-view="data" aria-controls="v-data" aria-selected="false">Data</button>
       </nav>
@@ -565,6 +584,7 @@ footer.foot{padding-block:0 40px;font-size:12px;color:var(--ink-3)}
   <section class="view" id="v-sections" role="tabpanel" aria-labelledby="tab-sections" hidden></section>
   <section class="view" id="v-questions" role="tabpanel" aria-labelledby="tab-questions" hidden></section>
   <section class="view" id="v-timing" role="tabpanel" aria-labelledby="tab-timing" hidden></section>
+  <section class="view" id="v-patterns" role="tabpanel" aria-labelledby="tab-patterns" hidden></section>
   <section class="view" id="v-attempt" role="tabpanel" aria-labelledby="tab-attempt" hidden></section>
   <section class="view" id="v-practice" role="tabpanel" aria-labelledby="tab-practice" hidden></section>
   <section class="view" id="v-data" role="tabpanel" aria-labelledby="tab-data" hidden></section>
@@ -665,6 +685,7 @@ var NBCore = (() => {
     documentKind: () => documentKind,
     geometryDiffers: () => geometryDiffers,
     hasExactWordBoxes: () => hasExactWordBoxes,
+    insights: () => insights_exports,
     isDocumentFingerprint: () => isDocumentFingerprint,
     isDurable: () => isDurable,
     isKnownType: () => isKnownType,
@@ -1998,16 +2019,16 @@ var NBCore = (() => {
     });
     const layout = picked.length >= 3 && rowGs.length === picked.length && cols.size === 1 ? "stacked" : rowGs.length === 2 && cols.size === 2 && picked.length >= 3 ? "grid" : rowGs.length === 1 && picked.length >= 3 ? "inline" : "irregular";
     const regions = {};
-    const rowsOf = /* @__PURE__ */ new Map();
+    const rowsOf2 = /* @__PURE__ */ new Map();
     for (const p of picked) {
-      const r = rowsOf.get(p.lb.g) || [];
+      const r = rowsOf2.get(p.lb.g) || [];
       r.push(p);
-      rowsOf.set(p.lb.g, r);
+      rowsOf2.set(p.lb.g, r);
     }
     for (let ri = 0; ri < rowGs.length; ri++) {
       const g = rowGs[ri];
       const rowEnd = ri + 1 < rowGs.length ? rowGs[ri + 1] - 1 : endG;
-      const cells = (rowsOf.get(g) || []).sort((a, b) => a.lb.tok.x - b.lb.tok.x);
+      const cells = (rowsOf2.get(g) || []).sort((a, b) => a.lb.tok.x - b.lb.tok.x);
       const page = all[g].page;
       const m = models[page];
       const em = m.medH / 1.18;
@@ -2049,7 +2070,7 @@ var NBCore = (() => {
     if (layout === "grid" && picked.length === 3) {
       const missing = LETTERS.find((L) => !regions[L]);
       const [r0, r1] = rowGs;
-      const top = rowsOf.get(r0) || [], bot = rowsOf.get(r1) || [];
+      const top = rowsOf2.get(r0) || [], bot = rowsOf2.get(r1) || [];
       const row = top.length < 2 ? top : bot;
       const other = top.length < 2 ? bot : top;
       const present = row[0];
@@ -4310,10 +4331,10 @@ var NBCore = (() => {
   var m2 = (v) => Math.round(v * 100) / 100;
   function spread(xs, insufficient, name, digits = 0) {
     const s = clean2(xs), n = s.length;
-    const pct = n >= MIN_N.percentile, spr = n >= MIN_N.spread;
-    if (n && !pct) insufficient.push(name + ".percentiles");
+    const pct2 = n >= MIN_N.percentile, spr = n >= MIN_N.spread;
+    if (n && !pct2) insufficient.push(name + ".percentiles");
     if (n && !spr) insufficient.push(name + ".spread");
-    const mu = mean(s), q1 = pct ? quantile(s, 0.25) : null, q3 = pct ? quantile(s, 0.75) : null, dev = spr ? sd(s) : null;
+    const mu = mean(s), q1 = pct2 ? quantile(s, 0.25) : null, q3 = pct2 ? quantile(s, 0.75) : null, dev = spr ? sd(s) : null;
     return {
       n,
       mean: rnd(mu, digits),
@@ -4322,8 +4343,8 @@ var NBCore = (() => {
       max: n ? rnd(s[n - 1], digits) : null,
       p25: rnd(q1, digits),
       p75: rnd(q3, digits),
-      p90: pct ? rnd(quantile(s, 0.9), digits) : null,
-      p95: pct ? rnd(quantile(s, 0.95), digits) : null,
+      p90: pct2 ? rnd(quantile(s, 0.9), digits) : null,
+      p95: pct2 ? rnd(quantile(s, 0.95), digits) : null,
       sd: rnd(dev, digits),
       iqr: q1 != null && q3 != null ? rnd(q3 - q1, digits) : null,
       cv: dev != null && mu ? rnd(dev / mu, 3) : null
@@ -4678,18 +4699,18 @@ var NBCore = (() => {
     const byState = {};
     const secState = {};
     const secIdle = {};
-    const secOf = (iv) => iv.state === "IDLE" || iv.state === "BACKGROUND" ? null : iv.sectionId;
+    const secOf2 = (iv) => iv.state === "IDLE" || iv.state === "BACKGROUND" ? null : iv.sectionId;
     const prevSec = [], nextSec = [];
     let ps = null;
     for (let i = 0; i < ivs.length; i++) {
       prevSec[i] = ps;
-      const k = secOf(ivs[i]);
+      const k = secOf2(ivs[i]);
       if (k) ps = k;
     }
     ps = null;
     for (let i = ivs.length - 1; i >= 0; i--) {
       nextSec[i] = ps;
-      const k = secOf(ivs[i]);
+      const k = secOf2(ivs[i]);
       if (k) ps = k;
     }
     ivs.forEach((iv, i) => {
@@ -4706,7 +4727,7 @@ var NBCore = (() => {
     const ACTIVE = ["PASSAGE_INITIAL_READ", "QUESTION_ACTIVE", "QUESTION_REVISIT", "PASSAGE_REVISIT_FOR_QUESTION", "PASSAGE_REVISIT"];
     const runs = [];
     for (const iv of ivs) {
-      const k = secOf(iv);
+      const k = secOf2(iv);
       if (!k) continue;
       const last = runs[runs.length - 1];
       if (last && last.k === k) {
@@ -5240,8 +5261,1032 @@ var NBCore = (() => {
     return out;
   }
 
+  // src/insights/index.ts
+  var insights_exports = {};
+  __export(insights_exports, {
+    PATTERNS_VERSION: () => PATTERNS_VERSION,
+    PATTERN_FDR: () => PATTERN_FDR,
+    PATTERN_MIN: () => PATTERN_MIN,
+    analysePatterns: () => analysePatterns,
+    betaI: () => betaI,
+    bhAdjust: () => bhAdjust,
+    chiSqP: () => chiSqP,
+    chiSquare: () => chiSquare,
+    chiSquareFit: () => chiSquareFit,
+    fisher2x2: () => fisher2x2,
+    fitLogit: () => fitLogit,
+    gammaP: () => gammaP,
+    guessKindOf: () => guessKindOf,
+    lnGamma: () => lnGamma,
+    modelOf: () => modelOf,
+    normCdf: () => normCdf,
+    olsSlope: () => olsSlope,
+    pNorm2: () => pNorm2,
+    predictLogit: () => predictLogit,
+    rowsOf: () => rowsOf,
+    runsTest: () => runsTest,
+    tCdf: () => tCdf,
+    tCrit: () => tCrit,
+    trendTest: () => trendTest,
+    twoProp: () => twoProp,
+    wilson: () => wilson
+  });
+
+  // src/insights/stats.ts
+  function lnGamma(x) {
+    const c = [
+      0.9999999999998099,
+      676.5203681218851,
+      -1259.1392167224028,
+      771.3234287776531,
+      -176.6150291621406,
+      12.507343278686905,
+      -0.13857109526572012,
+      9984369578019572e-21,
+      15056327351493116e-23
+    ];
+    if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lnGamma(1 - x);
+    x -= 1;
+    let a = c[0];
+    const t = x + 7.5;
+    for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  function gammaP(a, x) {
+    if (x <= 0) return 0;
+    if (x < a + 1) {
+      let sum = 1 / a, term = sum;
+      for (let n = 1; n < 500; n++) {
+        term *= x / (a + n);
+        sum += term;
+        if (Math.abs(term) < Math.abs(sum) * 1e-15) break;
+      }
+      return sum * Math.exp(-x + a * Math.log(x) - lnGamma(a));
+    }
+    return 1 - gammaQcf(a, x);
+  }
+  function gammaQcf(a, x) {
+    let b = x + 1 - a, c = 1 / 1e-300, d = 1 / b, h = d;
+    for (let i = 1; i < 500; i++) {
+      const an = -i * (i - a);
+      b += 2;
+      d = an * d + b;
+      if (Math.abs(d) < 1e-300) d = 1e-300;
+      c = b + an / c;
+      if (Math.abs(c) < 1e-300) c = 1e-300;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < 1e-15) break;
+    }
+    return Math.exp(-x + a * Math.log(x) - lnGamma(a)) * h;
+  }
+  function betaI(x, a, b) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const bt = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betaCf(x, a, b) / a : 1 - bt * betaCf(1 - x, b, a) / b;
+  }
+  function betaCf(x, a, b) {
+    const qab = a + b, qap = a + 1, qam = a - 1;
+    let c = 1, d = 1 - qab * x / qap;
+    if (Math.abs(d) < 1e-300) d = 1e-300;
+    d = 1 / d;
+    let h = d;
+    for (let m = 1; m < 500; m++) {
+      const m22 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m22) * (a + m22));
+      d = 1 + aa * d;
+      if (Math.abs(d) < 1e-300) d = 1e-300;
+      c = 1 + aa / c;
+      if (Math.abs(c) < 1e-300) c = 1e-300;
+      d = 1 / d;
+      h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m22) * (qap + m22));
+      d = 1 + aa * d;
+      if (Math.abs(d) < 1e-300) d = 1e-300;
+      c = 1 + aa / c;
+      if (Math.abs(c) < 1e-300) c = 1e-300;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < 1e-15) break;
+    }
+    return h;
+  }
+  function normCdf(z) {
+    const x = Math.abs(z) / Math.SQRT2;
+    const t = 1 / (1 + 0.5 * x);
+    const erfc = t * Math.exp(-x * x - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return z >= 0 ? 1 - erfc / 2 : erfc / 2;
+  }
+  var pNorm2 = (z) => Math.min(1, 2 * (1 - normCdf(Math.abs(z))));
+  function tCdf(t, nu) {
+    const x = nu / (nu + t * t);
+    const p = 0.5 * betaI(x, nu / 2, 0.5);
+    return t >= 0 ? 1 - p : p;
+  }
+  function tCrit(level, nu) {
+    let lo = 0, hi = 100;
+    const target = 1 - (1 - level) / 2;
+    for (let i = 0; i < 100; i++) {
+      const mid = (lo + hi) / 2;
+      if (tCdf(mid, nu) < target) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  var chiSqP = (x, k) => x <= 0 ? 1 : Math.max(0, Math.min(1, 1 - gammaP(k / 2, x / 2)));
+  function wilson(k, n, z = 1.959964) {
+    if (!n) return { est: null, lo: null, hi: null };
+    const p = k / n, z2 = z * z, den = 1 + z2 / n;
+    const mid = (p + z2 / (2 * n)) / den;
+    const half = z / den * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n));
+    return { est: p, lo: Math.max(0, mid - half), hi: Math.min(1, mid + half) };
+  }
+  var lnFact = (n) => lnGamma(n + 1);
+  function fisher2x2(a, b, c, d) {
+    const r1 = a + b, r23 = c + d, c1 = a + c, n = r1 + r23;
+    const lnP = (x) => lnFact(r1) + lnFact(r23) + lnFact(c1) + lnFact(n - c1) - lnFact(n) - lnFact(x) - lnFact(r1 - x) - lnFact(c1 - x) - lnFact(r23 - c1 + x);
+    const lo = Math.max(0, c1 - r23), hi = Math.min(r1, c1);
+    const p0 = lnP(a);
+    let p = 0;
+    for (let x = lo; x <= hi; x++) {
+      const lp = lnP(x);
+      if (lp <= p0 + 1e-7) p += Math.exp(lp);
+    }
+    return Math.min(1, p);
+  }
+  function twoProp(k1, n1, k2, n2) {
+    if (!n1 || !n2) return null;
+    const p1 = k1 / n1, p2 = k2 / n2, diff = p1 - p2;
+    const se = Math.sqrt(p1 * (1 - p1) / n1 + p2 * (1 - p2) / n2);
+    const pool = (k1 + k2) / (n1 + n2);
+    const seP = Math.sqrt(pool * (1 - pool) * (1 / n1 + 1 / n2));
+    const small = Math.min(pool * n1, (1 - pool) * n1, pool * n2, (1 - pool) * n2) < 5;
+    const p = small ? fisher2x2(k1, n1 - k1, k2, n2 - k2) : seP > 0 ? pNorm2(diff / seP) : 1;
+    return { diff, lo: diff - 1.96 * se, hi: diff + 1.96 * se, p, method: small ? "Fisher's exact test" : "two-proportion z-test" };
+  }
+  function chiSquare(table) {
+    const R = table.length, C = (table[0] || []).length;
+    const rows = table.map((r3) => r3.reduce((s, v) => s + v, 0));
+    const cols = Array.from({ length: C }, (_, j) => table.reduce((s, r3) => s + (r3[j] || 0), 0));
+    const N = rows.reduce((s, v) => s + v, 0);
+    const keepR = rows.map((v) => v > 0), keepC = cols.map((v) => v > 0);
+    const r = keepR.filter(Boolean).length, c = keepC.filter(Boolean).length;
+    if (!N || r < 2 || c < 2) return null;
+    let stat = 0, minE = Infinity;
+    const residuals = table.map((row) => row.map(() => 0));
+    for (let i = 0; i < R; i++) for (let j = 0; j < C; j++) {
+      if (!keepR[i] || !keepC[j]) continue;
+      const e = rows[i] * cols[j] / N;
+      minE = Math.min(minE, e);
+      const o = table[i][j];
+      stat += (o - e) * (o - e) / e;
+      const adj = Math.sqrt(e * (1 - rows[i] / N) * (1 - cols[j] / N));
+      residuals[i][j] = adj > 0 ? (o - e) / adj : 0;
+    }
+    const df = (r - 1) * (c - 1);
+    return { stat, df, p: chiSqP(stat, df), v: Math.sqrt(stat / (N * Math.min(r - 1, c - 1))), residuals, minExpected: minE };
+  }
+  function chiSquareFit(obs, expected) {
+    const N = obs.reduce((s, v) => s + v, 0), E = expected.reduce((s, v) => s + v, 0);
+    if (!N || !E || obs.length < 2) return null;
+    let stat = 0, minE = Infinity;
+    obs.forEach((o, i) => {
+      const e = N * expected[i] / E;
+      minE = Math.min(minE, e);
+      if (e > 0) stat += (o - e) * (o - e) / e;
+    });
+    const df = obs.length - 1;
+    return { stat, df, p: chiSqP(stat, df), minExpected: minE };
+  }
+  function trendTest(k, n, score = k.map((_, i) => i)) {
+    const N = n.reduce((s, v2) => s + v2, 0), K = k.reduce((s, v2) => s + v2, 0);
+    if (!N || !K || K === N) return null;
+    const pBar = K / N;
+    let T = 0, sT = 0, sT2 = 0;
+    for (let i = 0; i < k.length; i++) {
+      const s = score[i], ni = n[i];
+      T += s * (k[i] - ni * pBar);
+      sT += s * ni;
+      sT2 += s * s * ni;
+    }
+    const v = pBar * (1 - pBar) * (sT2 - sT * sT / N);
+    if (!(v > 0)) return null;
+    const z = T / Math.sqrt(v);
+    return { z, p: pNorm2(z) };
+  }
+  function runsTest(seq) {
+    const n1 = seq.filter(Boolean).length, n2 = seq.length - n1;
+    if (n1 < 2 || n2 < 2) return null;
+    let runs = 1;
+    for (let i = 1; i < seq.length; i++) if (seq[i] !== seq[i - 1]) runs++;
+    const n = n1 + n2, mu = 2 * n1 * n2 / n + 1;
+    const v = 2 * n1 * n2 * (2 * n1 * n2 - n) / (n * n * (n - 1));
+    if (!(v > 0)) return null;
+    const z = (runs - mu) / Math.sqrt(v);
+    return { runs, expected: mu, z, p: pNorm2(z) };
+  }
+  function olsSlope(x, y) {
+    const n = x.length;
+    if (n < 3) return null;
+    const mx = x.reduce((s, v) => s + v, 0) / n, my = y.reduce((s, v) => s + v, 0) / n;
+    let sxx = 0, sxy = 0, syy = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = x[i] - mx, dy = y[i] - my;
+      sxx += dx * dx;
+      sxy += dx * dy;
+      syy += dy * dy;
+    }
+    if (!(sxx > 0)) return null;
+    const slope = sxy / sxx, intercept = my - slope * mx;
+    const sse = Math.max(0, syy - slope * sxy), nu = n - 2;
+    const se = Math.sqrt(sse / nu / sxx);
+    const tc = tCrit(0.95, nu);
+    const t = se > 0 ? slope / se : Infinity;
+    return { slope, intercept, lo: slope - tc * se, hi: slope + tc * se, p: se > 0 ? 2 * (1 - tCdf(Math.abs(t), nu)) : 0, r2: syy > 0 ? slope * sxy / syy : 1 };
+  }
+  function bhAdjust(ps) {
+    const m = ps.length;
+    const idx = ps.map((p, i) => [p, i]).sort((a, b) => a[0] - b[0]);
+    const q = new Array(m);
+    let min = 1;
+    for (let r = m - 1; r >= 0; r--) {
+      const [p, i] = idx[r];
+      min = Math.min(min, p * m / (r + 1));
+      q[i] = Math.min(1, min);
+    }
+    return q;
+  }
+  function solve(A, b) {
+    const n = b.length;
+    const M = A.map((r, i) => r.slice().concat([b[i]]));
+    for (let c = 0; c < n; c++) {
+      let piv = c;
+      for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+      if (Math.abs(M[piv][c]) < 1e-12) return null;
+      [M[c], M[piv]] = [M[piv], M[c]];
+      const row = M[c];
+      for (let r = 0; r < n; r++) {
+        if (r === c) continue;
+        const f = M[r][c] / row[c];
+        if (!f) continue;
+        const rr = M[r];
+        for (let k = c; k <= n; k++) rr[k] = rr[k] - f * row[k];
+      }
+    }
+    return M.map((r, i) => r[n] / r[i]);
+  }
+  function invert(A) {
+    const n = A.length, cols = [];
+    for (let j = 0; j < n; j++) {
+      const e = Array.from({ length: n }, (_, i) => i === j ? 1 : 0);
+      const col = solve(A, e);
+      if (!col) return null;
+      cols.push(col);
+    }
+    return Array.from({ length: n }, (_, i) => cols.map((c) => c[i]));
+  }
+  var sigmoid = (z) => z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z));
+  function fitLogit(X, y, lambda = 1, w = y.map(() => 1)) {
+    const n = X.length, p = (X[0] || []).length;
+    if (!n || !p) return null;
+    let beta = new Array(p).fill(0);
+    let converged = false, it = 0;
+    for (; it < 50; it++) {
+      const g = new Array(p).fill(0);
+      const H2 = Array.from({ length: p }, () => new Array(p).fill(0));
+      for (let i = 0; i < n; i++) {
+        const xi = X[i];
+        let z = 0;
+        for (let j = 0; j < p; j++) z += xi[j] * beta[j];
+        const mu = sigmoid(z), wi = w[i], r = wi * (y[i] - mu), v = wi * mu * (1 - mu);
+        for (let j = 0; j < p; j++) {
+          g[j] = g[j] + r * xi[j];
+          const Hj = H2[j];
+          for (let k = j; k < p; k++) Hj[k] = Hj[k] + v * xi[j] * xi[k];
+        }
+      }
+      for (let j = 0; j < p; j++) {
+        for (let k = 0; k < j; k++) H2[j][k] = H2[k][j];
+        if (j > 0) {
+          g[j] = g[j] - lambda * beta[j];
+          H2[j][j] = H2[j][j] + lambda;
+        }
+      }
+      const step = solve(H2, g);
+      if (!step) return null;
+      beta = beta.map((b, j) => b + step[j]);
+      if (Math.max(...step.map(Math.abs)) < 1e-8) {
+        converged = true;
+        it++;
+        break;
+      }
+    }
+    const H = Array.from({ length: p }, () => new Array(p).fill(0));
+    let ll = 0;
+    for (let i = 0; i < n; i++) {
+      const xi = X[i];
+      let z = 0;
+      for (let j = 0; j < p; j++) z += xi[j] * beta[j];
+      const mu = sigmoid(z), wi = w[i];
+      ll += wi * (y[i] ? Math.log(Math.max(mu, 1e-12)) : Math.log(Math.max(1 - mu, 1e-12)));
+      for (let j = 0; j < p; j++) for (let k = 0; k < p; k++) H[j][k] = H[j][k] + wi * mu * (1 - mu) * xi[j] * xi[k];
+    }
+    for (let j = 1; j < p; j++) H[j][j] = H[j][j] + lambda;
+    const cov = invert(H);
+    const se = cov ? cov.map((r, i) => Math.sqrt(Math.max(0, r[i]))) : new Array(p).fill(NaN);
+    return { coef: beta, se, iterations: it, converged, logLik: ll };
+  }
+  var predictLogit = (beta, x) => sigmoid(x.reduce((s, v, j) => s + v * beta[j], 0));
+
+  // src/insights/patterns.ts
+  var PATTERNS_VERSION = 1;
+  var SECS = ["en", "gk", "le", "lr", "qt"];
+  var SEC_NAME = { en: "English", gk: "CA/GK", le: "Legal", lr: "Logical", qt: "Quants" };
+  var LETTERS5 = ["A", "B", "C", "D"];
+  var PATTERN_MIN = {
+    group: 20,
+    // questions in the smaller side of a comparison
+    wrong: 15,
+    // wrong answers, for anything about wrong answers
+    tagged: 10,
+    // guesses, for anything about guesses
+    pairs: 2,
+    // untimed/timed pairs of the same paper
+    model: { rows: 250, wrong: 40, attempts: 3 },
+    telemetry: 60
+    // questions recorded with the pen
+  };
+  var PATTERN_FDR = 0.05;
+  function guessKindOf(tag, meaning) {
+    const m = (meaning || "").toLowerCase(), t = (tag || "").trim().toUpperCase();
+    if (/invalid|wrong key|withdrawn|error in/.test(m)) return null;
+    if (/educated|calculated|reasoned/.test(m) || t === "EG") return "educated";
+    if (/complete|random|pure|blind|normal/.test(m) || t === "RG") return "random";
+    if (/circled only|no word read|ringed the number, with no/.test(m) || t === "CIRCLED") return "circled";
+    if (/guess|circle/.test(m)) return "guess";
+    if (!m && /^(C?G|EG|RG)$/.test(t)) return "guess";
+    return null;
+  }
+  var KIND_NAME = { educated: "educated guesses", random: "random guesses", circled: "circled-only guesses", guess: "guesses of an unnamed kind" };
+  function secOf(a, q) {
+    for (const k of SECS) {
+      const r = a.sec && a.sec[k] && a.sec[k].q;
+      if (r && q >= r[0] && q <= r[1]) return k;
+    }
+    return null;
+  }
+  function rowsOf(attempts, pen = {}) {
+    const out = [];
+    for (const a of attempts) {
+      if (!a.log || !a.log.out) continue;
+      const L = a.log.out.length;
+      const secs = Array.from({ length: L }, (_, i) => secOf(a, i + 1));
+      const order = (a.order || []).filter((k) => SECS.indexOf(k) >= 0);
+      const rank = /* @__PURE__ */ new Map();
+      if (order.length) {
+        let r = 0;
+        for (const k of order) for (let i = 0; i < L; i++) if (secs[i] === k) rank.set(i, r++);
+        for (let i = 0; i < L; i++) if (!rank.has(i)) rank.set(i, r++);
+      } else for (let i = 0; i < L; i++) rank.set(i, i);
+      const bySec = /* @__PURE__ */ new Map();
+      secs.forEach((k, i) => {
+        if (k) {
+          const l = bySec.get(k) || [];
+          l.push(i);
+          bySec.set(k, l);
+        }
+      });
+      const penRows = a.telemetrySessionId && pen[a.telemetrySessionId] || null;
+      for (let i = 0; i < L; i++) {
+        const o = a.log.out[i];
+        const outcome = o === "c" || o === "w" || o === "s" || o === "x" ? o : "s";
+        const k = secs[i];
+        const mates = k ? bySec.get(k) : null;
+        const pk = penRows ? penRows.find((p) => p.position === i + 1) : null;
+        const tags = a.log.tags || {};
+        const tg = tags[String(i + 1)];
+        const meaning = tg ? String((a.tagMeanings || {})[tg] || "") : "";
+        const penKind = pk && pk.guessKind ? pk.guessKind === "unknown" ? "circled" : pk.guessKind : null;
+        out.push({
+          attempt: a.id,
+          short: a.short || a.paper,
+          position: i + 1,
+          n: i + 1,
+          section: k,
+          progress: L > 1 ? rank.get(i) / (L - 1) : 0,
+          inSection: mates && mates.length > 1 ? mates.indexOf(i) / (mates.length - 1) : 0,
+          outcome,
+          picked: /^[A-D]$/.test(a.log.ans[i] || "") ? a.log.ans[i] : null,
+          key: /^[A-D]$/.test(a.log.key[i] || "") ? a.log.key[i] : null,
+          tag: tg ? String(tg) : null,
+          guess: penKind || (tg ? guessKindOf(String(tg), meaning) : null),
+          pen: pk ? {
+            timeSec: pk.totalActiveTimeMs / 1e3,
+            visits: pk.visitCount,
+            revisits: pk.revisitCount,
+            passageSec: pk.passageLookupTimeMs / 1e3,
+            eliminated: (pk.eliminatedOptions || []).length,
+            finalTwo: !!(pk.finalTwoOptions && pk.finalTwoOptions.length === 2),
+            changes: pk.answerChangeCount,
+            changeType: pk.changeType
+          } : null
+        });
+      }
+    }
+    return out;
+  }
+  var pct = (v, d = 0) => v == null ? "\u2014" : (v * 100).toFixed(d) + "%";
+  var pp = (v) => (v >= 0 ? "+" : "\u2212") + Math.abs(v * 100).toFixed(1) + " points";
+  var attemptedRows = (rows) => rows.filter((r) => r.outcome === "c" || r.outcome === "w");
+  var nRight = (rows) => rows.filter((r) => r.outcome === "c").length;
+  function mantelHaenszel(strata) {
+    let num4 = 0, den = 0, sumA = 0, sumE = 0, sumV = 0, rgb = 0, rgbS = 0, sPS = 0, sR = 0, sS = 0;
+    for (const [a, b, c, d] of strata) {
+      const n = a + b + c + d;
+      if (n < 2) continue;
+      const R = a * d / n, S = b * c / n, P = (a + d) / n, Q = (b + c) / n;
+      num4 += R;
+      den += S;
+      const r1 = a + b, c1 = a + c;
+      sumA += a;
+      sumE += r1 * c1 / n;
+      sumV += r1 * (n - r1) * c1 * (n - c1) / (n * n * (n - 1));
+      rgb += P * R;
+      rgbS += P * S + Q * R;
+      sPS += Q * S;
+      sR += R;
+      sS += S;
+    }
+    if (!(num4 > 0) || !(den > 0) || !(sumV > 0)) return null;
+    const or = num4 / den;
+    const v = rgb / (2 * sR * sR) + rgbS / (2 * sR * sS) + sPS / (2 * sS * sS);
+    const se = Math.sqrt(v);
+    const z = (Math.abs(sumA - sumE) - 0.5) / Math.sqrt(sumV);
+    return { or, lo: Math.exp(Math.log(or) - 1.96 * se), hi: Math.exp(Math.log(or) + 1.96 * se), p: Math.min(1, 2 * (1 - normCdf(Math.max(0, z)))) };
+  }
+  function analysePatterns(attempts, pen = {}) {
+    const rows = rowsOf(attempts, pen);
+    const att = attemptedRows(rows);
+    const cands = [];
+    const examined = [];
+    const add = (f) => {
+      cands.push({ f });
+    };
+    const skip = (id, question, detail) => {
+      examined.push({ id, question, outcome: "not-enough-data", detail });
+    };
+    {
+      const counts = { en: { C: 0, W: 0 }, gk: { C: 0, W: 0 }, le: { C: 0, W: 0 }, lr: { C: 0, W: 0 }, qt: { C: 0, W: 0 } };
+      let used = 0;
+      for (const a of attempts) if (a.secMode === "counts" && a.sec) {
+        used++;
+        for (const k of SECS) {
+          const s = a.sec[k];
+          if (s) {
+            counts[k].C += s.C;
+            counts[k].W += s.W;
+          }
+        }
+      }
+      for (const k of SECS) {
+        const inN = counts[k].C + counts[k].W;
+        const restC = SECS.filter((x) => x !== k).reduce((s, x) => s + counts[x].C, 0);
+        const restN = SECS.filter((x) => x !== k).reduce((s, x) => s + counts[x].C + counts[x].W, 0);
+        const q2 = "Is " + SEC_NAME[k] + " reliably different from your other sections?";
+        if (Math.min(inN, restN) < PATTERN_MIN.group) {
+          skip("section-" + k, q2, inN + " attempted " + SEC_NAME[k] + " questions; " + PATTERN_MIN.group + " are needed.");
+          continue;
+        }
+        const t = twoProp(counts[k].C, inN, restC, restN);
+        if (!t) continue;
+        const me = wilson(counts[k].C, inN), rest = wilson(restC, restN);
+        add({
+          id: "section-" + k,
+          tone: t.diff > 0 ? "strength" : "weakness",
+          title: "Your " + SEC_NAME[k] + " accuracy is " + pct(me.est) + ", " + (t.diff > 0 ? "above" : "below") + " the " + pct(rest.est) + " of your other sections.",
+          detail: counts[k].C + " right of " + inN + " attempted in " + SEC_NAME[k] + ", across " + used + " attempts with section counts.",
+          effect: { label: "difference", value: t.diff, lo: t.lo, hi: t.hi, unit: "pp" },
+          bars: [{ label: SEC_NAME[k], value: me.est, lo: me.lo, hi: me.hi, n: inN }, { label: "Other sections", value: rest.est, lo: rest.lo, hi: rest.hi, n: restN }],
+          n: inN + restN,
+          p: t.p,
+          method: t.method + ", " + SEC_NAME[k] + " against all other sections pooled"
+        });
+      }
+    }
+    {
+      const q2 = "Does your accuracy fall as the paper goes on, once the section is allowed for?";
+      const withOrder = new Set(attempts.filter((a) => a.log && a.order && a.order.length).map((a) => a.id));
+      const use = att.filter((r) => r.section);
+      if (use.length < PATTERN_MIN.model.rows / 2 || use.filter((r) => r.outcome === "w").length < PATTERN_MIN.wrong) skip("fatigue", q2, use.length + " attempted questions with a section; " + PATTERN_MIN.model.rows / 2 + " are needed.");
+      else {
+        const X = use.map((r) => [1, ...SECS.slice(1).map((k) => r.section === k ? 1 : 0), r.progress]);
+        const y = use.map((r) => r.outcome === "w" ? 1 : 0);
+        const fit = fitLogit(X, y, 0.01);
+        if (fit && fit.converged) {
+          const j = X[0].length - 1, b = fit.coef[j], se = fit.se[j];
+          const or = Math.exp(b), p = pNorm2(b / se);
+          add({
+            id: "fatigue",
+            tone: b > 0 ? "weakness" : "strength",
+            title: b > 0 ? "The later a question comes in the paper, the likelier you are to get it wrong \u2014 even comparing like with like section." : "You get more accurate as the paper goes on, even comparing like with like section.",
+            detail: "From the first question you reach to the last, the odds of a wrong answer multiply by " + or.toFixed(2) + ", with the section held fixed" + (withOrder.size ? '; "reach" follows the order you sat the sections in.' : "."),
+            effect: { label: "odds of a wrong answer, first question to last", value: or, lo: Math.exp(b - 1.96 * se), hi: Math.exp(b + 1.96 * se), unit: "ratio" },
+            n: use.length,
+            p,
+            method: "logistic regression of wrong vs right on progress through the paper, with section as a fixed effect"
+          });
+        }
+      }
+    }
+    {
+      const q2 = "Are you less accurate at the end of a section than at its start?";
+      const first = att.filter((r) => r.section && r.inSection <= 1 / 3), last = att.filter((r) => r.section && r.inSection >= 2 / 3);
+      if (Math.min(first.length, last.length) < PATTERN_MIN.group) skip("section-end", q2, "Too few questions at either end of a section.");
+      else {
+        const t = twoProp(nRight(last), last.length, nRight(first), first.length);
+        if (t) {
+          const a = wilson(nRight(first), first.length), z = wilson(nRight(last), last.length);
+          add({
+            id: "section-end",
+            tone: t.diff < 0 ? "weakness" : "neutral",
+            title: "In the last third of a section you are right " + pct(z.est) + " of the time, against " + pct(a.est) + " in its first third.",
+            detail: "Every section of every attempt with a question log, split into thirds by position.",
+            effect: { label: "last third minus first third", value: t.diff, lo: t.lo, hi: t.hi, unit: "pp" },
+            bars: [{ label: "First third", value: a.est, lo: a.lo, hi: a.hi, n: first.length }, { label: "Last third", value: z.est, lo: z.lo, hi: z.hi, n: last.length }],
+            n: first.length + last.length,
+            p: t.p,
+            method: t.method
+          });
+        }
+      }
+    }
+    {
+      const q2 = "Does a wrong answer make the next one more likely?";
+      let afterW = 0, afterWw = 0, afterC = 0, afterCw = 0;
+      const zs = [];
+      const byAttempt = /* @__PURE__ */ new Map();
+      for (const r of att) {
+        const l = byAttempt.get(r.attempt) || [];
+        l.push(r);
+        byAttempt.set(r.attempt, l);
+      }
+      for (const list of byAttempt.values()) {
+        const seq = list.slice().sort((a, b) => a.progress - b.progress);
+        for (let i = 1; i < seq.length; i++) {
+          const prevW = seq[i - 1].outcome === "w", nowW = seq[i].outcome === "w";
+          if (prevW) {
+            afterW++;
+            if (nowW) afterWw++;
+          } else {
+            afterC++;
+            if (nowW) afterCw++;
+          }
+        }
+        const rt = runsTest(seq.map((r) => r.outcome === "w"));
+        if (rt) zs.push(rt.z);
+      }
+      if (afterW < PATTERN_MIN.wrong) skip("streaks", q2, afterW + " wrong answers followed by another question; " + PATTERN_MIN.wrong + " are needed.");
+      else {
+        const t = twoProp(afterWw, afterW, afterCw, afterC);
+        if (t) {
+          const a = wilson(afterWw, afterW), b = wilson(afterCw, afterC);
+          const stouffer = zs.length ? zs.reduce((s, v) => s + v, 0) / Math.sqrt(zs.length) : 0;
+          add({
+            id: "streaks",
+            tone: t.diff > 0 ? "weakness" : "neutral",
+            title: "After a wrong answer, the next is wrong " + pct(a.est) + " of the time; after a right one, " + pct(b.est) + ".",
+            detail: "Consecutive attempted questions, in the order the paper was sat. Runs test across attempts: z = " + stouffer.toFixed(2) + (stouffer < 0 ? " (wrong answers bunch together)" : "") + ".",
+            effect: { label: "after wrong minus after right", value: t.diff, lo: t.lo, hi: t.hi, unit: "pp" },
+            bars: [{ label: "After a right answer", value: b.est, lo: b.lo, hi: b.hi, n: afterC }, { label: "After a wrong answer", value: a.est, lo: a.lo, hi: a.hi, n: afterW }],
+            n: afterW + afterC,
+            p: t.p,
+            method: t.method + " on consecutive pairs; runs test for clustering"
+          });
+        }
+      }
+    }
+    {
+      const q2 = "Is your accuracy different depending on which letter you pick?";
+      const table = LETTERS5.map((L) => {
+        const pk = att.filter((r) => r.picked === L);
+        return [nRight(pk), pk.length - nRight(pk)];
+      });
+      const T = [table.map((r) => r[0]), table.map((r) => r[1])];
+      const cs = chiSquare(T);
+      if (!cs || cs.minExpected < 5) skip("letter-accuracy", q2, "Too few picks of some letter to compare.");
+      else {
+        const res = LETTERS5.map((L, j) => ({ L, r: cs.residuals[1][j] }));
+        const worst = res.slice().sort((a, b) => b.r - a.r)[0];
+        const pk = att.filter((r) => r.picked === worst.L), rest = att.filter((r) => r.picked && r.picked !== worst.L);
+        const w = wilson(nRight(pk), pk.length), o = wilson(nRight(rest), rest.length);
+        const t = twoProp(nRight(pk), pk.length, nRight(rest), rest.length);
+        add({
+          id: "letter-accuracy",
+          tone: "habit",
+          title: "When you pick " + worst.L + " you are right " + pct(w.est) + " of the time, against " + pct(o.est) + " for the other letters.",
+          detail: "Every attempted question with a key, by the letter you marked. Cram\xE9r\u2019s V = " + cs.v.toFixed(2) + ".",
+          effect: { label: worst.L + " minus the rest", value: t ? t.diff : 0, lo: t ? t.lo : null, hi: t ? t.hi : null, unit: "pp" },
+          bars: LETTERS5.map((L, j) => {
+            const k = T[0][j], n = k + T[1][j];
+            const i = wilson(k, n);
+            return { label: L, value: i.est, lo: i.lo, hi: i.hi, n };
+          }),
+          n: att.length,
+          p: cs.p,
+          method: "chi-square test of right/wrong against the letter picked (" + cs.df + " df)"
+        });
+      }
+    }
+    {
+      const q2 = "Do you pick one letter more often than the answer key uses it?";
+      const withKey = att.filter((r) => r.picked && r.key);
+      const obs = LETTERS5.map((L) => withKey.filter((r) => r.picked === L).length);
+      const exp = LETTERS5.map((L) => withKey.filter((r) => r.key === L).length);
+      const g = chiSquareFit(obs, exp);
+      if (!g || g.minExpected < 5) skip("letter-bias", q2, "Too few attempted questions to compare.");
+      else {
+        const N = withKey.length;
+        const dev = LETTERS5.map((L, j2) => ({ L, d: (obs[j2] - exp[j2]) / N }));
+        const top = dev.slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d))[0];
+        const j = LETTERS5.indexOf(top.L);
+        add({
+          id: "letter-bias",
+          tone: "habit",
+          title: "You pick " + top.L + " for " + pct(obs[j] / N) + " of your answers; the key uses it for " + pct(exp[j] / N) + ".",
+          detail: "Letters you marked against the letters the key holds, on the same " + N + " attempted questions.",
+          effect: { label: top.L + " picked minus in key", value: top.d, lo: null, hi: null, unit: "pp" },
+          bars: LETTERS5.map((L, i) => ({ label: L + " (you / key)", value: obs[i] / N, lo: exp[i] / N, hi: exp[i] / N, n: obs[i] })),
+          n: N,
+          p: g.p,
+          method: "chi-square goodness of fit, your picks against the key\u2019s letters (" + g.df + " df)"
+        });
+      }
+    }
+    {
+      const guessed = att.filter((r) => r.guess);
+      const q2 = "Are your marked guesses worth making at \u22120.25 a wrong answer?";
+      const ev = (p) => 1.25 * p - 0.25;
+      if (guessed.length < PATTERN_MIN.tagged) skip("guesses", q2, guessed.length + " marked guesses; " + PATTERN_MIN.tagged + " are needed.");
+      else {
+        for (const kind of [null, "educated", "random", "circled"]) {
+          const g = kind ? guessed.filter((r) => r.guess === kind) : guessed;
+          const label = kind ? KIND_NAME[kind] : "marked guesses";
+          if (g.length < PATTERN_MIN.tagged) {
+            if (kind && g.length) skip("guess-" + kind, "Are your " + label + " worth making?", g.length + " of them; " + PATTERN_MIN.tagged + " are needed.");
+            continue;
+          }
+          const k = nRight(g), w = wilson(k, g.length);
+          const z = (k / g.length - 0.2) / Math.sqrt(0.2 * 0.8 / g.length);
+          add({
+            id: "guess-" + (kind || "all"),
+            tone: ev(w.est) > 0 ? "strength" : "weakness",
+            title: "Your " + label + " are right " + pct(w.est) + " of the time \u2014 each is worth " + (ev(w.est) >= 0 ? "+" : "") + ev(w.est).toFixed(2) + " marks on average.",
+            detail: "A guess breaks even at 20% right under +1 / \u22120.25. " + k + " right of " + g.length + ", across " + new Set(g.map((r) => r.attempt)).size + " attempts; labels are read by what you said they mean.",
+            effect: { label: "marks per guess", value: ev(w.est), lo: ev(w.lo), hi: ev(w.hi), unit: "marks" },
+            bars: [{ label: "Right when guessing", value: w.est, lo: w.lo, hi: w.hi, n: g.length }, { label: "Break-even", value: 0.2, lo: 0.2, hi: 0.2, n: 0 }],
+            n: g.length,
+            p: 2 * (1 - normCdf(Math.abs(z))),
+            method: "one-sample test of the proportion right against the 20% break-even"
+          });
+        }
+        const ed = guessed.filter((r) => r.guess === "educated"), rd = guessed.filter((r) => r.guess === "random");
+        if (Math.min(ed.length, rd.length) >= PATTERN_MIN.tagged) {
+          const t = twoProp(nRight(ed), ed.length, nRight(rd), rd.length);
+          if (t) {
+            const a = wilson(nRight(ed), ed.length), b = wilson(nRight(rd), rd.length);
+            add({
+              id: "guess-kinds",
+              tone: t.diff > 0 ? "strength" : "habit",
+              title: "Guesses you call educated are right " + pct(a.est) + " of the time; ones you call random, " + pct(b.est) + ".",
+              detail: "If these are close, the label is not telling you how sure you really are.",
+              effect: { label: "educated minus random", value: t.diff, lo: t.lo, hi: t.hi, unit: "pp" },
+              bars: [{ label: "Educated", value: a.est, lo: a.lo, hi: a.hi, n: ed.length }, { label: "Random", value: b.est, lo: b.lo, hi: b.hi, n: rd.length }],
+              n: ed.length + rd.length,
+              p: t.p,
+              method: t.method
+            });
+          }
+        } else skip(
+          "guess-kinds",
+          "Are the guesses you call educated really more often right than the ones you call random?",
+          ed.length + " educated and " + rd.length + " random guesses; " + PATTERN_MIN.tagged + " of each are needed."
+        );
+        const marking = new Set(guessed.map((r) => r.attempt));
+        const un = att.filter((r) => !r.guess && marking.has(r.attempt));
+        if (un.length >= PATTERN_MIN.group) {
+          const t = twoProp(nRight(guessed), guessed.length, nRight(un), un.length);
+          if (t) {
+            const a = wilson(nRight(guessed), guessed.length), b = wilson(nRight(un), un.length);
+            add({
+              id: "guess-vs-sure",
+              tone: "neutral",
+              title: "The questions you mark as guesses are right " + pct(a.est) + " of the time; the ones you do not mark, " + pct(b.est) + ".",
+              detail: "Only attempts in which you marked guesses. A wide gap means your marks do tell you which answers to trust.",
+              effect: { label: "marked minus unmarked", value: t.diff, lo: t.lo, hi: t.hi, unit: "pp" },
+              bars: [{ label: "Marked as a guess", value: a.est, lo: a.lo, hi: a.hi, n: guessed.length }, { label: "Not marked", value: b.est, lo: b.lo, hi: b.hi, n: un.length }],
+              n: guessed.length + un.length,
+              p: t.p,
+              method: t.method
+            });
+          }
+        }
+      }
+    }
+    {
+      const q2 = "Do your blanks fall in one part of the paper?";
+      const scor = rows.filter((r) => r.outcome !== "x" && r.section);
+      const blanks = scor.filter((r) => r.outcome === "s");
+      if (blanks.length < 8) skip("blanks", q2, blanks.length + " blanks; 8 are needed.");
+      else {
+        const bins = [0, 1, 2, 3, 4].map((b) => scor.filter((r) => Math.min(4, Math.floor(r.progress * 5)) === b));
+        const tt = trendTest(bins.map((b) => b.filter((r) => r.outcome === "s").length), bins.map((b) => b.length));
+        const late = scor.filter((r) => r.progress >= 0.8);
+        const share = late.length ? late.filter((r) => r.outcome === "s").length / blanks.length : 0;
+        if (tt) add({
+          id: "blanks",
+          tone: tt.z > 0 ? "weakness" : "neutral",
+          title: pct(share) + " of your blanks are in the last fifth of the paper you reach.",
+          detail: blanks.length + " blanks across " + new Set(blanks.map((r) => r.attempt)).size + " attempts, by how far into the paper you were.",
+          effect: { label: "trend in blanks through the paper", value: tt.z, lo: null, hi: null, unit: "z" },
+          bars: bins.map((b, i) => {
+            const k = b.filter((r) => r.outcome === "s").length, w = wilson(k, b.length);
+            return { label: ["1st", "2nd", "3rd", "4th", "5th"][i] + " fifth", value: w.est, lo: w.lo, hi: w.hi, n: b.length };
+          }),
+          n: scor.length,
+          p: tt.p,
+          method: "Cochran\u2013Armitage trend test on the blank rate across fifths of the paper"
+        });
+      }
+    }
+    {
+      const q2 = "What does the clock cost you, on papers you sat both untimed and timed?";
+      const key = (a) => String(a.paper).toLowerCase().replace(/\s+/g, " ").trim();
+      const pairs = [];
+      for (const u of attempts.filter((a) => a.cohort === "pyq_u")) {
+        const t = attempts.find((a) => a.cohort === "pyq_t" && key(a) === key(u));
+        if (t && u.C != null && u.W != null && t.C != null && t.W != null) pairs.push({ paper: u.paper, u, t });
+      }
+      if (pairs.length < PATTERN_MIN.pairs) skip("clock", q2, pairs.length + " papers sat both ways; " + PATTERN_MIN.pairs + " are needed.");
+      else {
+        const strata = pairs.map((p) => [p.t.C, p.t.W, p.u.C, p.u.W]);
+        const mh = mantelHaenszel(strata);
+        const tc = pairs.reduce((s, p) => s + p.t.C, 0), tn = pairs.reduce((s, p) => s + p.t.C + p.t.W, 0);
+        const uc = pairs.reduce((s, p) => s + p.u.C, 0), un = pairs.reduce((s, p) => s + p.u.C + p.u.W, 0);
+        const a = wilson(tc, tn), b = wilson(uc, un);
+        const ua = pairs.reduce((s, p) => s + p.u.C + p.u.W, 0) / pairs.length, ta = pairs.reduce((s, p) => s + p.t.C + p.t.W, 0) / pairs.length;
+        if (mh) add({
+          id: "clock",
+          tone: mh.or < 1 ? "weakness" : "strength",
+          title: "Timed, you are right " + pct(a.est) + " of the time on papers you were right on " + pct(b.est) + " untimed \u2014 and you attempt " + ta.toFixed(0) + " questions against " + ua.toFixed(0) + ".",
+          detail: "The same " + pairs.length + " papers sat both ways: " + pairs.map((p) => p.paper).join(", ") + ". Paper by paper, so a harder paper does not count as a slower clock.",
+          effect: { label: "odds of a right answer, timed against untimed", value: mh.or, lo: mh.lo, hi: mh.hi, unit: "ratio" },
+          bars: [{ label: "Untimed", value: b.est, lo: b.lo, hi: b.hi, n: un }, { label: "Timed", value: a.est, lo: a.lo, hi: a.hi, n: tn }],
+          n: tn + un,
+          p: mh.p,
+          method: "Mantel\u2013Haenszel test across papers (each paper its own stratum)"
+        });
+      }
+    }
+    {
+      const q2 = "Does your accuracy change across the half-hours of a timed paper?";
+      const withIv = attempts.filter((a) => a.intervals && a.intervals.length >= 3);
+      if (withIv.length < 2) skip("pace", q2, withIv.length + " attempts record their half-hours; 2 are needed.");
+      else {
+        const B = Math.max(...withIv.map((a) => a.intervals.length));
+        const k = Array.from({ length: B }, (_, i) => withIv.reduce((s, a) => s + ((a.intervals[i] || [])[1] || 0), 0));
+        const n = Array.from({ length: B }, (_, i) => withIv.reduce((s, a) => s + ((a.intervals[i] || [])[0] || 0), 0));
+        const tt = trendTest(k, n);
+        if (tt) {
+          const f = wilson(k[0], n[0]), l = wilson(k[B - 1], n[B - 1]);
+          add({
+            id: "pace",
+            tone: tt.z < 0 ? "weakness" : "neutral",
+            title: "In the first half-hour you are right " + pct(f.est) + " of the time; in the last, " + pct(l.est) + ".",
+            detail: "Pooled over " + withIv.length + " timed attempts that record their half-hours. You attempt " + n[0] + " questions in the first and " + n[B - 1] + " in the last.",
+            effect: { label: "trend in accuracy through the half-hours", value: tt.z, lo: null, hi: null, unit: "z" },
+            bars: n.map((nn, i) => {
+              const w = wilson(k[i], nn);
+              return { label: i * 30 + "\u2013" + (i + 1) * 30 + " min", value: w.est, lo: w.lo, hi: w.hi, n: nn };
+            }),
+            n: n.reduce((s, v) => s + v, 0),
+            p: tt.p,
+            method: "Cochran\u2013Armitage trend test across the half-hour blocks"
+          });
+        }
+      }
+    }
+    for (const cohort of ["mock_t", "pyq_t"]) {
+      const list = attempts.filter((a) => a.cohort === cohort && a.date && a.M).sort((x2, y2) => String(x2.date).localeCompare(String(y2.date)));
+      const name = cohort === "mock_t" ? "timed mocks" : "timed past papers";
+      const q2 = "Is your score on " + name + " going up over time?";
+      if (list.length < 4) {
+        skip("trend-" + cohort, q2, list.length + " dated " + name + "; 4 are needed before a slope means anything.");
+        continue;
+      }
+      const t0 = Date.parse(String(list[0].date));
+      const x = list.map((a) => (Date.parse(String(a.date)) - t0) / (7 * 864e5));
+      const y = list.map((a) => (a.C - 0.25 * a.W) / a.M);
+      const o = olsSlope(x, y);
+      if (o) add({
+        id: "trend-" + cohort,
+        tone: o.slope > 0 ? "strength" : "weakness",
+        title: "On " + name + " your score moves " + pp(o.slope) + " of the paper a week.",
+        detail: list.length + " " + name + " from " + list[0].date + " to " + list[list.length - 1].date + "; R\xB2 = " + o.r2.toFixed(2) + ".",
+        effect: { label: "change per week, share of the paper", value: o.slope, lo: o.lo, hi: o.hi, unit: "pp" },
+        n: list.length,
+        p: o.p,
+        method: "least-squares slope of score (as a share of the paper) on weeks, with a t interval"
+      });
+    }
+    {
+      const penRows = att.filter((r) => r.pen);
+      if (penRows.length < PATTERN_MIN.telemetry) {
+        skip(
+          "pen",
+          "What do time, returns, eliminations and answer changes say about getting a question right?",
+          penRows.length + " questions recorded with the pen; " + PATTERN_MIN.telemetry + " are needed. One full mock recorded in NeoBook is about 110."
+        );
+      } else {
+        const byMedian = (val, id, label, title, method) => {
+          const vals = penRows.map(val).slice().sort((a2, b2) => a2 - b2);
+          const med = vals[vals.length >> 1];
+          const lo = penRows.filter((r) => val(r) <= med), hi = penRows.filter((r) => val(r) > med);
+          if (Math.min(lo.length, hi.length) < PATTERN_MIN.group) return;
+          const t = twoProp(nRight(hi), hi.length, nRight(lo), lo.length);
+          if (!t) return;
+          const a = wilson(nRight(lo), lo.length), b = wilson(nRight(hi), hi.length);
+          add({
+            id,
+            tone: t.diff < 0 ? "weakness" : "neutral",
+            title: title(a, b),
+            detail: "Split at the median, " + med.toFixed(1) + ".",
+            effect: { label: label[1] + " minus " + label[0], value: t.diff, lo: t.lo, hi: t.hi, unit: "pp" },
+            bars: [{ label: label[0], value: a.est, lo: a.lo, hi: a.hi, n: lo.length }, { label: label[1], value: b.est, lo: b.lo, hi: b.hi, n: hi.length }],
+            n: penRows.length,
+            p: t.p,
+            method
+          });
+        };
+        byMedian(
+          (r) => r.pen.timeSec,
+          "pen-time",
+          ["Quicker than your median", "Slower than your median"],
+          (a, b) => "On the questions you spend longest on you are right " + pct(b.est) + " of the time; on the quicker half, " + pct(a.est) + ".",
+          "two-proportion test, split at your median time on a question"
+        );
+        byMedian(
+          (r) => r.pen.revisits,
+          "pen-revisits",
+          ["Answered in one visit", "Came back to it"],
+          (a, b) => "Questions you came back to are right " + pct(b.est) + " of the time, against " + pct(a.est) + " for ones settled in one visit.",
+          "two-proportion test on revisits"
+        );
+        const ch = penRows.filter((r) => r.pen && (r.pen.changeType === "wrong_to_right" || r.pen.changeType === "right_to_wrong"));
+        if (ch.length >= 10) {
+          const good = ch.filter((r) => r.pen.changeType === "wrong_to_right").length;
+          const w = wilson(good, ch.length);
+          const z = (good / ch.length - 0.5) / Math.sqrt(0.25 / ch.length);
+          add({
+            id: "pen-changes",
+            tone: w.est > 0.5 ? "strength" : "weakness",
+            title: "When you change an answer, " + pct(w.est) + " of the changes turn a wrong answer right.",
+            detail: good + " changes from wrong to right, " + (ch.length - good) + " from right to wrong.",
+            effect: { label: "share of changes that help", value: w.est, lo: w.lo, hi: w.hi, unit: "share" },
+            n: ch.length,
+            p: 2 * (1 - normCdf(Math.abs(z))),
+            method: "sign test against an even split"
+          });
+        } else skip("pen-changes", "Does changing an answer help?", ch.length + " answer changes that altered the result; 10 are needed.");
+        const f2 = penRows.filter((r) => r.pen && r.pen.finalTwo);
+        if (f2.length >= 10) {
+          const k = nRight(f2), w = wilson(k, f2.length), z = (k / f2.length - 0.5) / Math.sqrt(0.25 / f2.length);
+          add({
+            id: "pen-final-two",
+            tone: w.est > 0.5 ? "strength" : "weakness",
+            title: "Down to two options, you choose the right one " + pct(w.est) + " of the time \u2014 a coin would manage 50%.",
+            detail: f2.length + " questions where two options were crossed out before you answered.",
+            effect: { label: "right when down to two", value: w.est, lo: w.lo, hi: w.hi, unit: "share" },
+            n: f2.length,
+            p: 2 * (1 - normCdf(Math.abs(z))),
+            method: "one-sample test against 50%"
+          });
+        } else skip("pen-final-two", "Down to two options, do you beat a coin?", f2.length + " questions narrowed to two; 10 are needed.");
+      }
+    }
+    const q = bhAdjust(cands.map((c) => c.f.p));
+    const findings = [];
+    cands.forEach((c, i) => {
+      const f = Object.assign({}, c.f, { q: q[i] });
+      if (f.q <= PATTERN_FDR) findings.push(f);
+      else examined.push({
+        id: f.id,
+        question: f.title,
+        outcome: "not-significant",
+        detail: "Not a pattern yet: p = " + f.p.toFixed(3) + ", " + f.q.toFixed(2) + " after allowing for the " + cands.length + " things tested. It may be chance."
+      });
+    });
+    findings.sort((a, b) => a.q - b.q);
+    return {
+      version: PATTERNS_VERSION,
+      data: {
+        attempts: attempts.length,
+        logged: attempts.filter((a) => a.log).length,
+        questions: rows.length,
+        attempted: att.length,
+        wrong: att.filter((r) => r.outcome === "w").length,
+        withPen: rows.filter((r) => r.pen).length
+      },
+      findings,
+      examined,
+      tests: cands.length,
+      model: modelOf(att),
+      rows
+    };
+  }
+  var FEATURES = [
+    { name: "CA/GK (against English)", of: (r) => r.section === "gk" ? 1 : 0 },
+    { name: "Legal (against English)", of: (r) => r.section === "le" ? 1 : 0 },
+    { name: "Logical (against English)", of: (r) => r.section === "lr" ? 1 : 0 },
+    { name: "Quants (against English)", of: (r) => r.section === "qt" ? 1 : 0 },
+    { name: "How far into the paper", of: (r) => r.progress },
+    { name: "How far into its section", of: (r) => r.inSection },
+    { name: "Marked as a guess", of: (r) => r.guess ? 1 : 0 },
+    { name: "Picked A", of: (r) => r.picked === "A" ? 1 : 0 },
+    { name: "Picked C", of: (r) => r.picked === "C" ? 1 : 0 },
+    { name: "Picked D", of: (r) => r.picked === "D" ? 1 : 0 },
+    { name: "Minutes on it (log)", of: (r) => r.pen ? Math.log1p(r.pen.timeSec / 60) : 0, pen: true },
+    { name: "Came back to it", of: (r) => r.pen && r.pen.revisits > 0 ? 1 : 0, pen: true },
+    { name: "Options crossed out", of: (r) => r.pen ? r.pen.eliminated : 0, pen: true },
+    { name: "Changed the answer", of: (r) => r.pen && r.pen.changes > 0 ? 1 : 0, pen: true }
+  ];
+  var logLoss = (p, y) => -(y ? Math.log(Math.max(p, 1e-9)) : Math.log(Math.max(1 - p, 1e-9)));
+  function modelOf(att) {
+    const use = att.filter((r) => r.section);
+    const attemptsIn = [...new Set(use.map((r) => r.attempt))];
+    const wrong = use.filter((r) => r.outcome === "w").length;
+    const base = { status: "not-yet", reason: "", rows: use.length, wrong, attempts: attemptsIn.length };
+    const need = PATTERN_MIN.model;
+    if (use.length < need.rows || wrong < need.wrong || attemptsIn.length < need.attempts) {
+      base.reason = "It needs at least " + need.rows + " attempted questions, " + need.wrong + " of them wrong, from " + need.attempts + " attempts; there are " + use.length + ", " + wrong + " and " + attemptsIn.length + ".";
+      return base;
+    }
+    const allPen = use.every((r) => r.pen);
+    const feats = FEATURES.filter((f) => !f.pen || allPen).filter((f) => {
+      const v = use.map(f.of);
+      return Math.max(...v) > Math.min(...v);
+    });
+    const X = (rs) => rs.map((r) => [1, ...feats.map((f) => f.of(r))]);
+    const Y = (rs) => rs.map((r) => r.outcome === "w" ? 1 : 0);
+    const LAMBDA = 2;
+    let mLoss = 0, bLoss = 0, better = 0;
+    for (const held of attemptsIn) {
+      const train = use.filter((r) => r.attempt !== held), test = use.filter((r) => r.attempt === held);
+      const fit2 = fitLogit(X(train), Y(train), LAMBDA);
+      if (!fit2) continue;
+      const rate = (k) => {
+        const s = train.filter((r) => r.section === k);
+        return (s.filter((r) => r.outcome === "w").length + 1) / (s.length + 2);
+      };
+      let mL = 0, bL = 0;
+      const xt = X(test), yt = Y(test);
+      test.forEach((r, i) => {
+        mL += logLoss(predictLogit(fit2.coef, xt[i]), yt[i]);
+        bL += logLoss(rate(r.section), yt[i]);
+      });
+      mLoss += mL;
+      bLoss += bL;
+      if (mL < bL) better++;
+    }
+    const n = use.length;
+    const cv = { modelLogLoss: mLoss / n, baselineLogLoss: bLoss / n, improvement: bLoss ? (bLoss - mLoss) / bLoss : 0, foldsBetter: better, folds: attemptsIn.length };
+    base.cv = cv;
+    if (!(cv.improvement >= 0.02 && better > attemptsIn.length / 2)) {
+      base.reason = "On attempts it had not seen, it predicted " + (cv.improvement >= 0 ? "only " + (cv.improvement * 100).toFixed(1) + "% better than" : (-cv.improvement * 100).toFixed(1) + "% worse than") + ' the plain rule "your accuracy in that section" (better on ' + better + " of " + attemptsIn.length + " attempts). Until it clearly beats that, nothing it says is worth more than the section figures already on screen.";
+      return base;
+    }
+    const fit = fitLogit(X(use), Y(use), LAMBDA);
+    if (!fit) {
+      base.reason = "The model could not be fitted.";
+      return base;
+    }
+    base.status = "earned";
+    base.reason = "On attempts it had not seen, it predicted " + (cv.improvement * 100).toFixed(1) + '% better than "your accuracy in that section", and better on ' + better + " of " + attemptsIn.length + " attempts.";
+    base.terms = feats.map((f, j) => {
+      const b = fit.coef[j + 1], se = fit.se[j + 1];
+      return { feature: f.name, oddsRatio: Math.exp(b), lo: Math.exp(b - 1.96 * se), hi: Math.exp(b + 1.96 * se), p: pNorm2(b / se) };
+    }).sort((a, b) => a.p - b.p);
+    const xs = X(use);
+    const scored2 = use.map((r, i) => ({ r, p: predictLogit(fit.coef, xs[i]) }));
+    base.careless = scored2.filter((s) => s.r.outcome === "w" && s.p < 0.15).sort((a, b) => a.p - b.p).slice(0, 12).map((s) => ({ attempt: s.r.short, n: s.r.n, section: s.r.section ? SEC_NAME[s.r.section] : null, pWrong: Math.round(s.p * 1e3) / 1e3 }));
+    base.lucky = scored2.filter((s) => s.r.outcome === "c" && s.p > 0.6).sort((a, b) => b.p - a.p).slice(0, 12).map((s) => ({ attempt: s.r.short, n: s.r.n, section: s.r.section ? SEC_NAME[s.r.section] : null, pWrong: Math.round(s.p * 1e3) / 1e3 }));
+    return base;
+  }
+
   // src/index.ts
-  var CORE_BUILD = "5eb311b785e6";
+  var CORE_BUILD = "ef1ac8d79988";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -7856,6 +8901,18 @@ function buildAnalysisExport(st, bundles) {
     optionMix: { labels: mix.rows.map(r => r.option), picked: mix.rows.map(r => r.picked), share: mix.rows.map(r => r.share), accuracy: mix.rows.map(r => r.accuracy) },
   };
 
+  /* the pattern engine's findings, and the per-question rows it ran on — a
+     feature matrix another reader can model for itself */
+  let patterns = null;
+  try {
+    if (typeof NBCore !== 'undefined' && NBCore && NBCore.insights) {
+      const pen = {};
+      if (bundles) bundles.forEach((d, id) => { if (d && Array.isArray(d.questions)) pen[id] = d.questions; });
+      const r = NBCore.insights.analysePatterns(attempts.map(a => Object.assign({}, a, { short: a.short || a.paper })), pen);
+      patterns = { note: 'Findings survived Benjamini–Hochberg control at a 5% false-discovery rate across all tests run. "examined" is what was tested and did not hold up, or lacked data. "rows" is one row per question, the matrix every test and the model used.',
+        data: r.data, tests: r.tests, findings: r.findings, examined: r.examined, model: r.model, rows: r.rows };
+    }
+  } catch (e) { patterns = { error: String(e && e.message || e) }; }
   return {
     file: {
       kind: 'clat-ug-dashboard-analysis', version: EXPORT_VERSION, generatedAt: now.toISOString(),
@@ -7884,6 +8941,7 @@ function buildAnalysisExport(st, bundles) {
     practice: practice.map(p => ({ date: p.date || null, section: p.sec || p.section || null, topic: p.topic || null,
       questions: p.n != null ? p.n : null, correct: p.C != null ? p.C : null, wrong: p.W != null ? p.W : null,
       blank: p.S != null ? p.S : null, timeSec: p.timeSec != null ? p.timeSec : null, source: p.telemetrySessionId ? 'neobook' : 'entered' })),
+    patterns,
   };
 }
 
@@ -8094,6 +9152,107 @@ function reviewCard(L) {
 }
 
 /* ────────────── Timing & topics ────────────── */
+/* ═══════════════════════════ Patterns ═══════════════════════════
+   What the attempts show that a glance does not, from NBCore.insights. Every
+   finding here has a test behind it and survived false-discovery control across
+   everything that was tested; what did not survive is listed below it, with the
+   reason, so an empty page still says what was looked for. */
+const PT = { sig: '', result: null };
+function penByAttempt() {
+  const out = {};
+  if (NB && NB.bundles) NB.bundles.forEach((d, id) => { if (d && Array.isArray(d.questions)) out[id] = d.questions; });
+  return out;
+}
+function patternsNow() {
+  const ins = typeof NBCore !== 'undefined' && NBCore && NBCore.insights;
+  if (!ins) return null;
+  const sig = state.attempts.map(a => a.id + ':' + (a.log ? a.log.out.length : 0) + ':' + (a.telemetrySessionId || '')).join('|') + '#' + (NB ? NB.sig : '');
+  if (PT.sig !== sig || !PT.result) {
+    PT.result = ins.analysePatterns(state.attempts.map(a => Object.assign({}, a, { short: a.short || a.paper })), penByAttempt());
+    PT.sig = sig;
+  }
+  return PT.result;
+}
+const PT_TONE = { strength: ['good', 'Strength'], weakness: ['bad', 'Weakness'], habit: ['warn', 'Habit'], neutral: ['', 'Pattern'] };
+function ptEffect(e) {
+  const r = v => (v == null ? '—' : v);
+  if (e.unit === 'pp') return `${signed(e.value * 100, 1)} points` + (e.lo != null ? ` (95% CI ${signed(e.lo * 100, 1)} to ${signed(e.hi * 100, 1)})` : '');
+  if (e.unit === 'ratio') return `×${e.value.toFixed(2)}` + (e.lo != null ? ` (95% CI ×${e.lo.toFixed(2)} to ×${e.hi.toFixed(2)})` : '');
+  if (e.unit === 'marks') return `${signed(e.value, 2)} marks` + (e.lo != null ? ` (95% CI ${signed(e.lo, 2)} to ${signed(e.hi, 2)})` : '');
+  if (e.unit === 'share') return pct(e.value, 0) + (e.lo != null ? ` (95% CI ${pctRange(e.lo, e.hi)})` : '');
+  return `z = ${r(e.value.toFixed(2))}`;
+}
+const ptP = p => (p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`);
+function ptBars(bars) {
+  return H('div', { class: 'ptbars' }, bars.map(bar => {
+    const ref = bar.lo != null && bar.lo === bar.hi && bar.lo !== bar.value;
+    const row = H('div', { class: 'ptrow' }, [
+      H('span', { class: 'ptlab', text: bar.label }),
+      H('span', { class: 'pttrack' }, [
+        H('i', { class: 'ptfill', style: { width: `${Math.max(0, Math.min(1, bar.value)) * 100}%` } }),
+        bar.lo != null && !ref && bar.hi !== bar.lo ? H('i', { class: 'ptci', style: { left: `${bar.lo * 100}%`, width: `${Math.max(0.4, (bar.hi - bar.lo) * 100)}%` } }) : null,
+        ref ? H('i', { class: 'ptref', style: { left: `${bar.lo * 100}%` }, title: `the key: ${pct(bar.lo, 0)}` }) : null,
+      ]),
+      H('span', { class: 'ptval', text: pct(bar.value, 0) + (bar.n ? ` · ${bar.n}` : '') }),
+    ]);
+    return row;
+  }));
+}
+function ptFinding(f) {
+  const [cls, name] = PT_TONE[f.tone] || PT_TONE.neutral;
+  return H('section', { class: 'card ptcard', 'aria-label': f.title }, [
+    H('div', { class: 'row-between' }, [H('span', { class: 'tag ' + cls, text: name }), H('small', { class: 'muted', text: `n = ${f.n}` })]),
+    H('h3', { class: 'pttitle', text: f.title }),
+    H('p', { class: 'ptdetail', text: f.detail }),
+    f.bars && f.bars.length ? ptBars(f.bars) : null,
+    H('p', { class: 'pteffect' }, [b(f.effect.label + ': '), ptEffect(f.effect)]),
+    small(`${f.method} · ${ptP(f.p)} · holds up after allowing for every test run (q = ${f.q.toFixed(3)})`),
+  ]);
+}
+function ptModel(m) {
+  const earned = m.status === 'earned';
+  const body = [
+    H('div', { class: 'row-between' }, [H('span', { class: 'tag ' + (earned ? 'good' : ''), text: earned ? 'Earned a say' : 'Not yet' }),
+      small(`${m.rows} attempted questions · ${m.wrong} wrong · ${m.attempts} attempts`)]),
+    H('p', { class: 'ptdetail', text: m.reason }),
+  ];
+  if (m.cv) body.push(small(`Leave-one-attempt-out log-loss: model ${m.cv.modelLogLoss.toFixed(3)}, plain section rule ${m.cv.baselineLogLoss.toFixed(3)} (lower is better).`));
+  if (earned && m.terms) {
+    body.push(H('p', { class: 'minihead', text: 'What moves your odds of a wrong answer' }));
+    body.push(H('div', { class: 'table-wrap' }, H('table', { class: 'tbl' }, [
+      H('thead', {}, H('tr', {}, [H('th', { class: 'l', text: 'Feature' }), H('th', { class: 'c', text: 'Odds of wrong' }), H('th', { class: 'c', text: '95% CI' }), H('th', { class: 'c', text: 'p' })])),
+      H('tbody', {}, m.terms.map(t => H('tr', {}, [H('td', { class: 'l', text: t.feature }), H('td', { class: 'c num', text: `×${t.oddsRatio.toFixed(2)}` }),
+        H('td', { class: 'c num', text: `×${t.lo.toFixed(2)}–${t.hi.toFixed(2)}` }), H('td', { class: 'c', text: t.p < 0.001 ? '<0.001' : t.p.toFixed(3) })]))),
+    ])));
+    const list = (title, xs) => xs && xs.length ? [H('p', { class: 'minihead', text: title }),
+      H('p', { class: 'ptdetail', text: xs.map(x => `${x.attempt} Q${x.n}${x.section ? ' (' + x.section + ')' : ''} — ${pct(x.pWrong, 0)}`).join(' · ') })] : [];
+    list('Careless: wrong answers it gave little chance of being wrong', m.careless).forEach(n => body.push(n));
+    list('Lucky or hard-won: right answers it expected you to miss', m.lucky).forEach(n => body.push(n));
+  }
+  return card('The model', 'A regularised logistic regression over every question, predicting which you get wrong. It only gets a say once it predicts attempts it has not seen better than the plain rule "your accuracy in that section".', body);
+}
+function renderPatterns(el) {
+  const r = patternsNow();
+  if (!r) return fill(el, viewHead('Patterns', 'The pattern engine is not in this copy of the dashboard.'));
+  const d = r.data;
+  const head = viewHead('Patterns',
+    `${d.questions} questions from ${d.logged} of your ${d.attempts} attempts, and the section figures of all of them, put through ${r.tests} tests. ` +
+    `${r.findings.length} held up after allowing for how many were run — so a pattern that is only chance does not appear here. Everything else that was checked is listed below.`);
+  const found = r.findings.length ? r.findings.map(ptFinding)
+    : [card('Nothing has held up yet', 'None of the patterns tested stood out from chance at this amount of data. That is an answer too: see what was checked below.', [])];
+  const examined = card('Checked, and not a pattern yet', 'Each of these was tested. It either did not stand out from chance once every test was allowed for, or there is not yet enough data to test it.', [
+    H('div', { class: 'ptlist' }, r.examined.map(e => H('div', { class: 'ptex' }, [
+      H('span', { class: 'tag ' + (e.outcome === 'not-enough-data' ? '' : 'warn'), text: e.outcome === 'not-enough-data' ? 'Needs more data' : 'Could be chance' }),
+      H('div', {}, [H('b', { text: e.question }), small(e.detail)]),
+    ]))),
+  ]);
+  const how = card('How this is worked out', '', [H('p', { class: 'ptdetail', text:
+    'Proportions carry Wilson 95% intervals. Two groups are compared with a two-proportion z-test, or Fisher’s exact test when the counts are small; letters with chi-square tests; trends with the Cochran–Armitage test; papers sat untimed and timed with a Mantel–Haenszel test, paper by paper. ' +
+    'All the p-values together are then put through Benjamini–Hochberg control at a 5% false-discovery rate, and only what survives is shown as a finding. Tiredness is measured with the section held fixed, so a hard last section is not mistaken for fatigue. ' +
+    'Guess labels are read by what you said they mean, not by their letters. Everything runs here, on your device.' })]);
+  fill(el, head, H('div', { class: 'ptgrid' }, found), ptModel(r.model), examined, how);
+}
+
 function renderTiming(el) {
   const A = state.attempts;
   const withIv = A.filter(a => a.intervals && a.intervals.length);
@@ -9949,8 +11108,8 @@ function wizTargetPresets() {
 }
 
 /* ═══════════════════════════ 9. Shell ═══════════════════════════ */
-const VIEWS = ['overview', 'attempt', 'trends', 'sections', 'questions', 'timing', 'practice', 'data'];
-const RENDER = { overview: renderOverview, trends: renderTrends, sections: renderSections, questions: renderQuestions, timing: renderTiming, attempt: renderAttempt, practice: renderPractice, data: renderData };
+const VIEWS = ['overview', 'attempt', 'trends', 'sections', 'questions', 'timing', 'patterns', 'practice', 'data'];
+const RENDER = { overview: renderOverview, trends: renderTrends, sections: renderSections, questions: renderQuestions, timing: renderTiming, patterns: renderPatterns, attempt: renderAttempt, practice: renderPractice, data: renderData };
 const dirty = new Set(VIEWS);
 
 function safeRender(view, el) {
