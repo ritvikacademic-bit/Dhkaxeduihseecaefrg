@@ -7255,7 +7255,9 @@ async function loadNeoBook() {
     console.warn('NeoBook attempts could not be read', e);
   }
   NB.loaded = true;
-  NB.sig = [...NB.bundles.keys()].sort().join(',');
+  /* which attempts, and when each was last scored: a correction re-scores an
+     attempt without adding one, and the views must still redraw */
+  NB.sig = [...NB.bundles.entries()].map(([id, d]) => id + '@' + (d.computedAt || 0)).sort().join(',');
 }
 /** Read again (another tab may have finished a mock) and redraw only if something changed. */
 async function refreshNeoBook() {
@@ -9653,6 +9655,7 @@ function avCheckCard(ctx) {
       AVC.answers = {}; AVC.guesses = {};
       try { new BroadcastChannel('neobook').postMessage({ type: 'attempt-changed', id: s.id }); } catch (e) { /* the other tab carries it next time */ }
       await refreshNeoBook();
+      buildModel(); refreshChrome(); invalidate();
       toast(`${n} change${n === 1 ? '' : 's'} saved — scored again`);
     } catch (e) {
       console.error(e); status.textContent = 'Could not save: ' + (e && e.message ? e.message : e); paint();
@@ -11434,7 +11437,7 @@ function boot() {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => moveThumb($('#tabs'), false));
   if (imported.total) toast(`Brought over ${plural(imported.total, 'item')} from your v13 dashboard`);
 }
-window.NBDash = { NB, loadNeoBook, refreshNeoBook, openAttempt, show, state, AV, buildModel, invalidate, nbPull, PULL, nbDevice, nbRemoveAttempt };
+window.NBDash = { NB, loadNeoBook, refreshNeoBook, openAttempt, show, state, AV, buildModel, invalidate, nbPull, PULL, nbDevice, nbRemoveAttempt, AVC, nbMock, buildAnalysisExport };
 const nbFirst = loadNeoBook();
 Promise.race([nbFirst, new Promise(r => setTimeout(r, 1200))]).then(() => { NB.booted = true; boot(); });
 nbFirst.then(() => { if (NB.booted && !NB.applied) { buildModel(); refreshChrome(); invalidate(); } })

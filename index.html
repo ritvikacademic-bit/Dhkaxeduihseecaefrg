@@ -25290,18 +25290,23 @@ function findPaper(want){
 function outlineQuestion(q, size){
   var old = document.getElementById('nbqOutline'); if(old) old.remove();
   var cv = document.getElementById('pdfCanvas');
-  if(!cv || !q) return;
-  var cr = cv.getBoundingClientRect(), k = cr.width / (size && size.w ? size.w : cr.width);
-  var r = q.rect, pad = 6;
+  if(!cv || !q || !cv.parentElement) return;
+  /* inside the page itself, so it scrolls with the page instead of being
+     lost when the reader settles its scroll position */
+  var host = cv.parentElement;
+  if(getComputedStyle(host).position === 'static') host.style.position = 'relative';
+  var k = cv.clientWidth / (size && size.w ? size.w : cv.clientWidth), r = q.rect, pad = 6;
   var box = document.createElement('div');
   box.id = 'nbqOutline';
-  box.style.cssText = 'position:fixed;z-index:60;pointer-events:none;border:3px solid #2563EB;border-radius:8px;' +
-    'box-shadow:0 0 0 9999px rgba(0,0,0,.08);transition:opacity .6s;' +
-    'left:' + (cr.left + r.x * k - pad) + 'px;top:' + (cr.top + r.y * k - pad) + 'px;width:' + (r.w * k + pad * 2) + 'px;height:' + (r.h * k + pad * 2) + 'px';
-  document.body.appendChild(box);
-  var gone = function(){ box.style.opacity = '0'; setTimeout(function(){ box.remove(); }, 700); window.removeEventListener('scroll', gone, true); };
-  setTimeout(gone, 5000);
-  window.addEventListener('scroll', gone, true);
+  box.style.cssText = 'position:absolute;z-index:40;pointer-events:none;border:3px solid #2563EB;border-radius:8px;' +
+    'background:rgba(37,99,235,.06);transition:opacity .6s;' +
+    'left:' + (cv.offsetLeft + r.x * k - pad) + 'px;top:' + (cv.offsetTop + r.y * k - pad) + 'px;' +
+    'width:' + (r.w * k + pad * 2) + 'px;height:' + (r.h * k + pad * 2) + 'px';
+  host.appendChild(box);
+  try{ box.scrollIntoView({ block: 'center', behavior: 'smooth' }); }catch(e){}
+  var gone = function(){ box.style.opacity = '0'; setTimeout(function(){ box.remove(); }, 700); document.removeEventListener('pointerdown', gone, true); };
+  setTimeout(gone, 8000);
+  setTimeout(function(){ document.addEventListener('pointerdown', gone, true); }, 400);
 }
 function openAtQuestion(bk, want){
   var begin = (S.book && S.book.id === bk.id && S.book.doc) ? Promise.resolve() : Promise.resolve(openBook(bk, false));
