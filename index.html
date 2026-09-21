@@ -1406,6 +1406,10 @@
 .mkgrow .mkgn{font-size:13px;font-weight:600;min-width:42px}
 .mkgink{width:64px;height:28px;border-radius:6px;background:var(--fill);flex:none}
 .mkgrow button.on{outline:2px solid var(--good);outline-offset:1px}
+.mkglist{display:grid;gap:8px;max-height:46vh;overflow-y:auto;padding-right:4px}
+.mkgfoot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.mkgnote{color:var(--bad-ink,#b42318)}
+.mkgpick.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .mkrsec{ display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; gap:4px 14px; align-items:baseline;
            padding:7px 0; border-bottom:1px solid var(--line); font-size:0.8125rem; font-variant-numeric:tabular-nums; }
   .mkrsec .n{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -6350,7 +6354,11 @@ var NBCore = (() => {
       const t = T(q.id);
       const k = ink.questions[q.id];
       const key = keyBy.get(q.id);
-      const first = k ? k.firstAnswer : null, final = k ? k.finalAnswer : null;
+      const ov = input.session.overrides || {};
+      const said = ov.answers ? ov.answers[q.id] : void 0;
+      const inkFinal = k ? k.finalAnswer : null;
+      const final = said === void 0 ? inkFinal : said === "-" ? null : said;
+      const first = said === void 0 ? k ? k.firstAnswer : null : k && k.firstAnswer ? k.firstAnswer : final;
       const o = outcomeOf(final, key), of = outcomeOf(first, key);
       const reliable = k ? k.eliminations.filter((e) => e.revokedAt == null && e.conf >= ELIMINATION_MIN_CONF) : [];
       const since = (v) => v != null && t.first != null ? Math.max(0, v - t.first) : null;
@@ -6365,8 +6373,11 @@ var NBCore = (() => {
         else if (of.correct && !o.correct) changeType = "right_to_wrong";
         else changeType = "wrong_to_wrong";
       }
-      const firstT = k ? k.firstAnswerT : null;
-      const g = guesses.questions[q.id] || null;
+      const whenSaid = said !== void 0 && final ? t.last != null ? t.last : t.first != null ? t.first : endT : null;
+      const firstT = k && k.firstAnswerT != null ? k.firstAnswerT : whenSaid;
+      const gRead = guesses.questions[q.id] || null;
+      const gSaid = ov.guesses ? ov.guesses[q.id] : void 0;
+      const g = gSaid === void 0 ? gRead : gSaid === "none" ? null : { qid: q.id, ringStrokeId: gRead ? gRead.ringStrokeId : "", t: gRead ? gRead.t : 0, kind: gSaid, word: null, conf: 1, strokeIds: gRead ? gRead.strokeIds : [] };
       return {
         questionId: q.id,
         displayedQuestionNumber: q.n,
@@ -6401,10 +6412,11 @@ var NBCore = (() => {
         firstAnswer: first,
         firstAnswerTimestamp: firstT,
         finalAnswer: final,
-        finalAnswerTimestamp: k ? k.finalAnswerT : null,
+        finalAnswerTimestamp: said !== void 0 ? whenSaid : k ? k.finalAnswerT : null,
         answerHistory: k ? k.history.map((l) => ({ option: l.option, t: l.t, strokeId: l.strokeId, revoked: l.revokedAt != null, ambiguous: l.ambiguous, alt: l.alt })) : [],
         answerChangeCount: k ? k.answerChangeCount : 0,
-        ambiguousFinal: k ? k.ambiguousFinal : false,
+        ambiguousFinal: said === void 0 && k ? k.ambiguousFinal : false,
+        answerSetByYou: said !== void 0,
         officialAnswer: key ? key.correct : null,
         acceptedAnswers: key && key.correct ? [key.correct, ...key.alts || []] : [],
         keyStatus: key ? key.status : "missing",
@@ -6841,6 +6853,8 @@ var NBCore = (() => {
     if (wd.length) notes.push(listQ(nums(wd)) + (wd.length === 1 ? " was" : " were") + " withdrawn in the final key" + (wd.some((q) => q.finalAnswer) ? " (your answer is ignored)." : "."));
     const amb = qm.filter((q) => q.ambiguousFinal && q.finalAnswer);
     if (amb.length) notes.push(listQ(nums(amb)) + ": the final blue mark sat across two options and was read as the one it mostly covered.");
+    const byYouA = qm.filter((q) => q.answerSetByYou).length, byYouG = Object.keys(s.overrides && s.overrides.guesses || {}).length;
+    if (byYouA || byYouG) notes.push([byYouA ? byYouA + " answer" + (byYouA === 1 ? "" : "s") : "", byYouG ? byYouG + " guess label" + (byYouG === 1 ? "" : "s") : ""].filter(Boolean).join(" and ") + " set by you after the attempt, where the pen could not be read for certain.");
     const ub = ink.unassignedBlue.length;
     if (ub) notes.push(ub + " blue mark" + (ub === 1 ? "" : "s") + " touched no option and " + (ub === 1 ? "was" : "were") + " not counted as an answer.");
     if (customScoring) notes.push("Scored " + (sc.correct > 0 ? "+" : "") + sc.correct + " / " + sc.wrong + " / " + sc.skipped + "; the dashboard\u2019s totals assume +1 / \u22120.25.");
@@ -6932,6 +6946,7 @@ var NBCore = (() => {
     chk("clock", contiguous && tt === endT && stateSum === endT, "the states cover 0\u2013" + endT + " ms exactly once");
     const standing = (q) => q.answerHistory.filter((h) => !h.revoked).map((h) => h.option);
     chk("answers", qm.every((q) => {
+      if (q.answerSetByYou) return true;
       const v = standing(q);
       return v.length ? v[0] === q.firstAnswer && v[v.length - 1] === q.finalAnswer : q.firstAnswer === null && q.finalAnswer === null;
     }), "first and final answers are the first and last locks standing");
@@ -8038,7 +8053,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "ef1ac8d79988";
+  var CORE_BUILD = "d3f3b96a47f5";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -24480,43 +24495,99 @@ function askGuesses(s, b){
   var box = el('mkrGuess');
   if(!box) return;
   box.textContent = '';
-  var open = (b.questions || []).filter(function(q){
-    return q.guessKind === 'unknown' && q.guessStrokeIds && q.guessStrokeIds.length > 1;
-  });
-  if(!open.length){ box.style.display = 'none'; return; }
+  var ringed = (b.questions || []).filter(function(q){ return q.guessKind; });
+  var open = ringed.filter(function(q){ return q.guessKind === 'unknown'; });
+  if(!ringed.length){ box.style.display = 'none'; return; }
   box.style.display = '';
-  var head = document.createElement('p');
-  head.className = 'mkgh';
-  head.textContent = open.length === 1
-    ? 'One guess has a word beside it that could not be read. What does it say?'
-    : open.length + ' guesses have a word beside them that could not be read. What do they say?';
-  box.appendChild(head);
+  /* choices are only held here until Save: nothing is scored between taps, so
+     the list never jumps while you are working down it */
+  var picks = {};
+  var LABEL = { educated: 'Educated', random: 'Random', none: 'Not a guess' };
+  var showAll = !open.length;
 
-  dbp().then(function(db){ return db.readEvents(s.id).then(function(ev){ return { db: db, strokes: CORE.strokesOf(ev) }; }); })
-    .then(function(ctx){
-      var byId = {};
-      ctx.strokes.forEach(function(st){ byId[st.id] = st; });
-      open.forEach(function(q){
-        var row = document.createElement('div'); row.className = 'mkgrow';
-        var n = document.createElement('span'); n.className = 'mkgn'; n.textContent = 'Q' + q.displayedQuestionNumber;
-        row.appendChild(n);
-        /* the ink itself, drawn small: the ring is the first stroke, the word the rest */
-        var word = q.guessStrokeIds.slice(1).map(function(id){ return byId[id]; }).filter(Boolean);
-        row.appendChild(inkThumb(word));
-        [['Educated', 'eg'], ['Random', 'g']].forEach(function(pair){
-          var btn = document.createElement('button');
-          btn.className = 'mghost'; btn.textContent = pair[0];
-          btn.onclick = function(){
-            row.querySelectorAll('button').forEach(function(x){ x.disabled = true; });
-            addGuessSample(ctx.db, pair[1], word.map(function(w){ return w.pts; }))
-              .then(function(){ return MK.reScore ? MK.reScore(s) : null; })
-              .then(function(){ btn.classList.add('on'); }, function(){ });
-          };
-          row.appendChild(btn);
-        });
-        box.appendChild(row);
+  var head = document.createElement('p'); head.className = 'mkgh'; box.appendChild(head);
+  var list = document.createElement('div'); list.className = 'mkglist'; box.appendChild(list);
+  var foot = document.createElement('div'); foot.className = 'mkgfoot'; box.appendChild(foot);
+  var save = document.createElement('button'); save.className = 'primary'; save.type = 'button';
+  var more = document.createElement('button'); more.className = 'mghost'; more.type = 'button';
+  var note = document.createElement('small'); note.className = 'mkgnote';
+  foot.appendChild(save); foot.appendChild(more); foot.appendChild(note);
+
+  var byId = {};
+  var paint = function(){
+    var n = Object.keys(picks).length;
+    head.textContent = open.length
+      ? (open.length === 1 ? 'One ringed question has a word that could not be read.' : open.length + ' ringed questions have a word that could not be read.') + ' Choose what each was, then save them together.'
+      : 'Every ringed question has a label. Change any that are wrong, then save.';
+    save.textContent = n ? 'Save ' + n + ' label' + (n === 1 ? '' : 's') : 'Nothing chosen yet';
+    save.disabled = !n;
+    more.textContent = showAll ? 'Show only the unread ones' : 'Review all ' + ringed.length + ' ringed questions';
+    more.style.display = open.length && open.length < ringed.length ? '' : 'none';
+  };
+  var render = function(){
+    list.textContent = '';
+    (showAll ? ringed : open).forEach(function(q){
+      var row = document.createElement('div'); row.className = 'mkgrow';
+      var n = document.createElement('span'); n.className = 'mkgn'; n.textContent = 'Q' + q.displayedQuestionNumber;
+      row.appendChild(n);
+      var word = (q.guessStrokeIds || []).slice(1).map(function(id){ return byId[id]; }).filter(Boolean);
+      row.appendChild(inkThumb(word));
+      var now = picks[q.questionId] || (q.guessKind !== 'unknown' ? q.guessKind : null);
+      ['educated', 'random', 'none'].forEach(function(kind){
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'mghost mkgpick' + (now === kind ? ' on' : '');
+        btn.textContent = LABEL[kind];
+        btn.onclick = function(){
+          picks[q.questionId] = kind;
+          row.querySelectorAll('.mkgpick').forEach(function(x){ x.classList.toggle('on', x === btn); });
+          paint();
+        };
+        row.appendChild(btn);
       });
-    }, function(){ box.style.display = 'none'; });
+      list.appendChild(row);
+    });
+    paint();
+  };
+  more.onclick = function(){ showAll = !showAll; render(); };
+  save.onclick = function(){
+    var ids = Object.keys(picks);
+    if(!ids.length) return;
+    save.disabled = true; save.textContent = 'Saving…'; note.textContent = '';
+    dbp().then(function(db){
+      return db.getSession(s.id).then(function(cur){
+        cur = cur || s;
+        var ov = cur.overrides || {};
+        ov.guesses = Object.assign({}, ov.guesses || {}, picks);
+        ov.at = Date.now();
+        cur.overrides = ov;
+        cur.version = (cur.version || 1) + 1; cur.updatedAt = Date.now();
+        return db.putSession(cur).then(function(){
+          /* each labelled word is also kept as a sample of your hand, so the
+             next attempt reads it by itself */
+          var chain = Promise.resolve();
+          ringed.forEach(function(q){
+            var kind = picks[q.questionId];
+            if(kind !== 'educated' && kind !== 'random') return;
+            var word = (q.guessStrokeIds || []).slice(1).map(function(id){ return byId[id]; }).filter(Boolean);
+            if(!word.length) return;
+            chain = chain.then(function(){ return addGuessSample(db, kind === 'educated' ? 'eg' : 'g', word.map(function(w){ return w.pts; })); });
+          });
+          return chain;
+        }).then(function(){ return db.getKey(s.id); }).then(function(key){
+          if(!key) return null;
+          return finalizeAttempt(cur, key);
+        }).then(function(b2){
+          if(b2){ if(DONE.s && DONE.s.id === s.id) showResult(DONE.s, b2); setTimeout(function(){ msyncNow('relabelled'); }, 300); }
+          toast(ids.length + ' guess label' + (ids.length === 1 ? '' : 's') + ' saved');
+        });
+      });
+    }).catch(function(e){ save.disabled = false; paint(); note.textContent = 'Could not save: ' + ((e && e.message) || e); });
+  };
+
+  dbp().then(function(db){ return db.readEvents(s.id); }).then(function(ev){
+    CORE.strokesOf(ev).forEach(function(st){ byId[st.id] = st; });
+    render();
+  }, function(){ render(); });
 }
 
 /* the strokes drawn into a small box, at whatever size fits */
@@ -25189,6 +25260,111 @@ try{ if(typeof renderHome === 'function') renderHome(); }catch(e){}
 setTimeout(recover, 1500);
 
 /* for the console and the test harness */
+/* ── a question, opened from the dashboard ──────────────────────────────────
+   index.html#nbq=<fingerprint>&b=<book id>&n=<question>&name=<paper>
+   The paper is found by its library id, then by its fingerprint; when this
+   device does not have it, you are asked for the PDF once, and it joins the
+   library. The page opens with the question outlined. */
+function linkedQuestion(){
+  var h = (location.hash || '').replace(/^#/, '');
+  if(h.indexOf('nbq=') < 0) return null;
+  var p = new URLSearchParams(h);
+  var n = parseInt(p.get('n') || '', 10);
+  return { fp: p.get('nbq') || '', b: p.get('b') || '', n: n >= 1 ? n : null, name: p.get('name') || '' };
+}
+function findPaper(want){
+  var lib = (typeof S !== 'undefined' && S.library) ? S.library : [];
+  var hit = lib.filter(function(bk){ return want.b && bk.id === want.b; })[0]
+         || lib.filter(function(bk){ return want.fp && bk.fp === want.fp; })[0];
+  if(hit || !want.fp) return Promise.resolve(hit || null);
+  /* a book added before fingerprints were kept: check the PDFs one by one */
+  var pdfs = lib.filter(function(bk){ return bk.kind !== 'epub' && !isRealFp(bk.fp); });
+  var i = 0;
+  var next = function(){
+    if(i >= pdfs.length) return Promise.resolve(null);
+    var bk = pdfs[i++];
+    return realFp(bk).then(function(fp){ return fp === want.fp ? bk : next(); });
+  };
+  return next();
+}
+function outlineQuestion(q, size){
+  var old = document.getElementById('nbqOutline'); if(old) old.remove();
+  var cv = document.getElementById('pdfCanvas');
+  if(!cv || !q) return;
+  var cr = cv.getBoundingClientRect(), k = cr.width / (size && size.w ? size.w : cr.width);
+  var r = q.rect, pad = 6;
+  var box = document.createElement('div');
+  box.id = 'nbqOutline';
+  box.style.cssText = 'position:fixed;z-index:60;pointer-events:none;border:3px solid #2563EB;border-radius:8px;' +
+    'box-shadow:0 0 0 9999px rgba(0,0,0,.08);transition:opacity .6s;' +
+    'left:' + (cr.left + r.x * k - pad) + 'px;top:' + (cr.top + r.y * k - pad) + 'px;width:' + (r.w * k + pad * 2) + 'px;height:' + (r.h * k + pad * 2) + 'px';
+  document.body.appendChild(box);
+  var gone = function(){ box.style.opacity = '0'; setTimeout(function(){ box.remove(); }, 700); window.removeEventListener('scroll', gone, true); };
+  setTimeout(gone, 5000);
+  window.addEventListener('scroll', gone, true);
+}
+function openAtQuestion(bk, want){
+  var begin = (S.book && S.book.id === bk.id && S.book.doc) ? Promise.resolve() : Promise.resolve(openBook(bk, false));
+  return begin.then(function(){
+    var wait = function(i){
+      if(S.book && S.book.id === bk.id && S.book.doc) return Promise.resolve();
+      if(i > 120) return Promise.reject(new Error('the paper did not open'));
+      return new Promise(function(r){ setTimeout(r, 250); }).then(function(){ return wait(i + 1); });
+    };
+    return wait(0);
+  }).then(function(){ return realFp(bk); }).then(function(fp){
+    if(want.fp && fp && fp !== want.fp) toast('This PDF is not the exact file the attempt was sat on, so the question may be in a different place.');
+    /* the paper's map says where question n is; if there is none yet, make one */
+    return dbp().then(function(db){ return db.resolveMap({ source: { fp: fp || want.fp }, documentMapId: CORE.mapIdFor(fp || want.fp) }); })
+      .catch(function(){ return null; })
+      .then(function(m){ return m && m.questions && m.questions.length ? m : prepareMap(bk, { needModels: false }).then(function(res){ return res && res.map; }); });
+  }).then(function(m){
+    var q = m && want.n ? m.questions.filter(function(x){ return x.n === want.n; })[0] : null;
+    if(!q){ toast(want.n ? 'Question ' + want.n + ' could not be found in this paper.' : 'The paper is open.'); return; }
+    var go = (typeof IS !== 'undefined' && IS.on) ? setInfinite(false, true) : Promise.resolve();
+    return Promise.resolve(go).then(function(){ return renderPage(q.page); }).then(function(){
+      setTimeout(function(){ outlineQuestion(q, m.pageSizes && m.pageSizes[q.page]); }, 250);
+    });
+  }).catch(function(e){ toast('Could not open the question: ' + ((e && e.message) || e)); });
+}
+function askForPaper(want){
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/pdf,.pdf'; inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = function(){
+    var f = inp.files && inp.files[0];
+    inp.remove();
+    if(!f) return;
+    var before = S.library.map(function(x){ return x.id; });
+    Promise.resolve(addFiles([f])).then(function(){
+      var added = S.library.filter(function(x){ return before.indexOf(x.id) < 0; })[0]
+               || S.library.filter(function(x){ return x.name === f.name; })[0];
+      if(added) openAtQuestion(added, want);
+    });
+  };
+  toast((want.name ? '“' + want.name + '”' : 'This paper') + ' is not on this device yet. Choose its PDF to open question ' + (want.n || '') + '.', 'Choose PDF', function(){ inp.click(); });
+}
+function handleLinkedQuestion(){
+  var want = linkedQuestion();
+  if(!want) return;
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+  var tries = 0;
+  var ready = function(){
+    if(typeof S !== 'undefined' && S.library && (S.library.length || tries > 20)) return findPaper(want).then(function(bk){ return bk ? openAtQuestion(bk, want) : askForPaper(want); });
+    tries++;
+    return new Promise(function(r){ setTimeout(r, 300); }).then(ready);
+  };
+  ready();
+}
+window.addEventListener('hashchange', handleLinkedQuestion);
+setTimeout(handleLinkedQuestion, 600);
+
+/* the dashboard says an attempt changed (a correction saved there): carry it */
+try{
+  var nbChan = new BroadcastChannel('neobook');
+  nbChan.onmessage = function(ev){ if(ev && ev.data && ev.data.type === 'attempt-changed') setTimeout(function(){ msyncNow('dashboard'); }, 200); };
+}catch(e){}
+
 window.NBMock = {
   state: MK, openSetup: openSetup, start: start, finish: finish, resume: resume,
   recover: recover, discard: discard, log: logEv, flush: flushNow, db: dbp,

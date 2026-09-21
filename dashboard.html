@@ -319,6 +319,24 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;fo
 .rwb .track .w{background:var(--bad)}
 .rwb .track .s{background:color-mix(in oklab,var(--warn) 70%,var(--surface))}
 
+/* ─────────────────────────── Check these ─────────────────────────── */
+.avcgroup{border-top:1px solid var(--hairline);padding:8px 0}
+.avcgroup>summary{cursor:pointer;font-size:13px;list-style:none;padding:4px 0}
+.avcgroup>summary::-webkit-details-marker{display:none}
+.avcgroup>summary::before{content:'B8';display:inline-block;width:14px;color:var(--ink-3);transition:transform .15s}
+.avcgroup[open]>summary::before{transform:rotate(90deg)}
+.avclist{display:grid;gap:6px;margin-top:6px}
+.avcrow{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}
+.avcwhy{color:var(--ink-2);min-width:0}
+.avcbtns{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.avcpick{min-width:34px;height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--hairline);background:var(--surface);color:var(--ink);font:inherit;font-size:12px;cursor:pointer}
+.avcpick.on{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
+.avcpick:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.avcother{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:12px}
+.avcnum{width:84px;height:30px;padding:0 8px;border-radius:8px;border:1px solid var(--hairline);background:var(--surface);color:var(--ink);font:inherit}
+.avcfoot{display:flex;gap:10px;align-items:center;margin-top:12px}
+@media (max-width:560px){.avcrow{grid-template-columns:54px minmax(0,1fr)}.avcbtns{grid-column:1/-1;justify-content:flex-start}}
+
 /* ─────────────────────────── Patterns ─────────────────────────── */
 .ptgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
 .ptcard{display:grid;gap:10px;align-content:start}
@@ -4598,7 +4616,11 @@ var NBCore = (() => {
       const t = T(q.id);
       const k = ink.questions[q.id];
       const key = keyBy.get(q.id);
-      const first = k ? k.firstAnswer : null, final = k ? k.finalAnswer : null;
+      const ov = input.session.overrides || {};
+      const said = ov.answers ? ov.answers[q.id] : void 0;
+      const inkFinal = k ? k.finalAnswer : null;
+      const final = said === void 0 ? inkFinal : said === "-" ? null : said;
+      const first = said === void 0 ? k ? k.firstAnswer : null : k && k.firstAnswer ? k.firstAnswer : final;
       const o = outcomeOf(final, key), of = outcomeOf(first, key);
       const reliable = k ? k.eliminations.filter((e) => e.revokedAt == null && e.conf >= ELIMINATION_MIN_CONF) : [];
       const since = (v) => v != null && t.first != null ? Math.max(0, v - t.first) : null;
@@ -4613,8 +4635,11 @@ var NBCore = (() => {
         else if (of.correct && !o.correct) changeType = "right_to_wrong";
         else changeType = "wrong_to_wrong";
       }
-      const firstT = k ? k.firstAnswerT : null;
-      const g = guesses.questions[q.id] || null;
+      const whenSaid = said !== void 0 && final ? t.last != null ? t.last : t.first != null ? t.first : endT : null;
+      const firstT = k && k.firstAnswerT != null ? k.firstAnswerT : whenSaid;
+      const gRead = guesses.questions[q.id] || null;
+      const gSaid = ov.guesses ? ov.guesses[q.id] : void 0;
+      const g = gSaid === void 0 ? gRead : gSaid === "none" ? null : { qid: q.id, ringStrokeId: gRead ? gRead.ringStrokeId : "", t: gRead ? gRead.t : 0, kind: gSaid, word: null, conf: 1, strokeIds: gRead ? gRead.strokeIds : [] };
       return {
         questionId: q.id,
         displayedQuestionNumber: q.n,
@@ -4649,10 +4674,11 @@ var NBCore = (() => {
         firstAnswer: first,
         firstAnswerTimestamp: firstT,
         finalAnswer: final,
-        finalAnswerTimestamp: k ? k.finalAnswerT : null,
+        finalAnswerTimestamp: said !== void 0 ? whenSaid : k ? k.finalAnswerT : null,
         answerHistory: k ? k.history.map((l) => ({ option: l.option, t: l.t, strokeId: l.strokeId, revoked: l.revokedAt != null, ambiguous: l.ambiguous, alt: l.alt })) : [],
         answerChangeCount: k ? k.answerChangeCount : 0,
-        ambiguousFinal: k ? k.ambiguousFinal : false,
+        ambiguousFinal: said === void 0 && k ? k.ambiguousFinal : false,
+        answerSetByYou: said !== void 0,
         officialAnswer: key ? key.correct : null,
         acceptedAnswers: key && key.correct ? [key.correct, ...key.alts || []] : [],
         keyStatus: key ? key.status : "missing",
@@ -5089,6 +5115,8 @@ var NBCore = (() => {
     if (wd.length) notes.push(listQ(nums(wd)) + (wd.length === 1 ? " was" : " were") + " withdrawn in the final key" + (wd.some((q) => q.finalAnswer) ? " (your answer is ignored)." : "."));
     const amb = qm.filter((q) => q.ambiguousFinal && q.finalAnswer);
     if (amb.length) notes.push(listQ(nums(amb)) + ": the final blue mark sat across two options and was read as the one it mostly covered.");
+    const byYouA = qm.filter((q) => q.answerSetByYou).length, byYouG = Object.keys(s.overrides && s.overrides.guesses || {}).length;
+    if (byYouA || byYouG) notes.push([byYouA ? byYouA + " answer" + (byYouA === 1 ? "" : "s") : "", byYouG ? byYouG + " guess label" + (byYouG === 1 ? "" : "s") : ""].filter(Boolean).join(" and ") + " set by you after the attempt, where the pen could not be read for certain.");
     const ub = ink.unassignedBlue.length;
     if (ub) notes.push(ub + " blue mark" + (ub === 1 ? "" : "s") + " touched no option and " + (ub === 1 ? "was" : "were") + " not counted as an answer.");
     if (customScoring) notes.push("Scored " + (sc.correct > 0 ? "+" : "") + sc.correct + " / " + sc.wrong + " / " + sc.skipped + "; the dashboard\u2019s totals assume +1 / \u22120.25.");
@@ -5180,6 +5208,7 @@ var NBCore = (() => {
     chk("clock", contiguous && tt === endT && stateSum === endT, "the states cover 0\u2013" + endT + " ms exactly once");
     const standing = (q) => q.answerHistory.filter((h) => !h.revoked).map((h) => h.option);
     chk("answers", qm.every((q) => {
+      if (q.answerSetByYou) return true;
       const v = standing(q);
       return v.length ? v[0] === q.firstAnswer && v[v.length - 1] === q.finalAnswer : q.firstAnswer === null && q.finalAnswer === null;
     }), "first and final answers are the first and last locks standing");
@@ -6286,7 +6315,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "ef1ac8d79988";
+  var CORE_BUILD = "d3f3b96a47f5";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -8551,9 +8580,22 @@ function paperViewer(a) {
 }
 /** Open question n of attempt a in its paper. Each paper gets one named tab; later clicks on the same paper only
  *  change the address fragment, so that tab scrolls to the new question instead of a new tab opening. */
+const canOpenPaper = a => !!(a && a.log);
+/** Question n of attempt a, in NeoBook: the paper this attempt was sat on when
+ *  NeoBook recorded it, found by its fingerprint or library id; otherwise
+ *  NeoBook asks which PDF it is. */
+function openInNeoBook(a, n) {
+  const s = a.telemetrySessionId && NB.sessions ? NB.sessions.get(a.telemetrySessionId) : null;
+  const src = (s && s.source) || {};
+  const h = new URLSearchParams({ nbq: src.fp || '', b: src.bookId || '', n: String(n), name: a.paper || '' });
+  const w = window.open('index.html#' + h.toString(), 'neobook-paper');
+  if (w) { try { w.focus(); } catch (e) { /* best-effort */ } }
+  else toast('The browser blocked the new tab. Allow pop-ups for this page, then click the question again.');
+  return true;
+}
 function openQuestion(a, n) {
   const v = paperViewer(a);
-  if (!v) return false;
+  if (!v) return canOpenPaper(a) ? openInNeoBook(a, n) : false;
   const h = new URLSearchParams({ q: String(n), n: `${a.short} · ${a.when}`, o: a.log.out, a: a.log.ans || '', t: JSON.stringify(a.log.tags || {}), r: String(Date.now() % 1e7) });
   const w = window.open(`${encodeURI(v.file)}#${h.toString()}`, v.win);
   if (w) { try { w.focus(); } catch (e) { /* focus is best-effort */ } }
@@ -8972,7 +9014,7 @@ function qmapCard(L) {
     const block = H('div', { class: 'qsec' }, H('div', { class: 'qsec-h' }, [H('b', { text: s.name }), H('span', { text: `${pct(agg.acc, 0)} right · ${agg.W} wrong · ${agg.S} blank` })]));
     rows.forEach(r => {
       const cells = H('div', { class: 'qcells', style: { '--n': String(n) } });
-      const link = paperViewer(r.a) ? ' link' : '';
+      const link = canOpenPaper(r.a) ? ' link' : '';
       r.qs.forEach(q => cells.append(H('span', { class: `qcell ${q.out}${q.tag ? ' t' : ''}${link}`, dataset: { id: r.a.id, q: String(q.q) } })));
       for (let i = r.qs.length; i < n; i++) cells.append(H('span', { class: 'qcell pad', 'aria-hidden': 'true' }));
       block.append(H('div', { class: 'qrow' }, [H('span', { class: 'lab', text: r.a.short }), cells, H('span', { class: 'rng', text: `Q${r.qs[0].q}–${r.qs[r.qs.length - 1].q}` })]));
@@ -8991,7 +9033,7 @@ function qmapCard(L) {
     const rows = [{ label: 'Your answer', value: q.ans || '—' }, { label: 'Key', value: q.key || (q.out === 'x' ? 'withdrawn' : '—') }, { label: 'Result', value: res }];
     if (q.tag) rows.push({ label: 'Marked', value: q.tag });
     nbQuestionRows(a, q.q).forEach(r => rows.push(r));
-    const note = [q.tag && a.tagMeanings && a.tagMeanings[q.tag] ? a.tagMeanings[q.tag] : null, paperViewer(a) ? 'Click to open this question in the paper ↗' : null].filter(Boolean).join(' · ');
+    const note = [q.tag && a.tagMeanings && a.tagMeanings[q.tag] ? a.tagMeanings[q.tag] : null, canOpenPaper(a) ? 'Click to open this question in the paper ↗' : null].filter(Boolean).join(' · ');
     tip.show(e.clientX, e.clientY, tipNodes(`Q${q.q} · ${SEC_NAME[q.sec] || ''}`, `${a.paper} · ${a.when}`, rows, note || null));
   };
   map.addEventListener('pointermove', onMove);
@@ -9002,7 +9044,6 @@ function qmapCard(L) {
     if (!c) return;
     const at = byId[c.dataset.id];
     if (openQuestion(at, Number(c.dataset.q))) tip.hide();
-    else if (at.telemetrySessionId && NB.bundles.has(at.telemetrySessionId)) openAttempt(at.telemetrySessionId, 'questions');
   });
   /* A content filter in the browser can hide elements by class name, and then the map is silently empty space.
      Measure one real square once the card is on screen, and say what happened instead of showing nothing. */
@@ -9017,7 +9058,7 @@ function qmapCard(L) {
   /* The card is often built while its view is still hidden, so wait until the map actually has a width. */
   const watch = new ResizeObserver(() => { if (seeSquares()) watch.disconnect(); });
   setTimeout(() => { if (!seeSquares()) watch.observe(map); }, 0);
-  const linked = L.some(a => paperViewer(a));
+  const linked = L.some(a => canOpenPaper(a));
   return card('Question map', `One square per question, grouped by section; rows are ${listText(L.map(a => a.short))}. Hover for your answer and the key${linked ? '; click a square to open that exact question in the paper, in its own tab' : ''}. Attempts recorded in NeoBook also show how long each question took.`, [legend, H('div', { style: { height: '16px' } }), map], {
     foot: 'Squares line up by position within each section, not by question number, because sections start at slightly different numbers on each paper.',
     coach: coach('qmap', L),
@@ -9126,7 +9167,7 @@ function reviewCard(L) {
       H('thead', {}, H('tr', {}, [['Attempt', 'l'], ['Q', 'c'], ['Section', 'l'], ['You', 'c'], ['Key', 'c'], ['Result', 'l'], ['Marked', 'l']].map(([t, c]) => H('th', { class: c, text: t })))),
       H('tbody', {}, rows.map(({ a, q }) => H('tr', {}, [
         H('td', { class: 'l', text: a.short }),
-        H('td', { class: 'c' }, paperViewer(a) ? H('button', { class: 'qlink', type: 'button', title: `Open Q${q.q} in the ${a.paper} paper`, onclick: () => openQuestion(a, q.q) }, `${q.q} ↗`) : String(q.q)),
+        H('td', { class: 'c' }, canOpenPaper(a) ? H('button', { class: 'qlink', type: 'button', title: `Open Q${q.q} in the ${a.paper} paper`, onclick: () => openQuestion(a, q.q) }, `${q.q} ↗`) : String(q.q)),
         H('td', { class: 'l', text: SEC_NAME[q.sec] || '' }),
         H('td', { class: 'c', text: q.ans || '—' }), H('td', { class: 'c', text: q.key || '—' }),
         H('td', { class: 'l' }, H('span', { class: `tag ${RES[q.out][1]}`, text: RES[q.out][0] })), H('td', { class: 'l', text: q.tag || '' }),
@@ -9511,6 +9552,127 @@ function avRemoveButton(cur, style) {
   return null;   /* the built-in attempts are part of the file, not your data */
 }
 
+/* ── Check these: what the pen could not settle, settled by you ──────────────
+   A blue mark across two options, a blue mark on no option, a question left
+   blank that you did answer, a ringed number whose word was not read. Each
+   choice is only held here until Save; then it is kept on the attempt (and
+   travels with it), the attempt is scored again once, and every view updates. */
+const AVC = { id: null, answers: {}, guesses: {}, extra: [], stray: null };
+function avcReset(id) { if (AVC.id !== id) { AVC.id = id; AVC.answers = {}; AVC.guesses = {}; AVC.extra = []; AVC.stray = null; } }
+async function avcStray(ctx) {
+  /* blue marks that touched no option, each set against the question it sits nearest */
+  const M = nbMock(), db = NB.db, s = ctx.sess;
+  if (!M || !db || !s) return [];
+  const [events, map] = await Promise.all([db.readEvents(s.id), db.resolveMap(s)]);
+  if (!map) return [];
+  const ink = M.deriveAnswers(events, map), strokes = M.strokesOf(events);
+  const byId = new Map(strokes.map(x => [x.id, x]));
+  const out = [];
+  for (const u of ink.unassignedBlue) {
+    const st = byId.get(u.strokeId);
+    if (!st) continue;
+    const cx = st.bbox[0] + st.bbox[2] / 2, cy = st.bbox[1] + st.bbox[3] / 2;
+    let best = null, bd = Infinity;
+    for (const q of map.questions) {
+      if (q.page !== st.page) continue;
+      const r = q.rect, dx = cx < r.x ? r.x - cx : cx > r.x + r.w ? cx - r.x - r.w : 0, dy = cy < r.y ? r.y - cy : cy > r.y + r.h ? cy - r.y - r.h : 0;
+      const dd = Math.hypot(dx, dy);
+      if (dd < bd) { bd = dd; best = q; }
+    }
+    if (best) out.push({ qid: best.id, n: best.n, page: st.page });
+  }
+  return out;
+}
+function avCheckCard(ctx) {
+  if (!ctx.sess || !ctx.full) return null;
+  avcReset(ctx.sess.id);
+  const qs = ctx.qs, ov = ctx.sess.overrides || {};
+  const setA = ov.answers || {}, setG = ov.guesses || {};
+  const byN = n => qs.find(q => q.displayedQuestionNumber === n);
+  const amb = qs.filter(q => q.ambiguousFinal);
+  const blanks = qs.filter(q => q.outcome === 'skipped');
+  const unread = qs.filter(q => q.guessKind === 'unknown');
+  const mine = qs.filter(q => q.answerSetByYou || setG[q.questionId]);
+  const pending = () => Object.keys(AVC.answers).length + Object.keys(AVC.guesses).length;
+
+  const saveBtn = H('button', { class: 'btn primary', type: 'button' });
+  const status = H('small', { class: 'muted' });
+  const paint = () => { const n = pending(); saveBtn.textContent = n ? `Save ${n} change${n === 1 ? '' : 's'}` : 'Nothing changed yet'; saveBtn.disabled = !n; };
+
+  const pickRow = (q, kind, why) => {
+    const id = q.questionId;
+    const choices = kind === 'guess' ? [['educated', 'Educated'], ['random', 'Random'], ['none', 'Not a guess']] : [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['-', 'Blank']];
+    const held = kind === 'guess' ? AVC.guesses : AVC.answers;
+    const now = held[id] !== undefined ? held[id] : kind === 'guess' ? (setG[id] || (q.guessKind && q.guessKind !== 'unknown' ? q.guessKind : null)) : (setA[id] !== undefined ? setA[id] : (q.finalAnswer || '-'));
+    const btns = choices.map(([v, label]) => {
+      const b = H('button', { class: 'avcpick' + (now === v ? ' on' : ''), type: 'button', text: label, 'aria-pressed': String(now === v) });
+      b.onclick = () => { held[id] = v; btns.forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); paint(); };
+      return b;
+    });
+    return H('div', { class: 'avcrow' }, [
+      H('button', { class: 'qlink', type: 'button', title: 'Open this question in the paper', onclick: () => openQuestion(ctx.a, q.displayedQuestionNumber), text: `Q${q.displayedQuestionNumber} ↗` }),
+      H('span', { class: 'avcwhy', text: why }),
+      H('span', { class: 'avcbtns' }, btns),
+    ]);
+  };
+  const altOf = q => { const h = (q.answerHistory || []).filter(x => !x.revoked); const last = h[h.length - 1]; return last && last.alt ? last.alt : null; };
+  const group = (title, rows, open = true) => rows.length ? H('details', { class: 'avcgroup', open }, [H('summary', {}, [b(title), ` · ${rows.length}`]), H('div', { class: 'avclist' }, rows)]) : null;
+
+  const strayBox = H('div');
+  const fillStray = list => {
+    const rows = list.map(x => { const q = qs.find(y => y.questionId === x.qid); return q ? pickRow(q, 'answer', `a blue mark near it touched no option · counted as ${q.finalAnswer || 'blank'}`) : null; }).filter(Boolean);
+    strayBox.replaceChildren(...[group('Blue mark on no option', rows)].filter(Boolean));
+  };
+  if (AVC.stray) fillStray(AVC.stray);
+  else avcStray(ctx).then(list => { AVC.stray = list; fillStray(list); }).catch(() => {});
+
+  const other = H('input', { class: 'avcnum', type: 'number', min: '1', placeholder: 'Q no.', 'aria-label': 'Another question to correct' });
+  const extraBox = H('div', { class: 'avclist' }, AVC.extra.map(n => byN(n)).filter(Boolean).map(q => pickRow(q, 'answer', `read as ${q.finalAnswer || 'blank'}`)));
+  const addOther = () => {
+    const n = parseInt(other.value, 10), q = byN(n);
+    if (!q) { status.textContent = n ? `There is no question ${n} in this attempt.` : ''; return; }
+    if (!AVC.extra.includes(n)) { AVC.extra.push(n); extraBox.append(pickRow(q, 'answer', `read as ${q.finalAnswer || 'blank'}`)); }
+    other.value = ''; status.textContent = '';
+  };
+  other.addEventListener('keydown', e => { if (e.key === 'Enter') addOther(); });
+
+  saveBtn.onclick = async () => {
+    const n = pending();
+    if (!n) return;
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try {
+      const M = nbMock(), db = NB.db, s = Object.assign({}, await db.getSession(ctx.sess.id) || ctx.sess);
+      const o = Object.assign({}, s.overrides || {});
+      o.answers = Object.assign({}, o.answers || {}, AVC.answers);
+      o.guesses = Object.assign({}, o.guesses || {}, AVC.guesses);
+      o.at = Date.now();
+      s.overrides = o; s.version = (s.version || 1) + 1; s.updatedAt = Date.now();
+      await db.putSession(s);
+      const [events, map, key] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id)]);
+      if (map && key) await db.putDerived(M.deriveAttempt({ session: s, events, map, key, now: Date.now() }));
+      AVC.answers = {}; AVC.guesses = {};
+      try { new BroadcastChannel('neobook').postMessage({ type: 'attempt-changed', id: s.id }); } catch (e) { /* the other tab carries it next time */ }
+      await refreshNeoBook();
+      toast(`${n} change${n === 1 ? '' : 's'} saved — scored again`);
+    } catch (e) {
+      console.error(e); status.textContent = 'Could not save: ' + (e && e.message ? e.message : e); paint();
+    }
+  };
+  paint();
+
+  const total = amb.length + blanks.length + unread.length;
+  return card('Check these', `Where the pen could not be read for certain. Choose what you meant — nothing changes until you save, and then the attempt is scored again once.${mine.length ? ` ${mine.length} question${mine.length === 1 ? ' is' : 's are'} already set by you.` : ''}`, [
+    group('Blue mark across two options', amb.map(q => pickRow(q, 'answer', `read as ${q.finalAnswer || 'blank'}${altOf(q) ? `, also touching ${altOf(q)}` : ''}`))),
+    strayBox,
+    group('Ringed, word not read', unread.map(q => pickRow(q, 'guess', 'what kind of guess was it?'))),
+    group('Left blank', blanks.map(q => pickRow(q, 'answer', 'no answer was read — pick one if you did answer')), false),
+    group('Set by you', mine.map(q => q.answerSetByYou ? pickRow(q, 'answer', `set to ${q.finalAnswer || 'blank'}`) : pickRow(q, 'guess', `set to ${setG[q.questionId]}`)), false),
+    H('div', { class: 'avcother' }, [H('span', { class: 'muted', text: 'Another question:' }), other, H('button', { class: 'btn plain', type: 'button', onclick: addOther, text: 'Correct it' })]),
+    extraBox,
+    H('div', { class: 'avcfoot' }, [saveBtn, status]),
+  ].filter(Boolean), { foot: total ? null : 'Nothing was left uncertain in this attempt; you can still correct any question above.' });
+}
+
 function renderAttempt(el) {
   const ch = avChoices();
   if (!ch.all.length) return fill(el, viewHead('Attempt', 'No attempts yet.'));
@@ -9536,7 +9698,9 @@ function renderAttempt(el) {
   let body;
   try { body = AV_RENDER[pane](ctx); }
   catch (e) { console.error(e); body = [card('This part hit an error', e && e.message ? e.message : String(e), [])]; }
-  fill(el, head, H('div', { class: 'tabs-scroll avtabs' }, seg), ...[].concat(body));
+  let check = null;
+  try { check = avCheckCard(ctx); } catch (e) { console.error(e); }
+  fill(el, head, check, H('div', { class: 'tabs-scroll avtabs' }, seg), ...[].concat(body));
   requestAnimationFrame(() => moveThumb(seg, false));
 }
 
