@@ -2130,8 +2130,9 @@ var NBCore = (() => {
         if (b.page !== a.page) continue;
         const xOverlap = Math.min(a.region.x + a.region.w, b.region.x + b.region.w) - Math.max(a.region.x, b.region.x);
         const aBot = a.region.y + a.region.h;
-        if (xOverlap > 0 && aBot > b.region.y && b.region.y > a.region.y) {
-          const mid = r2((aBot + b.region.y) / 2), bBot = b.region.y + b.region.h;
+        if (xOverlap > 4 && aBot > b.region.y && b.region.y > a.region.y && b.label.y > a.label.y + a.label.h / 2) {
+          const bBot = b.region.y + b.region.h;
+          const mid = r2(Math.max(a.label.y + a.label.h, Math.min((aBot + b.region.y) / 2, b.label.y - 1.5)));
           a.region = { x: a.region.x, y: a.region.y, w: a.region.w, h: r2(mid - a.region.y) };
           b.region = { x: b.region.x, y: mid, w: b.region.w, h: r2(bBot - mid) };
           break;
@@ -6346,7 +6347,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "8a6ba0f3959c";
+  var CORE_BUILD = "3ffba7425a99";
   return __toCommonJS(index_exports);
 })();
 </script>

@@ -3868,8 +3868,9 @@ var NBCore = (() => {
         if (b.page !== a.page) continue;
         const xOverlap = Math.min(a.region.x + a.region.w, b.region.x + b.region.w) - Math.max(a.region.x, b.region.x);
         const aBot = a.region.y + a.region.h;
-        if (xOverlap > 0 && aBot > b.region.y && b.region.y > a.region.y) {
-          const mid = r2((aBot + b.region.y) / 2), bBot = b.region.y + b.region.h;
+        if (xOverlap > 4 && aBot > b.region.y && b.region.y > a.region.y && b.label.y > a.label.y + a.label.h / 2) {
+          const bBot = b.region.y + b.region.h;
+          const mid = r2(Math.max(a.label.y + a.label.h, Math.min((aBot + b.region.y) / 2, b.label.y - 1.5)));
           a.region = { x: a.region.x, y: a.region.y, w: a.region.w, h: r2(mid - a.region.y) };
           b.region = { x: b.region.x, y: mid, w: b.region.w, h: r2(bBot - mid) };
           break;
@@ -8084,7 +8085,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "8a6ba0f3959c";
+  var CORE_BUILD = "3ffba7425a99";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -25453,7 +25454,7 @@ window.NBMock = {
   state: MK, openSetup: openSetup, start: start, finish: finish, resume: resume,
   recover: recover, discard: discard, log: logEv, flush: flushNow, db: dbp,
   remaining: remaining, elapsed: elapsed, refreshWaiting: refreshWaiting, openDone: openDone,
-  maps: MAPS, prepareMap: prepareMap, pageRunsOf: pageRunsOf, openPreview: openPreview, closePreview: closePreview,
+  maps: MAPS, prepareMap: prepareMap, mapReplaced: mapReplaced, pageRunsOf: pageRunsOf, openPreview: openPreview, closePreview: closePreview,
   ocr: OCR, readScan: readScan, stopScan: stopScan,
   rec: REC, viewNow: viewNow, pageAt: pageAt, timeline: timelineOf,
   key: KEY, readKey: readKey, finalize: finalizeAttempt, scoreNow: scoreNow, csvRows: csvRows,
