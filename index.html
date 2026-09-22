@@ -3740,6 +3740,19 @@ var NBCore = (() => {
       }
     }
     if (chosen.size < 2) return none;
+    if (chosen.size >= 3) {
+      const shape = (lb) => lb.num ? "n" : lb.tok.t.charAt(0) === "(" ? "(" : lb.tok.t.charAt(0) === "[" ? "[" : "bare";
+      const count2 = /* @__PURE__ */ new Map();
+      for (const lb of chosen.values()) count2.set(shape(lb), (count2.get(shape(lb)) || 0) + 1);
+      if (count2.size === 2) {
+        const e = [...count2.entries()];
+        const [s1, n1] = e[0], [s2, n2] = e[1];
+        const odd = n1 === 1 && n2 >= 2 ? s1 : n2 === 1 && n1 >= 2 ? s2 : null;
+        if (odd) {
+          for (const [L, lb] of [...chosen.entries()]) if (shape(lb) === odd) chosen.delete(L);
+        }
+      }
+    }
     if (pool.some((c) => c.L === "E" && [...chosen.values()].every((o) => before(o, c))))
       issues.push("prints a fifth option (E)");
     const ds = by("D");
@@ -8085,7 +8098,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "3ffba7425a99";
+  var CORE_BUILD = "f91a15e70cf2";
   return __toCommonJS(index_exports);
 })();
 </script>
