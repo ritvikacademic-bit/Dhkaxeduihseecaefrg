@@ -1147,7 +1147,7 @@ var NBCore = (() => {
   // src/mock/constants.ts
   var TELEMETRY_VERSION = 1;
   var MAP_VERSION = 2;
-  var MAP_BUILD = 3;
+  var MAP_BUILD = 4;
   var METRICS_VERSION = 1;
   var MOCK_DB_NAME = "neobook-mock";
   var MOCK_DB_VERSION = 2;
@@ -1706,7 +1706,14 @@ var NBCore = (() => {
   function runsFromPdfItems(items) {
     const out = [];
     for (const it of items) {
-      if (!it || typeof it.s !== "string" || !it.s.trim()) continue;
+      if (!it || typeof it.s !== "string" || !it.s) continue;
+      if (!it.s.trim()) {
+        if (it.w > 0 && isFinite(it.x) && isFinite(it.y)) {
+          const fh2 = it.fh > 0 ? it.fh : 11;
+          out.push({ s: " ", x: it.x, y: it.y - fh2 * ASCENT, w: it.w, h: fh2 * BOX });
+        }
+        continue;
+      }
       const fh = it.fh > 0 ? it.fh : 11;
       const w = it.w > 0 && isFinite(it.w) ? it.w : it.s.length * fh * 0.5;
       if (!isFinite(it.x) || !isFinite(it.y)) continue;
@@ -1720,7 +1727,9 @@ var NBCore = (() => {
   var printable = (s) => s.replace(NONPRINT, " ");
   function pageLines(pg, page, source = "text") {
     const W = pg.w > 0 ? pg.w : Infinity, H = pg.h > 0 ? pg.h : Infinity;
-    const runs = (pg.runs || []).map((r) => r && typeof r.s === "string" ? __spreadProps(__spreadValues({}, r), { s: printable(r.s) }) : r).filter((r) => r && typeof r.s === "string" && r.s.trim() !== "" && isFinite(r.x) && isFinite(r.y) && isFinite(r.w) && r.h > 0 && r.x + r.w > 0 && r.x < W - 1 && r.y < H && r.y + r.h > 0 && !/^(\S)\1{3,}$/.test(r.s.trim()));
+    const all0 = (pg.runs || []).map((r) => r && typeof r.s === "string" ? __spreadProps(__spreadValues({}, r), { s: printable(r.s) }) : r);
+    const spaces = all0.filter((r) => r && typeof r.s === "string" && r.s !== "" && r.s.trim() === "" && isFinite(r.x) && isFinite(r.y) && r.h > 0);
+    const runs = all0.filter((r) => r && typeof r.s === "string" && r.s.trim() !== "" && isFinite(r.x) && isFinite(r.y) && isFinite(r.w) && r.h > 0 && r.x + r.w > 0 && r.x < W - 1 && r.y < H && r.y + r.h > 0 && !/^(\S)\1{3,}$/.test(r.s.trim()));
     if (!runs.length) return { lines: [], medH: 11 };
     const hs = runs.map((r) => r.h).sort((a, b) => a - b);
     const medH = hs[hs.length >> 1] || 11;
@@ -1775,8 +1784,13 @@ var NBCore = (() => {
         emit();
         chars = [];
       };
+      const spaceAt = (x02, x12, cy) => spaces.some((sp) => Math.abs(sp.y + sp.h / 2 - cy) <= tol && sp.x >= x02 - 1 && sp.x <= x12 + 1);
       for (const r of rs) {
         const gap = r.x - prevEnd;
+        if (chars.length && gap > -em * 0.6 && gap <= em * 0.08 && spaceAt(prevEnd - 1, r.x, row.cy)) {
+          const last = chars[chars.length - 1];
+          if (!/\s/.test(last.c) && !/^\s/.test(r.s)) chars.push({ c: " ", x0: prevEnd, x1: Math.max(prevEnd, r.x), lead: false, run: r });
+        }
         const wide = source === "ocr" ? gap > em * 1.1 : gap > em * 0.6;
         if (!segOpen || wide || gap < -em * 0.6) {
           flush();
@@ -1797,6 +1811,16 @@ var NBCore = (() => {
       }
       flush();
       if (!toks.length) continue;
+      for (let i = toks.length - 1; i >= 0; i--) {
+        const t = toks[i];
+        if (!(t.segStart || i === 0)) continue;
+        const m = t.t.match(/^(\([A-Ea-e1-5]\)|\[[A-Ea-e1-5]\])(?=\S)/) || t.t.match(/^((?:[Qq](?:uestion)?\.?\s*)?\d{1,3}[.)])(?=[“‘"(]?[A-Za-z])/) || t.t.match(/^([A-Ea-e][.)])(?=[“‘"(]?[A-Z][a-z’'])/);
+        if (!m || !m[1]) continue;
+        const k = m[1].length, cw = t.w / Math.max(1, t.t.length);
+        const head = { t: t.t.slice(0, k), x: t.x, y: t.y, w: Math.max(0.5, cw * k), h: t.h, exact: t.exact, conf: t.conf, segStart: t.segStart };
+        const rest = { t: t.t.slice(k), x: t.x + cw * k, y: t.y, w: Math.max(0.5, t.w - cw * k), h: t.h, exact: false, conf: t.conf, segStart: false };
+        toks.splice(i, 1, head, rest);
+      }
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (const t of toks) {
         x0 = Math.min(x0, t.x);
@@ -1810,6 +1834,74 @@ var NBCore = (() => {
   }
   var norm = (s) => s.toLowerCase().replace(/\d+/g, "#").replace(/\s+/g, " ").trim();
   var PAGE_NO = /^(?:page\s*)?#(?:\s*(?:of|\/)\s*#)?$|^[-–—]\s*#\s*[-–—]$/;
+  function readingColumns(m) {
+    const body = m.lines.filter((l) => !l.edge);
+    const anchors = [];
+    for (const l of body) l.toks.forEach((t, i) => {
+      if ((i === 0 || t.segStart) && /^(?:q(?:uestion)?\.?\s*)?\d{1,3}[.):]$/i.test(t.t)) anchors.push({ t, l });
+    });
+    const right = anchors.filter((a) => a.t.x > m.w * 0.43 && a.t.x < m.w * 0.75);
+    const left = anchors.filter((a) => a.t.x < m.w * 0.4);
+    if (!left.length || !right.length) return;
+    const rightX = right.map((a) => a.t.x).sort((a, b) => a - b)[right.length >> 1];
+    const aligned = right.filter((a) => Math.abs(a.t.x - rightX) < m.medH);
+    if (aligned.length < right.length * 0.7) return;
+    const top = Math.min(...anchors.map((a) => a.l.y));
+    const candidates = body.filter((l) => l.y >= top - m.medH);
+    let cut = 0, best = -Infinity;
+    for (let x = Math.max(m.w * 0.35, rightX - m.medH * 5); x < rightX - 2; x += 2) {
+      let clear = 0, crossed = 0, both = 0;
+      for (const l of candidates) {
+        if (l.toks.some((t) => t.x < x + 2 && t.x + t.w > x - 2)) {
+          crossed++;
+          continue;
+        }
+        clear++;
+        if (l.toks.some((t) => t.x + t.w < x) && l.toks.some((t) => t.x > x)) both++;
+      }
+      const score = clear - crossed * 4 + both - Math.abs(x - (rightX - m.medH)) * 0.01;
+      if (score > best) {
+        best = score;
+        cut = x;
+      }
+    }
+    if (!cut) return;
+    const separate = candidates.filter((l) => !l.toks.some((t) => t.x < cut && t.x + t.w > cut));
+    if (separate.length < candidates.length * 0.8) return;
+    const leftLines = separate.filter((l) => l.toks.some((t) => t.x < cut));
+    const rightLines = separate.filter((l) => l.toks.some((t) => t.x >= cut));
+    if (leftLines.length < 5 || rightLines.length < 5) return;
+    if (!aligned.some((a) => Number(a.t.t.replace(/\D/g, "")) > Math.min(...left.map((b) => Number(b.t.t.replace(/\D/g, "")))))) return;
+    const out = [], band = [];
+    const flush = () => {
+      for (const col of [0, 1]) for (const l of band) {
+        const toks = l.toks.filter((t) => col === 0 ? t.x < cut : t.x >= cut);
+        if (!toks.length) continue;
+        const x0 = Math.min(...toks.map((t) => t.x)), x1 = Math.max(...toks.map((t) => t.x + t.w));
+        const y = Math.min(...toks.map((t) => t.y)), bottom = Math.max(...toks.map((t) => t.y + t.h));
+        out.push(__spreadProps(__spreadValues({}, l), {
+          toks,
+          x0,
+          x1,
+          y,
+          h: bottom - y,
+          text: toks.map((t) => t.t).join(" "),
+          column: col,
+          columnL: col === 0 ? m.textL : cut,
+          columnR: col === 0 ? cut : m.textR
+        }));
+      }
+      band.length = 0;
+    };
+    for (const l of m.lines) {
+      if (l.edge || l.toks.some((t) => t.x < cut && t.x + t.w > cut)) {
+        flush();
+        out.push(l);
+      } else band.push(l);
+    }
+    flush();
+    m.lines = out;
+  }
   function dice(a, b) {
     if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
     const pairs = /* @__PURE__ */ new Map();
@@ -1851,6 +1943,7 @@ var NBCore = (() => {
         if (models.length >= 3 && pagesLike(c) >= needWide) l.edge = true;
         continue;
       }
+      if (/^q(?:ue(?:stion)?|n)?\s*[.:\-]?\s*\d{1,3}\s*[.):]?$/i.test(l.text.trim())) continue;
       if (PAGE_NO.test(k) || /^[#*^•\s]+$/.test(k) || pagesLike(c) >= need) l.edge = true;
       if (!l.edge && l.toks.length <= 3 && /#/.test(k) && k.replace(/[#\s]/g, "").length <= 2) l.edge = true;
     }
@@ -1882,6 +1975,7 @@ var NBCore = (() => {
       if (rights.length) m.textR = rights[Math.floor(rights.length * 0.9)];
       else if (body.length) m.textR = Math.max(...body.map((l) => l.x1));
     }
+    for (const m of models) readingColumns(m);
     let g = 0;
     for (const m of models) for (const l of m.lines) l.g = g++;
     return models;
@@ -2047,7 +2141,7 @@ var NBCore = (() => {
     }
     if (chosen.size < 2) return none;
     if (chosen.size >= 3) {
-      const shape = (lb) => lb.num ? "n" : lb.tok.t.charAt(0) === "(" ? "(" : lb.tok.t.charAt(0) === "[" ? "[" : "bare";
+      const shape = (lb) => lb.num ? "n" : /^[([]/.test(lb.tok.t) ? "wrapped" : "bare";
       const count2 = /* @__PURE__ */ new Map();
       for (const lb of chosen.values()) count2.set(shape(lb), (count2.get(shape(lb)) || 0) + 1);
       if (count2.size === 2) {
@@ -2073,7 +2167,7 @@ var NBCore = (() => {
     for (let g = lastLabelG + 1; g < gTo; g++) {
       const l = all[g], prev = all[endG];
       if (l.edge) continue;
-      if (l.page !== prev.page) break;
+      if (l.page !== prev.page || l.column !== prev.column) break;
       const m = models[l.page];
       const first = l.toks[0];
       const structural = !!labelOf(first, true, source) || /^\d{1,3}[.)]$/.test(first.t) || romanValue(first.t.replace(/[.)]$/, "")) > 0 && /[.)]$/.test(first.t) || DIRECTIONS.test(l.text) || PASSAGE_HEAD.test(l.text);
@@ -2114,7 +2208,7 @@ var NBCore = (() => {
         let box = tokRect(lb.tok);
         for (let gg = g; gg <= rowEnd; gg++) {
           const l = all[gg];
-          if (l.edge || l.page !== page) continue;
+          if (l.edge || l.page !== page || l.column !== all[g].column) continue;
           for (const t of l.toks) {
             const cx = t.x + t.w / 2;
             if (gg === g && t.x < x0 - 1) continue;
@@ -2124,16 +2218,18 @@ var NBCore = (() => {
         return box;
       });
       const edges = cells.map((p, ci) => {
+        var _a;
         const x = p.lb.tok.x;
-        if (ci === 0) return x - Math.max(0, Math.min(em * 1.5, x - m.textL));
+        if (ci === 0) return x - Math.max(0, Math.min(em * 1.5, x - ((_a = all[g].columnL) != null ? _a : m.textL)));
         const prevEnd = boxes[ci - 1].x + boxes[ci - 1].w;
         return Math.min(x, Math.max(prevEnd + 1, x - em * 1.5));
       });
       const layoutConf = layout === "irregular" ? 0.8 : 1;
       cells.forEach((p, ci) => {
+        var _a, _b;
         const box = boxes[ci];
         const x0 = edges[ci];
-        const x1 = ci + 1 < cells.length ? edges[ci + 1] : Math.max(right, m.textR, box.x + box.w);
+        const x1 = ci + 1 < cells.length ? edges[ci + 1] : Math.min((_a = all[g].columnR) != null ? _a : Infinity, Math.max(right, (_b = all[g].columnR) != null ? _b : m.textR, box.x + box.w));
         const region = { x: x0, y: box.y - 1.5, w: x1 - x0, h: box.h + 3 };
         regions[p.L] = {
           page,
@@ -2248,6 +2344,7 @@ var NBCore = (() => {
         let s;
         if (d === 1) s = 0;
         else if (d === 2 || d === 3) s = -0.6 * (d - 1);
+        else if (d >= 4 && d <= 15) s = -1.6 - 0.05 * d;
         else if (allowRestart && a.n <= 2 && b.n >= 4) s = -1.5;
         else continue;
         s += Math.abs(a.x - b.x) <= 3 || Math.abs(a.r - b.r) <= 3 ? 0.25 : -0.25;
@@ -2296,7 +2393,28 @@ var NBCore = (() => {
     let keyFrom = all.length;
     if (cands.length) {
       const firstQ = cands[0].g;
-      for (const l of all) if (!l.edge && l.g > firstQ && l.toks.length <= 8 && KEYHEAD.test(l.text.trim())) {
+      const fullSetAfter = (g0) => {
+        let n = 0;
+        for (const c of cands) {
+          if (c.g <= g0) continue;
+          const seen = /* @__PURE__ */ new Set();
+          for (let g = c.g; g < Math.min(all.length, c.g + 40); g++) {
+            if (g > c.g && candAtLine.has(g)) break;
+            const ls = labelsAt.get(g);
+            if (ls) {
+              for (const lb of ls) if (!lb.num) seen.add(lb.L);
+            }
+          }
+          if (LETTERS.every((L) => seen.has(L))) n++;
+        }
+        return n;
+      };
+      const candAtLine = new Set(cands.map((c) => c.g));
+      for (const l of all) {
+        if (l.edge || l.g <= firstQ || l.toks.length > 8) continue;
+        const t = l.text.trim();
+        if (!KEYHEAD.test(t) || !/^[A-Z]/.test(t)) continue;
+        if (fullSetAfter(l.g) >= 5) continue;
         keyFrom = l.g;
         break;
       }
@@ -2348,12 +2466,73 @@ var NBCore = (() => {
     let frontMatter = 0;
     for (let i = 1; i < chain.length; i++) {
       const a = chain[i], b = chain[i - 1];
-      if (a.n <= 2 && b.n >= 4 && chain.slice(0, i).every((c) => !evCount.get(c))) frontMatter = i;
+      const before = chain.slice(0, i), withOpts = before.filter((c) => evCount.get(c)).length;
+      if (a.n <= 2 && b.n >= 4 && (withOpts === 0 || withOpts === 1 && before.length >= 4)) frontMatter = i;
     }
     if (frontMatter) chain = chain.slice(frontMatter);
+    for (let i = chain.length - 1; i > 0; i--) {
+      const a = chain[i], b = chain[i - 1];
+      if (a.n <= 2 && b.n >= 4) {
+        const tail = chain.slice(i);
+        const near = tail[0] ? tail[0].g - b.g < 60 : false;
+        if (tail.length <= 10 && (tail.every((c) => !evCount.get(c)) || near && tail.filter((c) => evCount.get(c)).length <= 1)) chain = chain.slice(0, i);
+        break;
+      }
+    }
     const pageW = (p) => models[p].w;
     const strays = cands.filter((c) => c.q >= 1 && chain.indexOf(c) < 0 && c.x > pageW(all[c.g].page) * 0.4);
-    if (strays.length >= 3) issues.push({ kind: "layout", msg: "Some questions seem to sit in a second column, which the map does not read yet." });
+    if (strays.length >= 3) issues.push({ kind: "layout", msg: "Some numbered question blocks could not be placed in reading order." });
+    {
+      const aLines = (g0, g1) => {
+        const out = [];
+        for (let g = g0 + 1; g < g1; g++) {
+          const ls = labelsAt.get(g);
+          if (ls && ls.some((lb) => lb.L === "A" && !lb.num && (lb.tok.segStart || all[g].toks[0] === lb.tok))) out.push(g);
+        }
+        return out;
+      };
+      const dLine = (g0, g1) => {
+        let last = -1;
+        for (let g = g0; g < g1; g++) {
+          const ls = labelsAt.get(g);
+          if (ls && ls.some((lb) => lb.L === "D" && !lb.num)) last = g;
+        }
+        return last;
+      };
+      const added = [];
+      for (let i = 0; i + 1 < chain.length; i++) {
+        const a = chain[i], b = chain[i + 1];
+        const missing = b.n - a.n - 1;
+        if (missing < 1 || missing > 3) continue;
+        const as = aLines(a.g, b.g);
+        if (as.length !== missing + 1) continue;
+        let prevEnd = a.g;
+        for (let k = 1; k <= missing; k++) {
+          const ga = as[k];
+          const endPrev = dLine(prevEnd, ga);
+          if (endPrev < 0) break;
+          let s = ga - 1;
+          while (s > endPrev + 1) {
+            const l2 = all[s], up2 = all[s - 1];
+            if (!l2 || !up2 || l2.edge) break;
+            const m = models[l2.page];
+            if (up2.page !== l2.page || l2.y - up2.y > m.pitch * 1.45 || up2.edge) break;
+            s--;
+          }
+          if (s <= endPrev) s = endPrev + 1;
+          while (s < ga && all[s].edge) s++;
+          const l = all[s];
+          if (!l || !l.toks[0]) break;
+          const t0 = l.toks[0];
+          added.push({ n: a.n + k, g: s, tok: t0, x: a.x, r: a.r, punct: false, q: 0 });
+          prevEnd = ga;
+        }
+      }
+      if (added.length) {
+        chain = chain.concat(added).sort((p, q) => p.g - q.g);
+        for (const c of added) issues.push({ page: all[c.g].page, kind: "numbering", msg: "Question " + c.n + "\u2019s number is not in the paper\u2019s text; it was placed from its options." });
+      }
+    }
     const nextStart = (i) => i + 1 < chain.length ? chain[i + 1].g : Math.min(keyFrom, chain[i].g + 150, all.length);
     const picks = chain.map((c, i) => pickOptions(all, models, labelsAt, c.g, nextStart(i), c.tok.x + c.tok.w, source));
     const inStem = (g) => chain.some((c, i) => {
@@ -2481,6 +2660,7 @@ var NBCore = (() => {
       return rn >= ln ? { side: "r", v: rk * 3 } : { side: "l", v: lk * 3 };
     })();
     chain.forEach((c, i) => {
+      var _a, _b, _c;
       const pick = picks[i];
       const endG = pick.g1 >= 0 ? pick.g1 : nextStart(i) - 1;
       const per = /* @__PURE__ */ new Map();
@@ -2494,15 +2674,20 @@ var NBCore = (() => {
           const x0 = c.tok.x;
           lr = { x: x0, y: l.y, w: l.x1 - x0, h: l.h };
         }
-        per.set(l.page, union(per.get(l.page) || null, lr));
+        const key = l.page + ":" + ((_a = l.column) != null ? _a : -1);
+        per.set(key, { page: l.page, rect: union(((_b = per.get(key)) == null ? void 0 : _b.rect) || null, lr) });
       }
-      const pages = [...per.keys()].sort((a, b) => a - b);
-      const firstPage = pages[0] != null ? pages[0] : numLine.page;
+      const placed = [...per.values()];
+      const firstPage = placed[0] ? placed[0].page : numLine.page;
       for (const L of LETTERS) {
         const o = pick.regions[L];
-        if (o && per.has(o.page)) per.set(o.page, union(per.get(o.page) || null, o.region));
+        if (o) {
+          const target = placed.find((p) => p.page === o.page && o.label.x >= p.rect.x - 24 && o.label.x <= p.rect.x + p.rect.w);
+          if (target) target.rect = union(target.rect, o.region);
+          else placed.push({ page: o.page, rect: o.region });
+        }
       }
-      const rect = per.get(firstPage) || lineRect(numLine);
+      const rect = ((_c = placed[0]) == null ? void 0 : _c.rect) || lineRect(numLine);
       const q = {
         id: "q" + (i + 1),
         n: c.n,
@@ -2515,9 +2700,9 @@ var NBCore = (() => {
         options: pick.regions,
         conf: 0
       };
-      if (pages.length > 1) q.extra = pages.slice(1).map((p) => ({ page: p, rect: rround(per.get(p)) }));
+      if (placed.length > 1) q.extra = placed.slice(1).map((p) => ({ page: p.page, rect: rround(p.rect) }));
       const gapBefore = i > 0 && c.n - chain[i - 1].n > 1;
-      const aligned = dominant.side === "r" ? Math.abs(c.r - dominant.v) <= 4 : Math.abs(c.x - dominant.v) <= 4;
+      const aligned = numLine.column != null || (dominant.side === "r" ? Math.abs(c.r - dominant.v) <= 4 : Math.abs(c.x - dominant.v) <= 4);
       const numConf = (c.punct ? 1 : 0.8) * (gapBefore ? 0.8 : 1) * (aligned ? 1 : 0.85);
       q.conf = questionConfidence(q, numConf);
       if (gapBefore) issues.push({ qid: q.id, page: q.page, kind: "numbering", msg: "Question " + c.n + " follows " + chain[i - 1].n + ": a question may be missing." });
@@ -2528,7 +2713,7 @@ var NBCore = (() => {
     const boundaries = [...merged.map((s) => s.g), ...heads.map((h) => h.g), keyFrom].sort((a, b) => a - b);
     const passages = [];
     const addPassage = (s) => {
-      var _a;
+      var _a, _b, _c;
       const stop = (_a = boundaries.find((b) => b > s.g)) != null ? _a : all.length;
       let qs = questions.filter((q, i) => chain[i].g > s.g && chain[i].g < stop);
       if (s.range) {
@@ -2549,14 +2734,15 @@ var NBCore = (() => {
         if (!inBody.length) continue;
         let r = null;
         for (const t of inBody) r = union(r, tokRect(t));
-        per.set(l.page, union(per.get(l.page) || null, r));
+        const key = l.page + ":" + ((_b = l.column) != null ? _b : -1);
+        per.set(key, { page: l.page, rect: union(((_c = per.get(key)) == null ? void 0 : _c.rect) || null, r) });
       }
       const id = "p" + (passages.length + 1);
       passages.push({
         id,
         label: s.label,
         sectionId: null,
-        spans: [...per.keys()].sort((a, b) => a - b).map((p) => ({ page: p, rect: rround(per.get(p)) })),
+        spans: [...per.values()].map((p) => ({ page: p.page, rect: rround(p.rect) })),
         questionIds: qs.map((q) => q.id),
         conf: s.conf
       });
@@ -6404,7 +6590,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "f91a15e70cf2";
+  var CORE_BUILD = "c6f6f1762dc7";
   return __toCommonJS(index_exports);
 })();
 </script>
