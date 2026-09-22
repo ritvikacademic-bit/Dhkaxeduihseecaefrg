@@ -8882,7 +8882,7 @@ function qvView(c, n0, onClose) {
         H('button', { class: 'nb', type: 'button', 'aria-label': 'Next question', text: '›', onclick: () => step(1) }),
       ]),
       H('span', { class: `qvres ${qvOutcome(q)}` }, [H('b', { text: pill }), H('span', { text: sub })]),
-      onClose ? H('button', { class: 'btn', type: 'button', text: 'Close', onclick: onClose }) : null,
+      ...(onClose ? [H('button', { class: 'btn', type: 'button', text: 'Close', onclick: onClose })] : []),
     );
     const secs = SECS.filter(s => qs.some(x => x.sectionId === s.k));
     strip.replaceChildren(
@@ -8915,7 +8915,8 @@ function qvView(c, n0, onClose) {
   });
   root.tabIndex = -1;
   root.append(H('div', { class: 'qvhead' }, [bar, strip]), pageBox, statsBox);
-  requestAnimationFrame(draw);
+  /* a timer, not an animation frame: a tab in the background never runs those */
+  setTimeout(draw, 0);
   return root;
 }
 
