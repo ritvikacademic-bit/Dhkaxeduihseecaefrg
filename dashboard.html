@@ -9616,6 +9616,14 @@ async function avcStray(ctx) {
     }
     if (best) out.push({ qid: best.id, n: best.n, page: st.page });
   }
+  /* questions where the paper did not show every option letter for certain:
+     one missing, or matched to a letter out of line with the others (an
+     option placed in a clean gap between its neighbours, conf 0.6, is sure
+     enough not to ask about) */
+  out.shaky = map.questions.filter(q => {
+    const o = q.options || {};
+    return ['A', 'B', 'C', 'D'].some(L => !o[L] || (o[L].conf != null && o[L].conf < 0.9 && o[L].conf !== 0.6));
+  }).map(q => ({ qid: q.id, n: q.n, missing: ['A', 'B', 'C', 'D'].filter(L => !(q.options || {})[L]), guessed: ['A', 'B', 'C', 'D'].filter(L => (q.options || {})[L] && q.options[L].conf != null && q.options[L].conf < 0.9 && q.options[L].conf !== 0.6) }));
   return out;
 }
 function avCheckCard(ctx) {
@@ -9656,7 +9664,14 @@ function avCheckCard(ctx) {
   const strayBox = H('div');
   const fillStray = list => {
     const rows = list.map(x => { const q = qs.find(y => y.questionId === x.qid); return q ? pickRow(q, 'answer', `a blue mark near it touched no option · counted as ${q.finalAnswer || 'blank'}`) : null; }).filter(Boolean);
-    strayBox.replaceChildren(...[group('Blue mark on no option', rows)].filter(Boolean));
+    const seen = new Set(amb.map(q => q.questionId).concat(list.map(x => x.qid)));
+    const shaky = (list.shaky || []).filter(x => !seen.has(x.qid)).map(x => {
+      const q = qs.find(y => y.questionId === x.qid);
+      if (!q || q.outcome === 'skipped') return null;
+      const what = x.missing.length ? `option ${x.missing.join(', ')} not printed in the paper's text` : `option ${x.guessed.join(', ')} placed by estimate`;
+      return pickRow(q, 'answer', `${what} · read as ${q.finalAnswer || 'blank'}`);
+    }).filter(Boolean);
+    strayBox.replaceChildren(...[group('Blue mark on no option', rows), group('Options the paper did not show clearly', shaky)].filter(Boolean));
   };
   if (AVC.stray) fillStray(AVC.stray);
   else avcStray(ctx).then(list => { AVC.stray = list; fillStray(list); }).catch(() => {});
