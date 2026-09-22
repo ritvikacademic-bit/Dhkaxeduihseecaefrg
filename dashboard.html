@@ -11531,8 +11531,8 @@ function planStatus(M) {
   if (!last) return null;
   const tg = planTargetFor(M, isoUTC(last.date));
   const sc = last.m.pct * PAPER_MAX;
-  const head = tg == null ? [b(paperShort(last.paper)), ` · ${marks(half(sc))} on ${shortDate(isoUTC(last.date))}. `]
-    : [b(paperShort(last.paper)), ` · ${marks(half(sc))} on ${shortDate(isoUTC(last.date))}, `, b(sc >= tg - 0.01 ? `${marks(half(sc - tg))} above` : `${marks(half(tg - sc))} below`), ` that week’s target of ${marks(tg)}. `];
+  const head = tg == null ? [b(paperShort(last.paper)), ` · ${marks(sc)} on ${shortDate(isoUTC(last.date))}. `]
+    : [b(paperShort(last.paper)), ` · ${marks(sc)} on ${shortDate(isoUTC(last.date))}, `, b(sc >= tg - 0.01 ? `${marks(sc - tg)} above` : `${marks(tg - sc)} below`), ` that week’s target of ${marks(tg)}. `];
   return head.concat([`With it, your level is ${marks(half(M.level))} and the plan re-set from there: `, b(`+${marks(half(M.perWeek || 0))} a week`), ` to reach ${marks(M.peak)}.`]);
 }
 function renderPlan(host, M) {
