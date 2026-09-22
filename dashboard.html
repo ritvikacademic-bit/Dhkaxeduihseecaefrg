@@ -322,8 +322,52 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;fo
 /* ─────────────────────────── Check these ─────────────────────────── */
 .avcgroup{border-top:1px solid var(--hairline);padding:8px 0}
 .avcgroup>summary{cursor:pointer;font-size:13px;list-style:none;padding:4px 0}
+/* one question on its page */
+html.qvlock{overflow:hidden}
+.qv{display:grid;gap:12px;outline:none}
+.qv.over{position:fixed;inset:0;z-index:200;background:var(--bg);overflow:auto;padding:0 max(16px,env(safe-area-inset-left)) 40px;align-content:start}
+.qvhead{position:sticky;top:0;z-index:2;background:color-mix(in oklab,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);padding:10px 0 8px;border-bottom:1px solid var(--fill-2)}
+.qv:not(.over) .qvhead{position:static;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;padding-top:0}
+.qvbar{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap}
+.qvtitle{display:flex;flex-direction:column;line-height:1.15;margin-right:auto;min-width:0}
+.qvtitle b{font-size:15px}.qvtitle small{font-size:12px;color:var(--ink-3)}
+.qvnav{display:flex;align-items:center;gap:6px}
+.qvnav .nb{width:32px;height:32px;border-radius:50%;border:0;background:var(--fill);font-size:18px;line-height:1;color:var(--ink)}
+.qvnav .nb:hover{background:var(--fill-2)}
+.qvid{min-width:84px;text-align:center}.qvid b{display:block;font-size:17px;font-variant-numeric:tabular-nums}.qvid small{font-size:12px;color:var(--ink-3)}
+.qvres{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:980px;background:var(--fill);font-size:13px;white-space:nowrap}
+.qvres span{color:var(--ink-2)}
+.qvres.c{background:color-mix(in oklab,var(--good) 16%,transparent);color:var(--good-ink)}
+.qvres.w{background:color-mix(in oklab,var(--bad) 14%,transparent);color:var(--bad-ink)}
+.qvres.s{background:color-mix(in oklab,var(--warn) 22%,transparent);color:var(--warn-ink)}
+.qvstrip{display:flex;align-items:center;gap:10px;margin-top:8px;overflow-x:auto;scrollbar-width:none}
+.qvsecs{display:flex;gap:4px;flex:none}
+.qvsq{display:flex;gap:3px;flex:none}
+.qvsq button{width:18px;height:18px;border:0;border-radius:4px;background:var(--fill-2);padding:0;position:relative}
+.qvsq button.c{background:color-mix(in oklab,var(--good) 62%,var(--surface))}
+.qvsq button.w{background:var(--bad)}
+.qvsq button.s{background:transparent;box-shadow:inset 0 0 0 1.5px var(--warn)}
+.qvsq button.on{outline:2px solid var(--ink);outline-offset:1.5px}
+.qvsq button.t::after{content:"";position:absolute;top:-2px;right:-2px;width:5px;height:5px;border-radius:50%;background:var(--ink)}
+.qvbox{max-height:72vh;overflow:auto;border-radius:8px;background:var(--fill)}
+.qv.over .qvbox{max-height:none;overflow:visible;background:none}
+.qvpage{position:relative;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.14),0 8px 30px rgba(0,0,0,.08);overflow:hidden;width:max-content;max-width:100%;margin:0 auto}
+.qvcanvas{display:block;max-width:100%}
+.qvink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.qvq{fill:none;stroke-width:2}
+.qvq.c{stroke:#1a9e3a;fill:rgba(26,158,58,.06)}.qvq.w{stroke:#d03b3b;fill:rgba(208,59,59,.05)}.qvq.s{stroke:#e0a100;fill:rgba(224,161,0,.06)}.qvq.x{stroke:#8e8e93}
+.qvmark circle{stroke-width:1.4}.qvmark path{fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.qvmark.ok circle{fill:#1a9e3a;stroke:#fff}.qvmark.ok path{stroke:#fff}
+.qvmark.no circle{fill:#d03b3b;stroke:#fff}.qvmark.no path{stroke:#fff}
+.qvwait{padding:24px;text-align:center}
+.qvask{padding:28px;text-align:center;max-width:460px;margin:0 auto}.qvask h3{margin:0 0 6px;font-size:16px}
+.qvstats{display:grid;gap:10px}
+.qvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.qvstat{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:var(--fill)}
+.qvstat span{font-size:12px;color:var(--ink-3)}.qvstat b{font-size:15px;font-variant-numeric:tabular-nums}.qvstat small{font-size:11px;color:var(--ink-3)}
+.qvmeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
 .avcgroup>summary::-webkit-details-marker{display:none}
-.avcgroup>summary::before{content:'B8';display:inline-block;width:14px;color:var(--ink-3);transition:transform .15s}
+.avcgroup>summary::before{content:'\25B8';display:inline-block;width:14px;color:var(--ink-3);transition:transform .15s}
 .avcgroup[open]>summary::before{transform:rotate(90deg)}
 .avclist{display:grid;gap:6px;margin-top:6px}
 .avcrow{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}
@@ -8629,6 +8673,9 @@ function openInNeoBook(a, n) {
   return true;
 }
 function openQuestion(a, n) {
+  /* a mock recorded in NeoBook opens on its own page, with your ink */
+  const qc = qvCtxFor(a);
+  if (qc) return qvOpen(qc, n);
   const v = paperViewer(a);
   if (!v) return canOpenPaper(a) ? openInNeoBook(a, n) : false;
   const h = new URLSearchParams({ q: String(n), n: `${a.short} · ${a.when}`, o: a.log.out, a: a.log.ans || '', t: JSON.stringify(a.log.tags || {}), r: String(Date.now() % 1e7) });
@@ -8637,6 +8684,247 @@ function openQuestion(a, n) {
   else toast('The browser blocked the new tab. Allow pop-ups for this file, then click the question again.');
   return true;
 }
+/* ────────────── One question, on its page ──────────────
+   A mock recorded in NeoBook is shown on the paper it was sat on: the page as
+   printed, your ink on it exactly where the pen put it (blue answers, red
+   circles, crosses and working; erased strokes stay erased), a tick on the
+   option the key gives and, when yours differs, a cross on yours. Under the
+   page, the numbers for that one question.
+   The PDF is read from this device's NeoBook library when it is there; on a
+   device without it you choose the file once and it is kept for next time. */
+const QV = { lib: null, docs: new Map(), data: new Map(), n: null };
+const QV_INK = { blue: '#1f5fd6', red: '#d62828', other: '#6e6e73' };
+function qvLoadPdfjs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (QV.lib) return QV.lib;
+  QV.lib = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => { const L = window.pdfjsLib; L.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(L); };
+    s.onerror = () => { QV.lib = null; rej(new Error('the PDF renderer did not load — check the connection')); };
+    document.head.append(s);
+  });
+  return QV.lib;
+}
+const qvReq = r => new Promise(res => { r.onsuccess = () => res(r.result); r.onerror = () => res(null); });
+/** NeoBook's own copy of the paper, if this device has one. Never creates the library. */
+async function qvLibraryBytes(bookId) {
+  if (!bookId || !indexedDB.databases) return null;
+  try {
+    const list = await indexedDB.databases();
+    if (!list.some(d => d.name === 'lumen')) return null;
+    const db = await qvReq(indexedDB.open('lumen'));
+    if (!db) return null;
+    if (!db.objectStoreNames.contains('kv')) { db.close(); return null; }
+    const v = await qvReq(db.transaction('kv').objectStore('kv').get('bytes:' + bookId));
+    db.close();
+    return v || null;
+  } catch (e) { return null; }
+}
+function qvCacheDB() {
+  const r = indexedDB.open('clat-papers', 1);
+  r.onupgradeneeded = () => { try { r.result.createObjectStore('pdf'); } catch (e) { /* exists */ } };
+  return qvReq(r);
+}
+async function qvCacheGet(fp) { const db = await qvCacheDB(); if (!db) return null; const v = await qvReq(db.transaction('pdf').objectStore('pdf').get(fp)); db.close(); return v; }
+async function qvCachePut(fp, buf) {
+  const db = await qvCacheDB(); if (!db) return;
+  await new Promise(res => { const t = db.transaction('pdf', 'readwrite'); t.objectStore('pdf').put(buf, fp); t.oncomplete = res; t.onerror = res; t.onabort = res; });
+  db.close();
+}
+const qvU8 = v => v instanceof ArrayBuffer ? new Uint8Array(v) : ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : null;
+async function qvHash(u8) { const h = await crypto.subtle.digest('SHA-256', u8); return 'sha256:' + [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+async function qvDoc(sess) {
+  const fp = (sess.source && sess.source.fp) || sess.id;
+  if (QV.docs.has(fp)) return QV.docs.get(fp);
+  const raw = (await qvLibraryBytes(sess.source && sess.source.bookId)) || (await qvCacheGet(fp));
+  const u8 = raw && qvU8(raw);
+  if (!u8) return null;
+  const L = await qvLoadPdfjs();
+  const doc = await L.getDocument({ data: u8.slice(), isEvalSupported: false }).promise;
+  QV.docs.set(fp, doc);
+  return doc;
+}
+/** Map and ink of one attempt, read once. */
+async function qvData(sess) {
+  if (QV.data.has(sess.id)) return QV.data.get(sess.id);
+  const M = nbMock(), db = NB.db;
+  const [map, events] = await Promise.all([db.resolveMap(sess), db.readEvents(sess.id)]);
+  const byId = new Map((map ? map.questions : []).map(q => [q.id, q]));
+  const strokes = M ? M.strokesOf(events || []).filter(s => s.removedAt == null) : [];
+  const v = { map, byId, strokes };
+  QV.data.set(sess.id, v);
+  return v;
+}
+const qvOutcome = q => q.outcome === 'correct' ? 'c' : q.outcome === 'wrong' ? 'w' : q.outcome === 'skipped' ? 's' : 'x';
+const qvPillText = q => q.outcome === 'correct' ? ['✓ Right', ` You ${q.finalAnswer} · Key ${q.officialAnswer}`]
+  : q.outcome === 'wrong' ? ['✗ Wrong', ` You ${q.finalAnswer} · Key ${q.officialAnswer}`]
+    : q.outcome === 'skipped' ? ['Blank', ` Key ${q.officialAnswer || '—'}`] : [OUTC[q.outcome] ? OUTC[q.outcome].label : 'No key', ''];
+
+/** Ask for the paper's PDF, check it is the same file, keep it. */
+function qvAskPdf(sess, name, done) {
+  const inp = H('input', { type: 'file', accept: 'application/pdf,.pdf', style: { display: 'none' } });
+  const msg = H('p', { class: 'muted', style: { margin: '0 0 14px' }, text: `${name || 'This paper'} is not on this device yet. Choose its PDF once — it stays here for next time, and nothing leaves this device.` });
+  const btn = H('button', { class: 'btn primary', type: 'button', text: 'Choose PDF', onclick: () => inp.click() });
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    btn.disabled = true; btn.textContent = 'Reading…';
+    try {
+      const u8 = new Uint8Array(await f.arrayBuffer());
+      const fp = (sess.source && sess.source.fp) || sess.id;
+      const got = await qvHash(u8);
+      await qvCachePut(fp, u8.buffer);
+      if (fp.startsWith('sha256:') && got !== fp) toast('This PDF is not byte-for-byte the file the attempt was sat on, so ink may sit a little off.');
+      done();
+    } catch (e) { btn.disabled = false; btn.textContent = 'Choose PDF'; msg.textContent = 'Could not read that file: ' + (e && e.message ? e.message : e); }
+  });
+  return H('div', { class: 'qvask' }, [H('h3', { text: 'Open the paper' }), msg, btn, inp]);
+}
+
+/** Draw page `pageNo` with the question outlined, the ink, and the ticks. */
+async function qvPaint(box, doc, data, q, mq) {
+  const page = await doc.getPage(mq.page + 1);
+  const vp1 = page.getViewport({ scale: 1 });
+  const cssW = Math.max(280, box.clientWidth || 720), scale = cssW / vp1.width, dpr = Math.min(2, window.devicePixelRatio || 1);
+  const vp = page.getViewport({ scale: scale * dpr });
+  const cv = H('canvas', { class: 'qvcanvas', width: String(Math.round(vp.width)), height: String(Math.round(vp.height)) });
+  cv.style.width = cssW + 'px'; cv.style.height = Math.round(vp1.height * scale) + 'px';
+  await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+  const W = vp1.width, Hh = vp1.height;
+  const svg = S('svg', { class: 'qvink', viewBox: `0 0 ${W} ${Hh}`, preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+  const r = mq.rect, pad = 5, oc = qvOutcome(q);
+  svg.append(S('rect', { x: r.x - pad, y: r.y - pad, width: r.w + pad * 2, height: r.h + pad * 2, rx: 6, class: `qvq ${oc}` }));
+  for (const st of data.strokes) {
+    if (st.page !== mq.page || !st.pts.length) continue;
+    const d = st.pts.length === 1 ? `M${st.pts[0][0]} ${st.pts[0][1]}h0.1` : st.pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('');
+    svg.append(S('path', { d, fill: 'none', stroke: QV_INK[st.ink] || QV_INK.other, 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.92 }));
+  }
+  const mark = (L, kind) => {
+    const o = mq.options && mq.options[L];
+    if (!o || o.page !== mq.page) return;
+    const lb = o.label || o.region, cx = lb.x - 11, cy = lb.y + lb.h / 2;
+    const g = S('g', { class: `qvmark ${kind}` });
+    g.append(S('circle', { cx, cy, r: 7 }));
+    g.append(S('path', { d: kind === 'ok' ? `M${cx - 3.4} ${cy + 0.2}l2.3 2.4l4.6 -5` : `M${cx - 2.8} ${cy - 2.8}l5.6 5.6M${cx + 2.8} ${cy - 2.8}l-5.6 5.6` }));
+    svg.append(g);
+  };
+  const key = q.officialAnswer, you = q.finalAnswer;
+  if (key && mq.options && mq.options[key]) mark(key, 'ok');
+  if (you && you !== key) mark(you, 'no');
+  const frame = H('div', { class: 'qvpage' }, [cv, svg]);
+  box.replaceChildren(frame);
+  // bring the question into view inside the page box
+  const top = (r.y - 40) * scale;
+  box.scrollTop = Math.max(0, top);
+}
+
+/** The numbers for one question, laid out beside its page instead of a table row. */
+function qvStats(q, c) {
+  const pas = q.passageId ? (c.d.passages || []).find(p => p.passageId === q.passageId) : null;
+  const cell = (k, v, note) => H('div', { class: 'qvstat' }, [H('span', { text: k }), H('b', { text: v == null || v === '' ? '—' : String(v) }), note ? H('small', { text: note }) : null]);
+  const guess = q.guessKind && q.guessKind !== 'none' ? (q.guessKind === 'educated' ? 'Educated guess' : q.guessKind === 'random' ? 'Random guess' : 'Ringed, word unread') : null;
+  return H('div', { class: 'qvstats' }, [
+    H('div', { class: 'qvgrid' }, [
+      cell('Time', msTxt(q.totalActiveTimeMs), q.initialActiveTimeMs != null && q.revisitCount ? `${msTxt(q.initialActiveTimeMs)} first visit` : null),
+      cell('To first lock', msTxt(q.initialDecisionTimeMs)),
+      cell('Final two', q.finalTwoOptions ? `${q.finalTwoOptions.join(' / ')} · ${msTxt(q.finalTwoDurationMs)}` : null),
+      cell('Passage lookups', pas ? `${msTxt(q.passageLookupTimeMs)} · ${q.passageRevisitCount}×` : null, pas ? `Passage ${pas.label || ''}`.trim() : null),
+      cell('Visits', q.visitCount),
+      cell('Changes', q.answerChangeCount || null),
+      cell('Crossed out', (q.eliminatedOptions || []).length ? q.eliminatedOptions.join(', ') : null),
+      cell('Marks', q.marks == null ? null : marks(q.marks)),
+    ]),
+    H('div', { class: 'qvmeta' }, [
+      H('span', { class: 'muted', text: 'Answers in order ' }), avHistory(q),
+      guess ? H('span', { class: 'avchip', text: guess }) : null,
+      q.answerSetByYou ? H('span', { class: 'avchip', text: 'Set by you' }) : null,
+      q.highFriction ? avSignals(q) : null,
+    ]),
+  ]);
+}
+
+/** The viewer itself: bar, section strip, page, numbers. `onClose` makes it an overlay. */
+function qvView(c, n0, onClose) {
+  const qs = c.qs.slice().sort((p, q) => p.position - q.position);
+  let n = qs.some(q => q.displayedQuestionNumber === n0) ? n0 : (qs[0] && qs[0].displayedQuestionNumber);
+  const root = H('div', { class: 'qv' + (onClose ? ' over' : '') });
+  const pageBox = H('div', { class: 'qvbox' });
+  const statsBox = H('div');
+  const bar = H('div', { class: 'qvbar' });
+  const strip = H('div', { class: 'qvstrip' });
+  let ticket = 0;
+  const go = m => { if (qs.some(q => q.displayedQuestionNumber === m)) { n = m; QV.n = m; draw(); } };
+  const step = d => { const i = qs.findIndex(q => q.displayedQuestionNumber === n); const nx = qs[i + d]; if (nx) go(nx.displayedQuestionNumber); };
+  const draw = async () => {
+    const my = ++ticket;
+    const q = qs.find(x => x.displayedQuestionNumber === n);
+    if (!q) return;
+    const [pill, sub] = qvPillText(q);
+    bar.replaceChildren(
+      H('div', { class: 'qvtitle' }, [H('b', { text: c.a ? c.a.paper : 'Attempt' }), H('small', { text: c.a ? `${c.a.cohortName} · ${c.a.when}` : '' })]),
+      H('div', { class: 'qvnav' }, [
+        H('button', { class: 'nb', type: 'button', 'aria-label': 'Previous question', text: '‹', onclick: () => step(-1) }),
+        H('div', { class: 'qvid' }, [H('b', { text: `Q${n}` }), H('small', { text: SEC_NAME[q.sectionId] || '' })]),
+        H('button', { class: 'nb', type: 'button', 'aria-label': 'Next question', text: '›', onclick: () => step(1) }),
+      ]),
+      H('span', { class: `qvres ${qvOutcome(q)}` }, [H('b', { text: pill }), H('span', { text: sub })]),
+      onClose ? H('button', { class: 'btn', type: 'button', text: 'Close', onclick: onClose }) : null,
+    );
+    const secs = SECS.filter(s => qs.some(x => x.sectionId === s.k));
+    strip.replaceChildren(
+      H('div', { class: 'qvsecs' }, secs.map(s => H('button', { class: 'tchip', type: 'button', 'aria-pressed': String(s.k === q.sectionId), text: s.short || s.name, onclick: () => { const f = qs.find(x => x.sectionId === s.k); if (f) go(f.displayedQuestionNumber); } }))),
+      H('div', { class: 'qvsq' }, qs.filter(x => x.sectionId === q.sectionId).map(x => H('button', {
+        type: 'button', class: `${qvOutcome(x)}${x.displayedQuestionNumber === n ? ' on' : ''}${x.guessKind && x.guessKind !== 'none' ? ' t' : ''}`,
+        title: `Q${x.displayedQuestionNumber} · ${(OUTC[x.outcome] || OUTC.unkeyed).label}`, 'aria-label': `Question ${x.displayedQuestionNumber}`, onclick: () => go(x.displayedQuestionNumber),
+      }))),
+    );
+    statsBox.replaceChildren(qvStats(q, c));
+    if (!c.sess) { pageBox.replaceChildren(H('p', { class: 'muted', text: 'This attempt has no page to show.' })); return; }
+    if (!pageBox.firstChild || !pageBox.querySelector('.qvpage')) pageBox.replaceChildren(H('p', { class: 'muted qvwait', text: 'Opening the page…' }));
+    try {
+      const [doc, data] = await Promise.all([qvDoc(c.sess), qvData(c.sess)]);
+      if (my !== ticket) return;
+      if (!doc) { pageBox.replaceChildren(qvAskPdf(c.sess, c.a ? c.a.paper : '', () => draw())); return; }
+      const mq = data.byId.get(q.questionId);
+      if (!mq) { pageBox.replaceChildren(H('p', { class: 'muted', text: `Q${n} is not on this attempt's map of the paper.` })); return; }
+      await qvPaint(pageBox, doc, data, q, mq);
+    } catch (e) {
+      console.error(e);
+      if (my === ticket) pageBox.replaceChildren(H('p', { class: 'muted', text: 'Could not draw the page: ' + (e && e.message ? e.message : e) }));
+    }
+  };
+  root.addEventListener('keydown', e => {
+    if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.key === 'ArrowRight') { step(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { step(-1); e.preventDefault(); }
+    else if (e.key === 'Escape' && onClose) onClose();
+  });
+  root.tabIndex = -1;
+  root.append(H('div', { class: 'qvhead' }, [bar, strip]), pageBox, statsBox);
+  requestAnimationFrame(draw);
+  return root;
+}
+
+/** Heatmap squares and question links on a recorded mock open here. */
+function qvCtxFor(a) {
+  const id = a && a.telemetrySessionId;
+  const d = id && NB.bundles ? NB.bundles.get(id) : null;
+  const sess = id && NB.sessions ? NB.sessions.get(id) : null;
+  if (!d || !sess || d.target !== 'attempt') return null;
+  return { d, a, full: true, t: d.test, qs: d.questions, sess };
+}
+function qvOpen(c, n) {
+  const prev = document.activeElement;
+  let view = null;
+  const close = () => { view.remove(); document.documentElement.classList.remove('qvlock'); if (prev && prev.focus) prev.focus(); };
+  view = qvView(c, n, close);
+  document.documentElement.classList.add('qvlock');
+  document.body.append(view);
+  view.focus();
+  return true;
+}
+
 function renderQuestions(el) {
   const L = state.attempts.filter(a => a.log);
   if (!L.length) {
@@ -9510,7 +9798,7 @@ function renderPractice(el) {
    NBCore.mock.deriveAttempt and only displayed here. */
 const AV = { sel: null, sort: { key: 'pos', dir: 1 }, filter: { sec: 'all', out: 'all', only: 'all' } };
 const AV_PANES = [
-  { k: 'summary', label: 'Summary' }, { k: 'sections', label: 'Sections' }, { k: 'passages', label: 'Passages' },
+  { k: 'verify', label: 'Verify', needsLog: true }, { k: 'summary', label: 'Summary' }, { k: 'sections', label: 'Sections' }, { k: 'passages', label: 'Passages' },
   { k: 'questions', label: 'Questions' }, { k: 'timing', label: 'Timing' }, { k: 'behaviour', label: 'Behaviour' },
   { k: 'final2', label: 'Final two' }, { k: 'changes', label: 'Answer changes' }, { k: 'timeline', label: 'Timeline' },
 ];
@@ -9740,18 +10028,18 @@ function renderAttempt(el) {
   const sub = cur.a ? `${cur.a.cohortName} · ${cur.a.when}${d ? ' · recorded in NeoBook' : ''}` : `${SEC_NAME[cur.p.section] || 'Mixed'} practice · ${cur.p.date ? fmtDate(cur.p.date) : 'Undated'} · recorded in NeoBook`;
   const head = viewHead(title, sub, H('div', { class: 'filter-group avhead' }, [picker, typeof avRemoveButton === 'function' ? avRemoveButton(cur) : null]));
   if (!d) return fill(el, head, avPlain(cur.a));
-  const pane = AV_PANES.some(p => p.k === state.prefs.attemptPane) ? state.prefs.attemptPane : 'summary';
-  const seg = H('nav', { class: 'seg small', id: 'avTabs', role: 'tablist', 'aria-label': 'Analysis of this attempt' }, [H('span', { class: 'thumb', 'aria-hidden': 'true' })].concat(AV_PANES.map(p => H('button', {
+  const ctx = { d, a: cur.a || null, p: cur.p || null, full: d.target === 'attempt', t: d.test, qs: d.questions, sess: NB.sessions.get(cur.id) || null };
+  /* Verify settles what the pen could not read; an attempt with no pen log has nothing to settle */
+  const panes = AV_PANES.filter(p => !p.needsLog || (ctx.sess && ctx.full));
+  const pane = panes.some(p => p.k === state.prefs.attemptPane) ? state.prefs.attemptPane : 'summary';
+  const seg = H('nav', { class: 'seg small', id: 'avTabs', role: 'tablist', 'aria-label': 'Analysis of this attempt' }, [H('span', { class: 'thumb', 'aria-hidden': 'true' })].concat(panes.map(p => H('button', {
     type: 'button', role: 'tab', 'aria-selected': String(p.k === pane), tabindex: p.k === pane ? '0' : '-1',
     onclick: () => { state.prefs.attemptPane = p.k; savePrefs(); invalidate(['attempt']); },
   }, p.label))));
-  const ctx = { d, a: cur.a || null, p: cur.p || null, full: d.target === 'attempt', t: d.test, qs: d.questions, sess: NB.sessions.get(cur.id) || null };
   let body;
   try { body = AV_RENDER[pane](ctx); }
   catch (e) { console.error(e); body = [card('This part hit an error', e && e.message ? e.message : String(e), [])]; }
-  let check = null;
-  try { check = avCheckCard(ctx); } catch (e) { console.error(e); }
-  fill(el, head, check, H('div', { class: 'tabs-scroll avtabs' }, seg), ...[].concat(body));
+  fill(el, head, H('div', { class: 'tabs-scroll avtabs' }, seg), ...[].concat(body));
   requestAnimationFrame(() => moveThumb(seg, false));
 }
 
@@ -9774,6 +10062,10 @@ function avPlain(a) {
 
 /* ── panes ── */
 const AV_RENDER = {
+  verify(c) {
+    const card0 = avCheckCard(c);
+    return [card0 || card('Nothing to verify', 'This attempt has no pen log to check.', [])];
+  },
   summary(c) {
     const t = c.t, tm = t.timing, out = [], s = c.sess;
     const dur = s && s.config ? s.config.durationMs : null;
@@ -9830,7 +10122,13 @@ const AV_RENDER = {
       ]))]),
     ];
   },
-  questions(c) { return [avQuestionCard(c)]; },
+  questions(c) {
+    if (!(c.sess && c.full)) return [avQuestionCard(c)];
+    return [
+      card('Every question, on its page', 'Your ink as you left it, a tick on the key’s option and a cross on yours when it differs. Use ‹ › or the arrow keys; the squares jump within a section.', [qvView(c, QV.n)]),
+      card('The same numbers as a table', null, [numbersToggle('Show every question as a table', () => [avQuestionCard(c)])]),
+    ];
+  },
   timing(c) {
     const t = c.t, tm = t.timing, out = [];
     const pace = H('div', { class: 'chart' });
@@ -10978,7 +11276,8 @@ const weekRange = (a, z) => { const x = new Date(a), y = new Date(z); return x.g
 
 /** Everything the Wiz knows, computed once per render from your attempts, your target and the exam date. */
 function wizModel() {
-  const key = [state.attempts.length, state.attempts.map(a => a.id).join(','), JSON.stringify(state.prefs.target), state.prefs.examDate, todayISO()].join('|');
+  /* every score is part of the key: a re-scored attempt re-plans at once */
+  const key = [state.attempts.length, state.attempts.map(a => a.id + '=' + a.m.net + '@' + a.date).join(','), JSON.stringify(state.prefs.target), state.prefs.examDate, todayISO()].join('|');
   if (wizModel.c && wizModel.c.key === key) return wizModel.c;
   const A = state.attempts;
   const timed = A.filter(a => a.date && (a.cohort === 'pyq_t' || a.cohort === 'mock_t'));
@@ -11193,15 +11492,48 @@ function coach(key, ...args) {
 }
 
 /* ── The Wiz card on Overview: where you stand, your path to exam day, this week's targets ── */
+/* ── The plan remembers what it asked for ──
+   Each week's target is kept the first time that week is planned, so later
+   weeks can show what was asked of you and whether the attempt met it; the
+   ramp from today is always drawn again from your current level. */
+function planLog() { const P = state.prefs; if (!P.planLog || typeof P.planLog !== 'object') P.planLog = {}; return P.planLog; }
+function planRemember(M) {
+  const w = M.thisWeek; if (!w) return;
+  const k = new Date(w.start).toISOString().slice(0, 10), log = planLog();
+  if (log[k] == null) { log[k] = w.target; savePrefs(); }
+}
+function planPast(M) {
+  const log = planLog(), w0 = M.thisWeek ? M.thisWeek.start : M.now;
+  return Object.keys(log).map(k => ({ start: isoUTC(k), target: Number(log[k]) })).filter(p => isFinite(p.target) && p.start < w0).map(p => Object.assign(p, { mid: p.start + 3 * DAY })).sort((a, b) => a.start - b.start);
+}
+/** the target that applied on day t: the week's remembered target, else this week's */
+function planTargetFor(M, t) {
+  const k = new Date(mondayOf(t)).toISOString().slice(0, 10), log = planLog();
+  if (log[k] != null) return Number(log[k]);
+  const w = M.weeks.find(x => t >= x.start && t <= x.end + DAY);
+  return w ? w.target : null;
+}
+function planStatus(M) {
+  const last = M.timed.slice().sort((a, b) => isoUTC(b.date) - isoUTC(a.date))[0];
+  if (!last) return null;
+  const tg = planTargetFor(M, isoUTC(last.date));
+  const sc = last.m.pct * PAPER_MAX;
+  const head = tg == null ? [b(paperShort(last.paper)), ` · ${marks(half(sc))} on ${shortDate(isoUTC(last.date))}. `]
+    : [b(paperShort(last.paper)), ` · ${marks(half(sc))} on ${shortDate(isoUTC(last.date))}, `, b(sc >= tg - 0.01 ? `${marks(half(sc - tg))} above` : `${marks(half(tg - sc))} below`), ` that week’s target of ${marks(tg)}. `];
+  return head.concat([`With it, your level is ${marks(half(M.level))} and the plan re-set from there: `, b(`+${marks(half(M.perWeek || 0))} a week`), ` to reach ${marks(M.peak)}.`]);
+}
 function renderPlan(host, M) {
   host.replaceChildren();
   const W = Math.max(300, host.clientWidth), Hh = W < 560 ? 250 : 290;
   const narrow = W < 560, padL = 34, padR = narrow ? 96 : 150, padT = 16, padB = 26;
   const t0 = Math.min(M.timed.length ? isoUTC(M.timed[0].date) : M.now, M.now) - 5 * DAY, t1 = M.exam + 6 * DAY;
   const X = t => padL + ((t - t0) / (t1 - t0)) * (W - padL - padR);
-  const lo = 40, hi = 120, Y = v => padT + (1 - (clamp(v, lo, hi) - lo) / (hi - lo)) * (Hh - padT - padB);
+  /* the floor follows your lowest timed score, so no attempt is ever pinned to the axis */
+  const lowest = Math.min(40, ...M.timed.map(a => a.m.pct * PAPER_MAX));
+  const lo = Math.max(-20, Math.floor((lowest - 5) / 20) * 20), hi = 120, Y = v => padT + (1 - (clamp(v, lo, hi) - lo) / (hi - lo)) * (Hh - padT - padB);
   const svg = svgRoot(W, Hh, 'Your timed scores, your weekly targets to exam day, and the NALSAR benchmarks for your category');
-  [40, 60, 80, 100, 120].forEach(v => {
+  const gridV = []; for (let v = lo; v <= hi; v += 20) gridV.push(v);
+  gridV.forEach(v => {
     svg.append(S('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), stroke: v === lo ? 'var(--axis)' : 'var(--grid)' }));
     svg.append(txt(padL - 6, Y(v) + 3.5, String(v), { 'text-anchor': 'end', 'font-size': 10.5 }));
   });
@@ -11237,6 +11569,18 @@ function renderPlan(host, M) {
     const last = M.weeks[M.weeks.length - 1];
     labs.push({ x: W - padR + 8, y: Y(last.target) + 4, text: `Plan ${marks(last.target)}`, color: 'var(--accent)' });
   }
+  // the targets earlier weeks asked for, as they were set then
+  const past = planPast(M);
+  past.forEach(p => {
+    svg.append(S('rect', { x: X(p.mid) - 3.5, y: Y(p.target) - 3.5, width: 7, height: 7, fill: 'var(--surface)', stroke: 'var(--accent)', 'stroke-width': 1.3, opacity: 0.7 }));
+  });
+  // each timed attempt against the target of its week: a short stem from the target to the score
+  M.timed.forEach(a => {
+    const tg = planTargetFor(M, isoUTC(a.date));
+    if (tg == null) return;
+    const sc = a.m.pct * PAPER_MAX, met = sc >= tg - 0.01;
+    svg.append(S('line', { x1: X(isoUTC(a.date)), x2: X(isoUTC(a.date)), y1: Y(tg), y2: Y(sc), stroke: met ? 'var(--good)' : 'var(--bad)', 'stroke-width': 1.4, 'stroke-dasharray': '2 2', opacity: 0.9 }));
+  });
   // your timed attempts, joined within each kind
   ['mock_t', 'pyq_t'].forEach(k => {
     const xs = M.timed.filter(a => a.cohort === k);
@@ -11279,7 +11623,10 @@ function wizCard() {
     H('p', {}, [`Average of your last 3 timed attempts — ${rankText(M.level)} on CLAT 2025’s actual results.${retakeNote(M)}`]),
     H('ul', { class: 'wiz-gaps' }, BENCH.seats.map(s => H('li', {}, [H('i', { class: 'sw', style: { background: s.key === 'tl' ? 'var(--bench-1)' : 'var(--bench-2)' } }), H('span', {}, [b(s.name), ` (${s.why}) · closed at AIR ${s.ranks.map(r => INR.format(r[1])).join(', ')} in ${s.ranks.map(r => r[0]).join(', ')} ≈ ${s.marks[0]}–${s.marks[1]} marks. You are `, b(gapWord(M.level, s.marks[0])), ' the low end.'])]))),
   ]);
+  planRemember(M);
+  const status = planStatus(M);
   const weekBox = w ? H('div', { class: 'wiz-week' }, [
+    status ? H('p', { class: 'wiz-status', style: { margin: '0 0 10px' } }, [H('span', { class: 'eyebrow', text: 'After your latest attempt' }), H('br'), ...status]) : null,
     H('div', { class: 'eyebrow', text: `This week · ${weekRange(w.start, w.end)}` }),
     H('div', { class: 'tp-grid one' }, [
       ['Full-mock score', `${marks(w.target)}+`], ['Accuracy', `${pct(w.acc, 0)}+`], ['Wrong answers', M.peakWeek && M.peakWeek.wrong < w.wrong ? `≤ ${w.wrong} (≤ ${M.peakWeek.wrong} by ${shortDate(M.peakWeek.start)})` : `≤ ${w.wrong}`], ['Questions attempted', `${w.att}+`], ['Focus', w.focus ? `${w.focus.s.name} (${pct(w.focus.acc, 0)} now)` : 'Full mocks and rest'],
