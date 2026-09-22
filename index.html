@@ -2776,6 +2776,7 @@ var NBCore = (() => {
     auditMap: () => auditMap,
     buildDocumentMap: () => buildDocumentMap,
     buildDocumentMapWithModels: () => buildDocumentMapWithModels,
+    carryOverrides: () => carryOverrides,
     combineKeyReads: () => combineKeyReads,
     crossOf: () => crossOf,
     deriveAnswers: () => deriveAnswers,
@@ -4706,6 +4707,36 @@ var NBCore = (() => {
     });
     out.passages = out.passages.filter((p) => p.id !== pid);
     return refresh(out);
+  }
+  function carryOverrides(ov, from, to) {
+    if (!ov) return ov;
+    const where = /* @__PURE__ */ new Map();
+    const overlap2 = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    for (const q of from.questions) {
+      let best = null, bo = 0;
+      for (const n of to.questions) {
+        if (n.page !== q.page) continue;
+        const o = overlap2(q.rect, n.rect);
+        if (o > bo) {
+          bo = o;
+          best = n;
+        }
+      }
+      if (best && bo >= 0.3 * Math.min(q.rect.w * q.rect.h, best.rect.w * best.rect.h)) where.set(q.id, best.id);
+    }
+    const move = (src) => {
+      if (!src) return src;
+      const out = {};
+      for (const k of Object.keys(src)) {
+        const id = where.get(k);
+        if (id && !(id in out)) out[id] = src[k];
+      }
+      return out;
+    };
+    const next = Object.assign({}, ov);
+    if (ov.answers) next.answers = move(ov.answers);
+    if (ov.guesses) next.guesses = move(ov.guesses);
+    return next;
   }
 
   // src/mock/mapquery.ts
@@ -8053,7 +8084,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "d3f3b96a47f5";
+  var CORE_BUILD = "8a6ba0f3959c";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -23929,8 +23960,34 @@ function restartMap(){
   MV.loading = true; mvPanel();
   dbp().then(function(db){ return db.setMeta('map.setaside.' + m.fp, { at: Date.now(), map: m }); }).catch(function(){})
     .then(function(){ return prepareMap(bk, { force: true, needModels: true }); })
+    .then(function(){ return mapReplaced(m, MAPS.map); })
     .then(function(){ MV.loading = false; MV.sel = null; MV.dirty = false; redrawAll(); mvRefresh(); },
           function(){ MV.loading = false; mvRefresh(); });
+}
+
+/* A paper mapped again replaces the old map everywhere: it carries a higher
+   revision than the one it replaces (the other device keeps the higher one),
+   what you settled by hand on each attempt moves to the question now in that
+   place, and every attempt on the paper is scored again against it. */
+function mapReplaced(old, m){
+  if(!old || !m || m === old || !m.fp || m.fp.indexOf('bk:') === 0) return Promise.resolve(0);
+  return dbp().then(function(db){
+    m.rev = Math.max(old.rev || 0, m.rev || 0) + 1;
+    return db.putMap(m).then(function(){ return db.listSessions(); }).then(function(list){
+      var mine = list.filter(function(x){ return x.status === 'finalized' && x.source && x.source.fp === m.fp; });
+      var chain = Promise.resolve();
+      mine.forEach(function(x){
+        chain = chain.then(function(){
+          if(x.overrides) x.overrides = CORE.carryOverrides(x.overrides, old, m);
+          x.documentMapId = m.id;
+          return db.putSession(x).then(function(){ return db.getKey(x.id); }).then(function(key){
+            return key ? finalizeAttempt(x, key) : null;
+          });
+        }).catch(function(e){ console.error('re-scoring', x.id, e); });
+      });
+      return chain.then(function(){ if(mine.length) msyncNow('map rebuilt'); return mine.length; });
+    });
+  }).catch(function(){ return 0; });
 }
 
 function wirePreview(){
@@ -25347,7 +25404,29 @@ function askForPaper(want){
       if(added) openAtQuestion(added, want);
     });
   };
-  toast((want.name ? '“' + want.name + '”' : 'This paper') + ' is not on this device yet. Choose its PDF to open question ' + (want.n || '') + '.', 'Choose PDF', function(){ inp.click(); });
+  /* a card that stays until you answer it: a toast is gone before you look */
+  var old = document.getElementById('nbqAsk'); if(old) old.remove();
+  var card = document.createElement('div');
+  card.id = 'nbqAsk';
+  card.setAttribute('role', 'dialog');
+  card.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;max-width:min(420px,calc(100vw - 32px));' +
+    'background:#1f2330;color:#f3f4f6;border:1px solid #3b4252;border-radius:14px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.45);font:15px/1.45 system-ui,sans-serif';
+  var h = document.createElement('div'); h.style.cssText = 'font-weight:600;font-size:17px;margin-bottom:6px';
+  h.textContent = 'Open ' + (want.n ? 'question ' + want.n : 'this question') + ' in its paper';
+  var p = document.createElement('div'); p.style.cssText = 'opacity:.85;margin-bottom:16px';
+  p.textContent = (want.name ? '“' + want.name + '”' : 'The paper this attempt was sat on') + ' is not on this device yet. Choose its PDF once; it joins your library and the question opens.';
+  var row = document.createElement('div'); row.style.cssText = 'display:flex;gap:10px;justify-content:flex-end';
+  var no = document.createElement('button'); no.type = 'button'; no.textContent = 'Not now';
+  no.style.cssText = 'padding:9px 16px;border-radius:9px;border:1px solid #4b5563;background:transparent;color:inherit;font:inherit;cursor:pointer';
+  var yes = document.createElement('button'); yes.type = 'button'; yes.textContent = 'Choose PDF';
+  yes.style.cssText = 'padding:9px 16px;border-radius:9px;border:0;background:#2563eb;color:#fff;font:inherit;font-weight:600;cursor:pointer';
+  no.onclick = function(){ card.remove(); inp.remove(); };
+  yes.onclick = function(){ card.remove(); inp.click(); };
+  row.appendChild(no); row.appendChild(yes);
+  card.appendChild(h); card.appendChild(p); card.appendChild(row);
+  document.body.appendChild(card);
+  try{ yes.focus(); }catch(e){}
+  try{ window.focus(); }catch(e){}
 }
 function handleLinkedQuestion(){
   var want = linkedQuestion();

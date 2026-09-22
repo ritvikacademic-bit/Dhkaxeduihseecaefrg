@@ -1038,6 +1038,7 @@ var NBCore = (() => {
     auditMap: () => auditMap,
     buildDocumentMap: () => buildDocumentMap,
     buildDocumentMapWithModels: () => buildDocumentMapWithModels,
+    carryOverrides: () => carryOverrides,
     combineKeyReads: () => combineKeyReads,
     crossOf: () => crossOf,
     deriveAnswers: () => deriveAnswers,
@@ -2968,6 +2969,36 @@ var NBCore = (() => {
     });
     out.passages = out.passages.filter((p) => p.id !== pid);
     return refresh(out);
+  }
+  function carryOverrides(ov, from, to) {
+    if (!ov) return ov;
+    const where = /* @__PURE__ */ new Map();
+    const overlap2 = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    for (const q of from.questions) {
+      let best = null, bo = 0;
+      for (const n of to.questions) {
+        if (n.page !== q.page) continue;
+        const o = overlap2(q.rect, n.rect);
+        if (o > bo) {
+          bo = o;
+          best = n;
+        }
+      }
+      if (best && bo >= 0.3 * Math.min(q.rect.w * q.rect.h, best.rect.w * best.rect.h)) where.set(q.id, best.id);
+    }
+    const move = (src) => {
+      if (!src) return src;
+      const out = {};
+      for (const k of Object.keys(src)) {
+        const id = where.get(k);
+        if (id && !(id in out)) out[id] = src[k];
+      }
+      return out;
+    };
+    const next = Object.assign({}, ov);
+    if (ov.answers) next.answers = move(ov.answers);
+    if (ov.guesses) next.guesses = move(ov.guesses);
+    return next;
   }
 
   // src/mock/mapquery.ts
@@ -6315,7 +6346,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "d3f3b96a47f5";
+  var CORE_BUILD = "8a6ba0f3959c";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -7222,12 +7253,13 @@ async function nbBundle(db, s) {
   const M = nbMock();
   const have = await db.getDerived(s.id);
   if (have && have.target && have.metricsVersion === M.METRICS_VERSION) return have;
-  const [events, map, key] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id)]);
+  const [events, map, key, samples] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id), db.getMeta('guess.samples').catch(() => null)]);
   /* without the paper's map there are no questions to score: an attempt whose
      map has not arrived yet (or was purged) keeps the metrics it came with */
   if (!key || !map || !map.questions.length) return have || null;
-  const made = M.deriveAttempt({ session: s, events, map, key, now: Date.now() });
-  if (have && have.questions && made.questions.length < have.questions.length) return have;
+  const made = M.deriveAttempt({ session: s, events, map, key, now: Date.now(), guessSamples: Array.isArray(samples) ? samples : [] });
+  /* fewer questions than before is kept only when the map itself did not change (a map read again may rightly have fewer) */
+  if (have && have.questions && made.questions.length < have.questions.length && made.questions.length < map.questions.length) return have;
   try { await db.putDerived(made); } catch (e) { /* derived again next time */ }
   return made;
 }
@@ -9650,8 +9682,8 @@ function avCheckCard(ctx) {
       o.at = Date.now();
       s.overrides = o; s.version = (s.version || 1) + 1; s.updatedAt = Date.now();
       await db.putSession(s);
-      const [events, map, key] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id)]);
-      if (map && key) await db.putDerived(M.deriveAttempt({ session: s, events, map, key, now: Date.now() }));
+      const [events, map, key, samples] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id), db.getMeta('guess.samples').catch(() => null)]);
+      if (map && key) await db.putDerived(M.deriveAttempt({ session: s, events, map, key, now: Date.now(), guessSamples: Array.isArray(samples) ? samples : [] }));
       AVC.answers = {}; AVC.guesses = {};
       try { new BroadcastChannel('neobook').postMessage({ type: 'attempt-changed', id: s.id }); } catch (e) { /* the other tab carries it next time */ }
       await refreshNeoBook();
