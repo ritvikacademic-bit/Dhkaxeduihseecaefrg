@@ -619,6 +619,17 @@ table.tpx-map td,table.tpx-map th{padding:6px 8px}
 .tpx-tog:focus-visible{outline:3px solid var(--focus-ring)}
 .tpx-tog.sp{cursor:default}
 .tpx-legend{margin-bottom:10px;align-items:center}
+.tpx-tabs{margin:0 0 12px}
+.tpx-tabrow{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;border-bottom:1px solid var(--hairline)}
+.tpx-tabrow.sub{border-bottom:0;margin-top:8px;gap:6px;flex-wrap:wrap;overflow:visible}
+.tpx-tab{all:unset;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;font-size:13px;font-weight:500;color:var(--ink-2);cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tpx-tab:hover{color:var(--ink)}
+.tpx-tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--bar)}
+.tpx-tab:focus-visible{outline:3px solid var(--focus-ring);border-radius:6px}
+.tpx-tab .n{font-size:11px;color:var(--ink-3);font-weight:500}
+.tpx-tabrow.sub .tpx-tab{padding:5px 11px;border:1px solid var(--hairline);border-radius:999px;margin:0;font-size:12px}
+.tpx-tabrow.sub .tpx-tab.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.tpx-tabrow.sub .tpx-tab.on .n{color:color-mix(in oklab,var(--surface) 70%,transparent)}
 .tpx-sw{display:inline-block;width:14px;height:14px;border-radius:4px}
 .tpx-sw.bar{width:22px;height:9px;border-radius:5px}
 .tpx-sw.faint{opacity:.5}
@@ -14211,7 +14222,7 @@ function wizTargetPresets() {
    it. What you correct is verified: it wins for that question, travels with
    the attempt to your other device, and teaches the classifier — which never
    learns from its own guesses. */
-const TPX = { sec: 'all', depth: 'micro', sel: null, open: new Set(), closed: new Set(), data: null, sig: '', loading: null, maps: new Map(), keys: new Map(), nbSig: null, qFilter: 'all' };
+const TPX = { sec: 'all', dom: null, depth: 'micro', sel: null, open: new Set(), closed: new Set(), data: null, sig: '', loading: null, maps: new Map(), keys: new Map(), nbSig: null, qFilter: 'all' };
 const TPX_CORR_KEY = 'clat_dash_topic_corrections_v1';
 /* how the topic map draws each attempt: coloured cells, horizontal bars, or a line across attempts */
 const TPX_VIEW_KEY = 'clat_dash_topic_view_v1';
@@ -14436,7 +14447,7 @@ function renderTopics(el) {
   const attemptsWith = A.attempts.length;
   const secOpts = [['all', 'All'], ['en', 'English'], ['gk', 'CA/GK'], ['le', 'Legal'], ['lr', 'Logical'], ['qt', 'Quants']];
   const controls = H('div', { class: 'tpx-controls' }, [
-    segControl(secOpts, TPX.sec, v => { TPX.sec = v; invalidate(['topics']); }, { label: 'Section' }),
+    segControl(secOpts, TPX.sec, v => { TPX.sec = v; TPX.dom = null; invalidate(['topics']); }, { label: 'Section' }),
     segControl([['topic', 'Topics'], ['micro', 'Micro-topics']], TPX.depth, v => { TPX.depth = v; TPX.open.clear(); TPX.closed.clear(); invalidate(['topics']); }, { label: 'Depth' }),
   ]);
   const head = viewHead('Topics',
@@ -14471,7 +14482,23 @@ function tpxWeakCard(d, secFilter) {
 function tpxMapCard(d, secFilter) {
   const T = tpxT(), A = d.A;
   const depth = TPX_LEVELS.indexOf(TPX.depth);
-  const roots = ['EN', 'GK', 'LE', 'LR', 'QT'].map(id => A.nodes.get(id)).filter(s => s && secFilter(s) && s.n > 0);
+  /* tabs: a section across the top, then its areas (Critical reasoning,
+     Analytical reasoning, Contract law …) beneath it; the map shows the one picked */
+  const secRoots = ['EN', 'GK', 'LE', 'LR', 'QT'].map(id => A.nodes.get(id)).filter(s => s && s.n > 0);
+  const secNode = TPX.sec === 'all' ? null : secRoots.find(r => r.section === TPX.sec) || null;
+  const areas = secNode ? secNode.children.map(c => A.nodes.get(c)).filter(k => k && !k.facet && k.n > 0) : [];
+  if (TPX.dom && !areas.some(k => k.id === TPX.dom)) TPX.dom = null;
+  const domNode = TPX.dom ? A.nodes.get(TPX.dom) : null;
+  const roots = domNode ? [domNode] : secNode ? [secNode] : secRoots;
+  const tab = (label, count, on, go) => H('button', { type: 'button', role: 'tab', class: 'tpx-tab' + (on ? ' on' : ''), 'aria-selected': String(on), onclick: go },
+    [label, count != null ? H('span', { class: 'n num', text: String(count) }) : null]);
+  const secNames = { en: 'English', gk: 'CA & GK', le: 'Legal', lr: 'Logical', qt: 'Quants' };
+  const tabs = H('div', { class: 'tpx-tabs' }, [
+    H('div', { class: 'tpx-tabrow', role: 'tablist', 'aria-label': 'Section' }, [tab('All sections', null, !secNode, () => { TPX.sec = 'all'; TPX.dom = null; invalidate(['topics']); })]
+      .concat(secRoots.map(r => tab(secNames[r.section] || r.name, r.attempted, secNode === r, () => { TPX.sec = r.section; TPX.dom = null; invalidate(['topics']); })))),
+    areas.length > 1 ? H('div', { class: 'tpx-tabrow sub', role: 'tablist', 'aria-label': 'Area' }, [tab('All of ' + (secNames[secNode.section] || secNode.name), null, !domNode, () => { TPX.dom = null; invalidate(['topics']); })]
+      .concat(areas.map(k => tab(k.name, k.attempted, domNode === k, () => { TPX.dom = k.id; TPX.open.add(k.id); TPX.closed.delete(k.id); invalidate(['topics']); })))) : null,
+  ]);
   /* one column per attempt that has questions in what is shown */
   const cols = A.attempts.filter(a => roots.some(r => r.byAttempt.some(p => p.attempt === a.attempt)));
   const kids = s => s.children.map(c => A.nodes.get(c)).filter(k => k && !k.facet && k.n > 0);
@@ -14537,7 +14564,7 @@ function tpxMapCard(d, secFilter) {
       : 'Every topic you have met, weakest first under each heading, with each attempt as a column: right out of attempted, coloured by accuracy. Open a row to go a level deeper; pick one to see its questions.';
   const viewCtl = segControl(TPX_VIEWS, view, v => { TPX.mapView = v; store.set(TPX_VIEW_KEY, v); invalidate(['topics']); }, { label: 'Show each attempt as' });
   return card('Topic map', desc, [
-    legend, H('div', { class: 'table-wrap tpx-mapwrap' }, H('table', { class: `tbl tpx-map tpx-${view}` }, [H('thead', {}, head), H('tbody', {}, body)]))], { aside: viewCtl });
+    tabs, legend, H('div', { class: 'table-wrap tpx-mapwrap' }, H('table', { class: `tbl tpx-map tpx-${view}` }, [H('thead', {}, head), H('tbody', {}, body)]))], { aside: viewCtl });
 }
 
 function tpxDetailCard(d, id) {
