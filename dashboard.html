@@ -620,6 +620,26 @@ table.tpx-map td,table.tpx-map th{padding:6px 8px}
 .tpx-tog.sp{cursor:default}
 .tpx-legend{margin-bottom:10px;align-items:center}
 .tpx-sw{display:inline-block;width:14px;height:14px;border-radius:4px}
+.tpx-sw.bar{width:22px;height:9px;border-radius:5px}
+.tpx-sw.faint{opacity:.5}
+.tpx-tgtkey{display:inline-block;width:0;height:14px;border-left:1.5px dashed var(--target);opacity:.7;margin:0 4px}
+.tpx-atthead{vertical-align:bottom}
+.tpx-attcap{display:block;font-size:11px;font-weight:500;color:var(--ink-3);margin-bottom:2px;white-space:nowrap}
+.tpx-barsvg,.tpx-linesvg,.tpx-axis,.tpx-linehead{display:block;overflow:visible}
+.tpx-barsvg .lab,.tpx-axis text,.tpx-linehead text{font-size:10.5px;fill:var(--ink-3)}
+.tpx-barsvg .val{font-size:11px;fill:var(--ink-2);font-variant-numeric:tabular-nums}
+.tpx-barsvg .track{fill:var(--fill)}
+.tpx-barsvg .grid{stroke:var(--grid);stroke-width:1}
+.tpx-barsvg .tgt,.tpx-linesvg .tgt,.tpx-axis .tgt{stroke:var(--target);stroke-width:1.2;stroke-dasharray:3 3;opacity:.55}
+.tpx-bar{cursor:pointer}
+.tpx-bar:hover .track{fill:var(--fill-2)}
+.tpx-linesvg .mid{stroke:var(--grid);stroke-width:1}
+.tpx-linesvg .tick{stroke:var(--grid);stroke-width:1;opacity:.6}
+.tpx-linesvg .ln{fill:none;stroke:var(--ink-3);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.tpx-linesvg .ln.strong{stroke:var(--ink-2);stroke-width:2.2}
+.tpx-linesvg .pt{stroke:var(--surface);stroke-width:1.2;cursor:pointer}
+.tpx-linesvg .blank{fill:var(--surface);stroke:var(--ink-3);stroke-width:1;cursor:pointer}
+table.tpx-map td.tpx-barcell,table.tpx-map td.tpx-linecell{padding-top:3px;padding-bottom:3px}
 .tpx-pick{cursor:pointer}
 .tpx-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 18px;margin-bottom:14px}
 .tpx-fact{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:var(--r-inner);background:var(--fill)}
@@ -14193,6 +14213,10 @@ function wizTargetPresets() {
    learns from its own guesses. */
 const TPX = { sec: 'all', depth: 'micro', sel: null, open: new Set(), closed: new Set(), data: null, sig: '', loading: null, maps: new Map(), keys: new Map(), nbSig: null, qFilter: 'all' };
 const TPX_CORR_KEY = 'clat_dash_topic_corrections_v1';
+/* how the topic map draws each attempt: coloured cells, horizontal bars, or a line across attempts */
+const TPX_VIEW_KEY = 'clat_dash_topic_view_v1';
+const TPX_VIEWS = [['cells', 'Cells'], ['bars', 'Bars'], ['lines', 'Lines']];
+TPX.mapView = (v => (TPX_VIEWS.some(([k]) => k === v) ? v : 'bars'))(store.get(TPX_VIEW_KEY, 'bars'));
 const tpxT = () => (typeof NBCore !== 'undefined' && NBCore && NBCore.topics) || null;
 const TPX_LEVELS = ['section', 'domain', 'topic', 'micro', 'sub'];
 const TPX_SEC_ROOT = { en: 'EN', gk: 'GK', le: 'LE', lr: 'LR', qt: 'QT' };
@@ -14288,13 +14312,83 @@ const tpxPct = v => (v == null || !isFinite(v) ? '—' : `${Math.round(v * 100)}
 const tpxName = id => { const n = tpxT().TOPIC_BY_ID[id]; return n ? n.name : id; };
 const tpxPath = (id, from = 1) => tpxT().pathOf(id).slice(from).map(n => n.name).join(' › ');
 /** accuracy → a colour between the reserved bad and good tones, through amber */
+function tpxTone(acc) {
+  return acc < 0.65
+    ? `color-mix(in oklab, var(--warn) ${Math.round(clamp((acc - 0.35) / 0.3, 0, 1) * 100)}%, var(--bad))`
+    : `color-mix(in oklab, var(--good) ${Math.round(clamp((acc - 0.65) / 0.3, 0, 1) * 100)}%, var(--warn))`;
+}
 function tpxHeat(acc, weight) {
   if (acc == null || !isFinite(acc)) return null;
   const a = clamp(weight, 0.25, 1);
-  const c = acc < 0.65
-    ? `color-mix(in oklab, var(--warn) ${Math.round(clamp((acc - 0.35) / 0.3, 0, 1) * 100)}%, var(--bad))`
-    : `color-mix(in oklab, var(--good) ${Math.round(clamp((acc - 0.65) / 0.3, 0, 1) * 100)}%, var(--warn))`;
-  return `color-mix(in oklab, ${c} ${Math.round(a * 55)}%, transparent)`;
+  return `color-mix(in oklab, ${tpxTone(acc)} ${Math.round(a * 55)}%, transparent)`;
+}
+/** One attempt on one topic: right of attempted, and what the tooltip says. */
+function tpxAttemptPoint(s, a) {
+  const p = s.byAttempt.find(x => x.attempt === a.attempt);
+  if (!p || !(p.C + p.W + p.S)) return null;
+  const n = p.C + p.W, acc = n ? p.C / n : null;
+  return { p, n, acc, tip: `${a.short}${a.date ? ' · ' + fmtDate(a.date) : ''} · ${n ? `${p.C} of ${n} right (${tpxPct(acc)})` : 'none attempted'}${p.S ? `, ${p.S} blank` : ''}${p.medianTimeMs ? ` · median ${tpxTime(p.medianTimeMs)}` : ''}` };
+}
+const tpxShort = t => (t.length > 9 ? t.slice(0, 8) + '…' : t);
+/* Bars: one horizontal bar per attempt that had questions on the topic, oldest at
+   the top, all on one 0–100% scale so bars compare down the whole table. */
+const TPX_BAR = { label: 62, track: 160, value: 50, row: 15, bar: 9 };
+function tpxBars(s, cols, pick) {
+  const B = TPX_BAR, W = B.label + B.track + B.value;
+  const items = cols.map(a => ({ a, pt: tpxAttemptPoint(s, a) })).filter(x => x.pt);
+  if (!items.length) return H('span', { class: 'muted', text: '—' });
+  const h = items.length * B.row + 2, tgt = TGT.band('acc')[0];
+  const svg = S('svg', { width: W, height: h, viewBox: `0 0 ${W} ${h}`, class: 'tpx-barsvg', role: 'img', 'aria-label': `${s.name}: accuracy in each attempt` });
+  for (const x of [0.5, 1]) svg.append(S('line', { x1: B.label + x * B.track, x2: B.label + x * B.track, y1: 0, y2: h, class: 'grid' }));
+  items.forEach(({ a, pt }, i) => {
+    const cy = 1 + i * B.row + B.row / 2, top = cy - B.bar / 2;
+    const g = S('g', { class: 'tpx-bar' }, [S('title', {}, pt.tip)]);
+    g.append(S('text', { x: B.label - 6, y: cy + 3.5, 'text-anchor': 'end', class: 'lab' }, tpxShort(a.short)));
+    g.append(S('rect', { x: B.label, y: top, width: B.track, height: B.bar, rx: B.bar / 2, class: 'track' }));
+    if (pt.n) g.append(S('rect', { x: B.label, y: top, width: Math.max(B.bar, pt.acc * B.track), height: B.bar, rx: B.bar / 2, fill: tpxTone(pt.acc), 'fill-opacity': clamp(0.5 + pt.n / 12, 0.5, 1) }));
+    g.append(S('text', { x: B.label + B.track + 6, y: cy + 3.5, class: 'val' }, pt.n ? `${pt.p.C}/${pt.n}` : `${pt.p.S} blank`));
+    g.addEventListener('click', e => { e.stopPropagation(); pick(a); });
+    svg.append(g);
+  });
+  svg.append(S('line', { x1: B.label + tgt * B.track, x2: B.label + tgt * B.track, y1: 0, y2: h, class: 'tgt' }));
+  return svg;
+}
+function tpxBarAxis() {
+  const B = TPX_BAR, W = B.label + B.track + B.value, tgt = TGT.band('acc')[0];
+  const svg = S('svg', { width: W, height: 20, viewBox: `0 0 ${W} 20`, class: 'tpx-axis', 'aria-hidden': 'true' });
+  [[0, '0'], [0.5, '50%'], [1, '100%']].forEach(([v, t]) => svg.append(S('text', { x: B.label + v * B.track, y: 14, 'text-anchor': v === 0 ? 'start' : v === 1 ? 'end' : 'middle' }, t)));
+  svg.append(S('line', { x1: B.label + tgt * B.track, x2: B.label + tgt * B.track, y1: 2, y2: 20, class: 'tgt' }));
+  return svg;
+}
+/* Lines: accuracy across the attempts, oldest on the left; every row has the
+   same x (one position per attempt) and the same y, so rows compare at a glance. */
+function tpxLineGeom(cols) {
+  const W = clamp(cols.length * 40, 160, 360), pad = 12;
+  return { W, x: i => (cols.length === 1 ? W / 2 : pad + i * (W - 2 * pad) / (cols.length - 1)) };
+}
+function tpxLine(s, cols, pick, strong) {
+  const G = tpxLineGeom(cols), h = 40, top = 6, bot = h - 6, y = v => bot - v * (bot - top), tgt = TGT.band('acc')[0];
+  const svg = S('svg', { width: G.W, height: h, viewBox: `0 0 ${G.W} ${h}`, class: 'tpx-linesvg', role: 'img', 'aria-label': `${s.name}: accuracy across attempts` });
+  svg.append(S('line', { x1: 0, x2: G.W, y1: y(0.5), y2: y(0.5), class: 'mid' }));
+  svg.append(S('line', { x1: 0, x2: G.W, y1: y(tgt), y2: y(tgt), class: 'tgt' }));
+  cols.forEach((a, i) => svg.append(S('line', { x1: G.x(i), x2: G.x(i), y1: top, y2: bot, class: 'tick' })));
+  const pts = cols.map((a, i) => ({ a, i, pt: tpxAttemptPoint(s, a) })).filter(o => o.pt);
+  const answered = pts.filter(o => o.pt.n);
+  if (answered.length > 1) svg.append(S('polyline', { points: answered.map(o => `${G.x(o.i)},${y(o.pt.acc)}`).join(' '), class: strong ? 'ln strong' : 'ln' }));
+  pts.forEach(o => {
+    const c = o.pt.n
+      ? S('circle', { cx: G.x(o.i), cy: y(o.pt.acc), r: 3.2 + Math.min(2.4, o.pt.n / 4), fill: tpxTone(o.pt.acc), class: 'pt' }, [S('title', {}, o.pt.tip)])
+      : S('circle', { cx: G.x(o.i), cy: bot, r: 2.4, class: 'blank' }, [S('title', {}, o.pt.tip)]);
+    c.addEventListener('click', e => { e.stopPropagation(); pick(o.a); });
+    svg.append(c);
+  });
+  return svg;
+}
+function tpxLineHead(cols) {
+  const G = tpxLineGeom(cols);
+  const svg = S('svg', { width: G.W, height: 44, viewBox: `0 0 ${G.W} 44`, class: 'tpx-linehead', 'aria-hidden': 'true' });
+  cols.forEach((a, i) => svg.append(S('text', { x: G.x(i) + 3, y: 40, transform: `rotate(-38 ${G.x(i) + 3} 40)`, 'text-anchor': 'start' }, tpxShort(a.short))));
+  return svg;
 }
 const TPX_EVIDENCE = { none: 'no questions', low: 'low', medium: 'medium', high: 'high' };
 /** Mastery as a dot on a 0–100% track, its 80% interval as a band. */
@@ -14388,14 +14482,25 @@ function tpxMapCard(d, secFilter) {
     if (isOpen(s)) kids(s).sort((x, y) => (x.mastery.mean || 0) - (y.mastery.mean || 0)).forEach(k => walk(k, lvl + 1));
   };
   roots.forEach(r => walk(r, 0));
-  const head = H('tr', {}, [H('th', { class: 'l stick', text: 'Topic' }), H('th', { class: 'l', text: 'Mastery' }), H('th', { text: 'Evidence' }), H('th', { text: 'Accuracy' }), H('th', { text: 'Time' }), H('th', { text: 'Trend' }), H('th', { text: 'Recent vs earlier' })]
-    .concat(cols.map(a => H('th', { class: 'c tpx-att', title: `${a.short}${a.date ? ' · ' + fmtDate(a.date) : ''}`, text: a.short }))));
+  const view = TPX.mapView;
+  const attHead = view === 'bars'
+    ? [H('th', { class: 'l tpx-atthead' }, [H('span', { class: 'tpx-attcap', text: 'Accuracy in each attempt, oldest first' }), tpxBarAxis()])]
+    : view === 'lines'
+      ? [H('th', { class: 'l tpx-atthead' }, [H('span', { class: 'tpx-attcap', text: 'Accuracy across attempts' }), tpxLineHead(cols)])]
+      : cols.map(a => H('th', { class: 'c tpx-att', title: `${a.short}${a.date ? ' · ' + fmtDate(a.date) : ''}`, text: a.short }));
+  /* cells keep the attempts after the figures; bars and lines sit beside the topic, where they are read */
+  const joined = (first, stats, att) => (view === 'cells' ? [first].concat(stats, att) : [first].concat(att, stats));
+  const head = H('tr', {}, joined(H('th', { class: 'l stick', text: 'Topic' }),
+    [H('th', { class: 'l', text: 'Mastery' }), H('th', { text: 'Evidence' }), H('th', { text: 'Accuracy' }), H('th', { text: 'Time' }), H('th', { text: 'Trend' }), H('th', { text: 'Recent vs earlier' })], attHead));
   const body = lines.map(({ s, lvl }) => {
     const has = kids(s).length > 0;
     const open = has && isOpen(s);
     const toggle = has ? H('button', { class: 'tpx-tog', type: 'button', 'aria-expanded': String(open), 'aria-label': (open ? 'Collapse ' : 'Expand ') + s.name,
       onclick: e => { e.stopPropagation(); if (open) { TPX.closed.add(s.id); TPX.open.delete(s.id); } else { TPX.open.add(s.id); TPX.closed.delete(s.id); } invalidate(['topics']); } }, open ? '▾' : '▸') : H('span', { class: 'tpx-tog sp', 'aria-hidden': 'true' });
-    const cells = cols.map(a => {
+    const pick = a => { TPX.sel = s.id; TPX.qFilter = a.attempt; invalidate(['topics']); };
+    const cells = view === 'bars' ? [H('td', { class: 'l tpx-barcell' }, tpxBars(s, cols, pick))]
+      : view === 'lines' ? [H('td', { class: 'l tpx-linecell' }, tpxLine(s, cols, pick, lvl === 0))]
+      : cols.map(a => {
       const p = s.byAttempt.find(x => x.attempt === a.attempt);
       if (!p || !(p.C + p.W + p.S)) return H('td', { class: 'c tpx-cell' });
       const n = p.C + p.W;
@@ -14404,25 +14509,35 @@ function tpxMapCard(d, secFilter) {
         onclick: e => { e.stopPropagation(); TPX.sel = s.id; TPX.qFilter = a.attempt; invalidate(['topics']); } }, n ? `${p.C}/${n}` : `${p.S}–`);
     });
     const recentDelta = s.recent.acc != null && s.earlier.acc != null ? s.recent.acc - s.earlier.acc : null;
-    return H('tr', { class: `tpx-row lvl${lvl}${TPX.sel === s.id ? ' now' : ''}`, onclick: () => { TPX.sel = s.id; TPX.qFilter = 'all'; invalidate(['topics']); } }, [
+    return H('tr', { class: `tpx-row lvl${lvl}${TPX.sel === s.id ? ' now' : ''}`, onclick: () => { TPX.sel = s.id; TPX.qFilter = 'all'; invalidate(['topics']); } }, joined(
       H('td', { class: 'l stick' }, H('span', { class: 'tpx-name', style: { paddingLeft: `${lvl * 16}px` } }, [toggle, H('span', { class: lvl === 0 ? 'tpx-sec' : '', text: s.name })])),
-      H('td', { class: 'l' }, tpxMastery(s.mastery)),
-      H('td', {}, tpxEvidence(s)),
-      H('td', { class: 'num', text: s.attempted ? `${tpxPct(s.attAcc)}` : '—' }),
-      H('td', { class: 'num', text: s.time ? tpxTime(s.time.median) : '—' }),
-      H('td', {}, tpxTrend(s.trend)),
-      H('td', {}, deltaSpan(recentDelta)),
-    ].concat(cells));
+      [H('td', { class: 'l' }, tpxMastery(s.mastery)),
+        H('td', {}, tpxEvidence(s)),
+        H('td', { class: 'num', text: s.attempted ? `${tpxPct(s.attAcc)}` : '—' }),
+        H('td', { class: 'num', text: s.time ? tpxTime(s.time.median) : '—' }),
+        H('td', {}, tpxTrend(s.trend)),
+        H('td', {}, deltaSpan(recentDelta))],
+      cells));
   });
+  const solid = view !== 'cells';
+  const sw = (acc, w, label) => H('span', { class: 'k' }, [H('i', { class: 'tpx-sw' + (solid ? ' bar' : ''), style: { background: solid ? tpxTone(acc) : tpxHeat(acc, w) } }), label]);
+  const tgtLabel = `your target (${pct(TGT.band('acc')[0], 0)})`;
   const legend = H('div', { class: 'legend tpx-legend' }, [
-    H('span', { class: 'k' }, [H('i', { class: 'tpx-sw', style: { background: tpxHeat(0.3, 1) } }), 'under 50%']),
-    H('span', { class: 'k' }, [H('i', { class: 'tpx-sw', style: { background: tpxHeat(0.65, 1) } }), 'about 65%']),
-    H('span', { class: 'k' }, [H('i', { class: 'tpx-sw', style: { background: tpxHeat(0.95, 1) } }), 'over 90%']),
-    H('span', { class: 'k' }, [H('i', { class: 'tpx-sw', style: { background: tpxHeat(0.95, 0.3) } }), 'paler: fewer questions']),
+    sw(0.3, 1, 'under 50%'), sw(0.65, 1, 'about 65%'), sw(0.95, 1, 'over 90%'),
+    view === 'cells' ? sw(0.95, 0.3, 'paler: fewer questions') : null,
+    view === 'bars' ? H('span', { class: 'k' }, [H('i', { class: 'tpx-sw bar faint', style: { background: tpxTone(0.95) } }), 'fainter: fewer questions']) : null,
+    view === 'lines' ? H('span', { class: 'k', text: 'bigger point: more questions' }) : null,
+    solid ? H('span', { class: 'k' }, [H('i', { class: 'tpx-tgtkey', 'aria-hidden': 'true' }), tgtLabel]) : null,
     H('span', { class: 'k' }, [tpxMastery({ mean: 0.7, lo: 0.58, hi: 0.8, evidence: 'medium', attempted: 12 }, { w: 60 }), 'mastery, its 80% interval']),
   ]);
-  return card('Topic map', 'Every topic you have met, weakest first under each heading, with each attempt as a column: right out of attempted, coloured by accuracy. Open a row to go a level deeper; pick one to see its questions.', [
-    legend, H('div', { class: 'table-wrap tpx-mapwrap' }, H('table', { class: 'tbl tpx-map' }, [H('thead', {}, head), H('tbody', {}, body)]))]);
+  const desc = view === 'bars'
+    ? 'Every topic you have met, weakest first under each heading, with a bar for each attempt that had questions on it: its accuracy, right out of attempted beside it, oldest at the top. Every row shares one scale, so bars compare straight down the table. Open a row to go a level deeper; pick one to see its questions.'
+    : view === 'lines'
+      ? 'Every topic you have met, weakest first under each heading, with its accuracy across your attempts as a line, oldest on the left. Every row shares the same attempts and scale, so rows compare at a glance. Open a row to go a level deeper; pick one to see its questions.'
+      : 'Every topic you have met, weakest first under each heading, with each attempt as a column: right out of attempted, coloured by accuracy. Open a row to go a level deeper; pick one to see its questions.';
+  const viewCtl = segControl(TPX_VIEWS, view, v => { TPX.mapView = v; store.set(TPX_VIEW_KEY, v); invalidate(['topics']); }, { label: 'Show each attempt as' });
+  return card('Topic map', desc, [
+    legend, H('div', { class: 'table-wrap tpx-mapwrap' }, H('table', { class: `tbl tpx-map tpx-${view}` }, [H('thead', {}, head), H('tbody', {}, body)]))], { aside: viewCtl });
 }
 
 function tpxDetailCard(d, id) {
