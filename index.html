@@ -9225,7 +9225,7 @@ var NBCore = (() => {
     if (!points.length) return null;
     const last = points[points.length - 1];
     const spread2 = paperSpread(input.scores, { k });
-    const z = zFor(conf), need = input.lo + z * spread2.sigma, peak = Math.min(max, need);
+    const z = zFor(conf), need = input.lo + z * spread2.sigma, end = input.aim != null && isFinite(input.aim) ? input.aim : need, peak = Math.min(max, end);
     const level = last.med, nW = Math.max(1, Math.round(input.weeks)), ramp = Math.max(1, nW - 1);
     const levels = [];
     for (let i = 0; i < nW; i++) levels.push(level >= peak ? level : level + (peak - level) * Math.min(1, (i + 1) / ramp));
@@ -9248,7 +9248,7 @@ var NBCore = (() => {
       z,
       need,
       peak,
-      capped: need > max,
+      capped: end > max,
       chanceNow: chanceAtLeast(level, input.lo, spread2.sigma),
       chancePeak: chanceAtLeast(peak, input.lo, spread2.sigma),
       levels,
@@ -10644,7 +10644,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "5604330983e9";
+  var CORE_BUILD = "c6fc1c8fae80";
   return __toCommonJS(index_exports);
 })();
 </script>
