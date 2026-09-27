@@ -62,7 +62,7 @@
   --bench-1:#1baf7a;
   --bench-2:#898781;
   --bar-cost:#a1a1a6;
-  --target:#1d1d1f;
+  --target:#1d1d1f;--roll:#9b357f;
 
   --r-card:18px;
   --r-inner:12px;
@@ -79,7 +79,7 @@
     --card-shadow:none;--card-border:rgba(255,255,255,.06);
     --c-pyq:#3987e5;--c-mock:#d95926;--c-other:#8e8e93;--net:#d1d1d6;--on-net:#1c1c1e;
     --good-ink:#34c759;--bad-ink:#ff6b6b;--warn-ink:#ffcc4d;
-    --bar:#3987e5;--bar-2:#199e70;--bench-1:#199e70;--bench-2:#8e8e93;--bar-cost:#7c7c80;--target:#f5f5f7;
+    --bar:#3987e5;--bar-2:#199e70;--bench-1:#199e70;--bench-2:#8e8e93;--bar-cost:#7c7c80;--target:#f5f5f7;--roll:#c95aa6;
     --opt-a:#6aa9f0;--opt-b:#a78bfa;--opt-c:#eab75f;--opt-d:#3fc5b4;
     --ord-1:#184f95;--ord-2:#3987e5;--ord-3:#9ec5f4;
   }
@@ -93,7 +93,7 @@
   --card-shadow:none;--card-border:rgba(255,255,255,.06);
   --c-pyq:#3987e5;--c-mock:#d95926;--c-other:#8e8e93;--net:#d1d1d6;--on-net:#1c1c1e;
   --good-ink:#34c759;--bad-ink:#ff6b6b;--warn-ink:#ffcc4d;
-  --bar:#3987e5;--bar-2:#199e70;--bench-1:#199e70;--bench-2:#8e8e93;--bar-cost:#7c7c80;--target:#f5f5f7;
+  --bar:#3987e5;--bar-2:#199e70;--bench-1:#199e70;--bench-2:#8e8e93;--bar-cost:#7c7c80;--target:#f5f5f7;--roll:#c95aa6;
   --opt-a:#6aa9f0;--opt-b:#a78bfa;--opt-c:#eab75f;--opt-d:#3fc5b4;
   --ord-1:#184f95;--ord-2:#3987e5;--ord-3:#9ec5f4;
 }
@@ -254,6 +254,17 @@ main{min-height:60vh}
 .spark{display:block;flex:none;overflow:visible}
 .hero-spark{display:flex;align-items:center;gap:12px;margin-top:14px;font-size:12px;color:var(--ink-3)}
 .legend .lk{width:18px;height:0;border-top:2.5px solid currentColor;flex:none;border-radius:2px}
+.legend .lk.roll{color:var(--roll)}
+.legend .lk.roll.med{border-top:3px dotted currentColor;border-radius:0}
+.wiz-odds{margin:0 0 10px!important}
+.wiz-sure{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:10px 0 0;font-size:12px;color:var(--ink-3)}
+.wiz-digest{margin-top:20px}
+.wiz-dl{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.wiz-dl li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;align-items:baseline;padding:10px 12px;border-radius:12px;background:var(--surface-2);font-size:13px;color:var(--ink-2);line-height:1.45}
+.wiz-dl li .wiz-dk{grid-column:2;color:var(--ink);font-weight:600;font-size:12.5px}
+.wiz-dl li .wiz-dt{grid-column:2}
+.wiz-dl li .wiz-src{grid-row:1 / span 2;align-self:start;font-size:10.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-3);padding:2px 7px;border-radius:999px;background:var(--fill);margin-top:1px}
+.wiz-dl li b{color:var(--ink);font-weight:600}
 .chart-block{display:grid;gap:10px;min-width:0}
 .chart-block h3{margin:0;font-size:13px;font-weight:600}
 .cmp{margin-top:16px}
@@ -6408,9 +6419,13 @@ var NBCore = (() => {
     PATTERNS_VERSION: () => PATTERNS_VERSION,
     PATTERN_FDR: () => PATTERN_FDR,
     PATTERN_MIN: () => PATTERN_MIN,
+    PRIOR_SWING: () => PRIOR_SWING,
+    PRIOR_SWING_WEIGHT: () => PRIOR_SWING_WEIGHT,
+    ROLL_WINDOW: () => ROLL_WINDOW,
     analysePatterns: () => analysePatterns,
     betaI: () => betaI,
     bhAdjust: () => bhAdjust,
+    chanceAtLeast: () => chanceAtLeast,
     chiSqP: () => chiSqP,
     chiSquare: () => chiSquare,
     chiSquareFit: () => chiSquareFit,
@@ -6418,19 +6433,29 @@ var NBCore = (() => {
     fitLogit: () => fitLogit,
     gammaP: () => gammaP,
     guessKindOf: () => guessKindOf,
+    inOrder: () => inOrder,
+    levelForChance: () => levelForChance,
     lnGamma: () => lnGamma,
+    median: () => median2,
     modelOf: () => modelOf,
+    momentum: () => momentum,
+    nextForAverage: () => nextForAverage,
+    nextForMedian: () => nextForMedian,
     normCdf: () => normCdf,
     olsSlope: () => olsSlope,
     pNorm2: () => pNorm2,
+    paperSpread: () => paperSpread,
     predictLogit: () => predictLogit,
+    rollingLevels: () => rollingLevels,
     rowsOf: () => rowsOf,
     runsTest: () => runsTest,
+    surePlan: () => surePlan,
     tCdf: () => tCdf,
     tCrit: () => tCrit,
     trendTest: () => trendTest,
     twoProp: () => twoProp,
-    wilson: () => wilson
+    wilson: () => wilson,
+    zFor: () => zFor
   });
 
   // src/insights/stats.ts
@@ -6456,13 +6481,13 @@ var NBCore = (() => {
   function gammaP(a, x) {
     if (x <= 0) return 0;
     if (x < a + 1) {
-      let sum = 1 / a, term = sum;
+      let sum2 = 1 / a, term = sum2;
       for (let n = 1; n < 500; n++) {
         term *= x / (a + n);
-        sum += term;
-        if (Math.abs(term) < Math.abs(sum) * 1e-15) break;
+        sum2 += term;
+        if (Math.abs(term) < Math.abs(sum2) * 1e-15) break;
       }
-      return sum * Math.exp(-x + a * Math.log(x) - lnGamma(a));
+      return sum2 * Math.exp(-x + a * Math.log(x) - lnGamma(a));
     }
     return 1 - gammaQcf(a, x);
   }
@@ -7492,6 +7517,125 @@ var NBCore = (() => {
     base.careless = scored2.filter((s) => s.r.outcome === "w" && s.p < 0.15).sort((a, b) => a.p - b.p).slice(0, 12).map((s) => ({ attempt: s.r.short, n: s.r.n, section: s.r.section ? SEC_NAME[s.r.section] : null, pWrong: Math.round(s.p * 1e3) / 1e3 }));
     base.lucky = scored2.filter((s) => s.r.outcome === "c" && s.p > 0.6).sort((a, b) => b.p - a.p).slice(0, 12).map((s) => ({ attempt: s.r.short, n: s.r.n, section: s.r.section ? SEC_NAME[s.r.section] : null, pWrong: Math.round(s.p * 1e3) / 1e3 }));
     return base;
+  }
+
+  // src/insights/trajectory.ts
+  var ROLL_WINDOW = 5;
+  var PRIOR_SWING = 9;
+  var PRIOR_SWING_WEIGHT = 4;
+  var sum = (xs) => xs.reduce((a, x) => a + x, 0);
+  var avgOf = (xs) => sum(xs) / xs.length;
+  function median2(xs) {
+    if (!xs.length) return NaN;
+    const s = xs.slice().sort((a, b) => a - b), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  function inOrder(scores) {
+    return scores.map((s, i) => ({ s, i })).filter((x) => isFinite(x.s.score) && isFinite(x.s.t)).sort((a, b) => {
+      var _a, _b;
+      return a.s.t - b.s.t || ((_a = a.s.order) != null ? _a : a.i) - ((_b = b.s.order) != null ? _b : b.i);
+    }).map((x) => x.s);
+  }
+  function rollingLevels(scores, k = ROLL_WINDOW) {
+    const xs = inOrder(scores);
+    return xs.map((s, i) => {
+      const w = xs.slice(Math.max(0, i - k + 1), i + 1).map((x) => x.score);
+      return { t: s.t, score: s.score, avg: avgOf(w), med: median2(w), n: w.length, id: s.id, retake: s.retake };
+    });
+  }
+  var quarterUp = (v) => Math.ceil(v * 4 - 1e-9) / 4;
+  function nextForAverage(window, target, k = ROLL_WINDOW, max = 120) {
+    const keep = window.slice(-(k - 1)), s = (keep.length + 1) * target - sum(keep);
+    return { score: Math.max(0, quarterUp(s)), reachable: s <= max + 1e-9 };
+  }
+  function nextForMedian(window, target, k = ROLL_WINDOW, max = 120) {
+    const keep = window.slice(-(k - 1));
+    const withNext = (s) => median2(keep.concat([s]));
+    if (withNext(max) < target - 1e-9) {
+      let w = window.slice(-k), m = 0;
+      while (m < k) {
+        w = w.concat([target]).slice(-k);
+        m++;
+        if (median2(w) >= target - 1e-9) break;
+      }
+      return { score: null, attempts: Math.max(2, m) };
+    }
+    if (withNext(0) >= target - 1e-9) return { score: 0, attempts: 1 };
+    let lo = 0, hi = max;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (withNext(mid) >= target - 1e-9) hi = mid;
+      else lo = mid;
+    }
+    return { score: Math.min(max, quarterUp(hi)), attempts: 1 };
+  }
+  function paperSpread(scores, opts = {}) {
+    var _a, _b, _c, _d;
+    const k = (_a = opts.k) != null ? _a : ROLL_WINDOW, prior = (_b = opts.prior) != null ? _b : PRIOR_SWING, w = (_c = opts.priorWeight) != null ? _c : PRIOR_SWING_WEIGHT, minH = Math.max(1, (_d = opts.minHistory) != null ? _d : 2);
+    const xs = inOrder(scores).map((s) => s.score), errors = [];
+    for (let i = minH; i < xs.length; i++) errors.push(xs[i] - median2(xs.slice(Math.max(0, i - k), i)));
+    const n = errors.length, raw = n ? Math.sqrt(sum(errors.map((e) => e * e)) / n) : null;
+    return { sigma: Math.sqrt(((raw != null ? raw : 0) ** 2 * n + prior * prior * w) / (n + w)), raw, n, errors };
+  }
+  var chanceAtLeast = (level, lo, sigma) => normCdf((level - lo) / Math.max(1e-6, sigma));
+  function zFor(conf) {
+    const c = Math.min(0.999, Math.max(0.5, conf));
+    let lo = 0, hi = 5;
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      if (normCdf(mid) < c) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  var levelForChance = (lo, sigma, conf) => lo + zFor(conf) * sigma;
+  function momentum(scores, n = 8) {
+    const xs = inOrder(scores).slice(-n);
+    if (xs.length < 4) return null;
+    const week = 7 * 864e5, t0 = xs[0].t;
+    const fit = olsSlope(xs.map((s) => (s.t - t0) / week), xs.map((s) => s.score));
+    return fit && isFinite(fit.slope) ? { perWeek: fit.slope, lo: fit.lo, hi: fit.hi, n: xs.length } : null;
+  }
+  function surePlan(input) {
+    var _a, _b, _c, _d;
+    const k = (_a = input.k) != null ? _a : ROLL_WINDOW, max = (_b = input.max) != null ? _b : 120, conf = Math.min(0.99, Math.max(0.5, (_c = input.conf) != null ? _c : 0.9));
+    const points = rollingLevels(input.scores, k);
+    if (!points.length) return null;
+    const last = points[points.length - 1];
+    const spread2 = paperSpread(input.scores, { k });
+    const z = zFor(conf), need = input.lo + z * spread2.sigma, peak = Math.min(max, need);
+    const level = last.med, nW = Math.max(1, Math.round(input.weeks)), ramp = Math.max(1, nW - 1);
+    const levels = [];
+    for (let i = 0; i < nW; i++) levels.push(level >= peak ? level : level + (peak - level) * Math.min(1, (i + 1) / ramp));
+    const window = inOrder(input.scores).slice(-k).map((s) => s.score);
+    const target = levels[0];
+    const median3 = nextForMedian(window, target, k, max), average = nextForAverage(window, target, k, max);
+    const goal = Math.min(max, quarterUp(Math.max(target, (_d = median3.score) != null ? _d : target)));
+    const mom = momentum(input.scores);
+    const projectedLevel = mom ? Math.min(max, Math.max(0, level + mom.perWeek * Math.max(0, input.weeksToExam))) : null;
+    return {
+      points,
+      level,
+      avg: last.avg,
+      med: last.med,
+      n: last.n,
+      sigma: spread2.sigma,
+      sigmaRaw: spread2.raw,
+      spreadN: spread2.n,
+      conf,
+      z,
+      need,
+      peak,
+      capped: need > max,
+      chanceNow: chanceAtLeast(level, input.lo, spread2.sigma),
+      chancePeak: chanceAtLeast(peak, input.lo, spread2.sigma),
+      levels,
+      perWeek: nW > 1 ? Math.max(0, peak - level) / ramp : 0,
+      next: { target, median: median3, average, goal },
+      momentum: mom,
+      projected: projectedLevel == null ? null : { level: projectedLevel, chance: chanceAtLeast(projectedLevel, input.lo, spread2.sigma) },
+      perSwingMark: z
+    };
   }
 
   // src/topics/index.ts
@@ -8878,7 +9022,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "abd80f6c58a6";
+  var CORE_BUILD = "5604330983e9";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -10353,6 +10497,11 @@ function renderAttemptLines(host, cfg) {
     });
     if (state.prefs.guide && p.target != null) targetLine(g, ox + padL, X(n - 1) + 5, p.target, Y);
     if (keys.keyed.has(p)) targetKey(g, p.tLabel, keys.stack ? ox + padL : ox + pw - 2, top - 10, keys.stack ? 'start' : 'end');
+    /* this week's goal from the plan: what the next full mock needs */
+    if (state.prefs.guide && p.week) {
+      g.append(S('line', { x1: ox + padL, x2: X(n - 1) + 5, y1: Y(p.week.value), y2: Y(p.week.value), stroke: 'var(--accent)', 'stroke-width': 1.4, 'stroke-dasharray': '2 3', opacity: 0.9 }));
+      g.append(txt(ox + padL + 4, Y(p.week.value) - 4, p.week.label, { class: 'halo', fill: 'var(--accent)', 'font-size': 10.5, 'font-weight': 600 }));
+    }
     p.series.forEach(se => COHORT_ORDER.forEach(ck => {
       const pts = list.map((a, i) => ({ a, i })).filter(o => o.a.cohort === ck && o.a.date && se.value(o.a) != null);
       if (pts.length < 2) return;
@@ -10808,6 +10957,18 @@ function renderOverview(el) {
     ledgerCard(),
   );
 }
+/** This week's goal from the plan, beside the target: what the next full mock needs to keep your level on course. */
+function guideWeek() {
+  try { const M = wizModel(); return M.plan && M.thisWeek ? { M, w: M.thisWeek } : null; } catch (e) { return null; }
+}
+function guideWeekKpi() {
+  const g = guideWeek();
+  if (!g) return null;
+  return H('div', { class: 'kpi', style: { marginTop: '14px', marginLeft: '10px', display: 'inline-block' } }, [
+    H('div', { class: 'l', text: `This week · next full mock ${marks(g.w.target)}+` }),
+    H('div', { class: 's', text: `keeps your level (median of last ${g.M.plan.n}: ${marks(half(g.M.level))}) on the plan to ${marks(half(g.M.peak))}` }),
+  ]);
+}
 function latestCard(L) {
   const g = state.prefs.guide;
   const hist = state.attempts.filter(a => a.cohort === L.cohort && a.date);
@@ -10822,6 +10983,7 @@ function latestCard(L) {
     H('div', { class: 'hero-s' }, [b(marks(L.m.net)), ` of ${L.M} scorable marks`]),
     heroSpark ? H('div', { class: 'hero-spark' }, [heroSpark, H('span', { text: `Score in your ${note}: ${hist.map(a => pct(a.m.pct, 0)).join(' → ')}` })]) : null,
     g ? H('div', { class: 'kpi', style: { marginTop: '14px', display: 'inline-block' } }, [H('div', { class: 'l', text: `Guiding light · ${TGT.value('pct')}` }), H('div', { class: 's', text: gapText('pct', L.m.pct) })]) : null,
+    g ? guideWeekKpi() : null,
   ]);
   const comps = [];
   if (L.prevCohort) comps.push({ why: `Previous ${COHORTS[L.cohort].phrase}`, a: L.prevCohort });
@@ -11010,13 +11172,14 @@ function renderTrends(el) {
   const list = () => A.filter(a => P.cohorts[a.cohort] !== false);
   const vis = list();
   const mainHost = H('div', { class: 'chart' }), lossHost = H('div', { class: 'chart' }), pathHost = H('div', { class: 'chart' });
+  const gw = P.guide ? guideWeek() : null;
   const mainCfg = () => ({
     list: list(), maxCols: 1, ariaLabel: 'Score, accuracy and coverage by attempt',
     note: a => (a.prevSame ? `Earlier try at this paper (${a.prevSame.short}): ${pct(a.prevSame.m.pct)} score` : a.date ? null : 'Undated: shown in the order it was recorded'),
     panels: [
       P.trendScale === 'marks'
-        ? { title: 'Score · marks', name: 'Score', lo: 0, hi: 120, ticks: [0, 30, 60, 90, 120], tick: v => String(v), target: TGT.band('net'), tLabel: TGT.label('net'), series: [{ value: a => a.m.net, fmt: a => `${marks(a.m.net)} / ${a.M}`, end: a => marks(a.m.net) }] }
-        : { title: 'Score · % of scorable marks', name: 'Score', lo: 0, hi: 1, ticks: PCT_TICKS, tick: pctTick, target: TGT.band('pct'), tLabel: TGT.label('pct'), series: [{ value: a => a.m.pct, fmt: a => `${pct(a.m.pct)} · ${marks(a.m.net)}/${a.M}` }] },
+        ? { title: 'Score · marks', name: 'Score', lo: 0, hi: 120, ticks: [0, 30, 60, 90, 120], tick: v => String(v), target: TGT.band('net'), tLabel: TGT.label('net'), week: gw ? { value: gw.w.target, label: `This week ${marks(gw.w.target)}+` } : null, series: [{ value: a => a.m.net, fmt: a => `${marks(a.m.net)} / ${a.M}`, end: a => marks(a.m.net) }] }
+        : { title: 'Score · % of scorable marks', name: 'Score', lo: 0, hi: 1, ticks: PCT_TICKS, tick: pctTick, target: TGT.band('pct'), tLabel: TGT.label('pct'), week: gw ? { value: gw.w.target / PAPER_MAX, label: `This week ${pct(gw.w.target / PAPER_MAX, 0)}+` } : null, series: [{ value: a => a.m.pct, fmt: a => `${pct(a.m.pct)} · ${marks(a.m.net)}/${a.M}` }] },
       { title: 'Accuracy · correct ÷ attempted', name: 'Accuracy', lo: 0, hi: 1, ticks: PCT_TICKS, tick: pctTick, target: TGT.band('acc'), tLabel: TGT.label('acc'), series: [{ value: a => a.m.acc, fmt: a => `${pct(a.m.acc)} · ${a.C}/${a.m.att}` }] },
       { title: 'Coverage · attempted ÷ scorable', name: 'Coverage', lo: 0, hi: 1, ticks: PCT_TICKS, tick: pctTick, target: TGT.band('cov'), tLabel: TGT.label('cov'), series: [{ value: a => a.m.cov, fmt: a => `${pct(a.m.cov)} · ${a.m.att}/${a.M}` }] },
     ],
@@ -11049,6 +11212,7 @@ function renderTrends(el) {
         ...present.filter(k => P.cohorts[k] !== false).map(k => H('span', { class: 'k' }, [glyph(k), COHORTS[k].name])),
         vis.some(a => !a.date) ? H('span', { class: 'k' }, [H('i', { class: 'sw', style: { background: 'var(--fill)' } }), 'Undated']) : null,
         P.guide ? H('span', { class: 'k' }, [H('i', { class: 'ln' }), `Your target · ${TGT.text()}`]) : null,
+        P.guide && gw ? H('span', { class: 'k', title: 'What your next full mock needs to keep your level — the median of your last 5 — on the plan' }, [H('i', { class: 'lk', style: { color: 'var(--accent)', borderTopStyle: 'dotted' } }), `This week · ${marks(gw.w.target)}+`]) : null,
       ]),
       mainHost,
     ], { coach: coach('trendsMain') }),
@@ -12043,14 +12207,18 @@ function penByAttempt() {
   if (NB && NB.bundles) NB.bundles.forEach((d, id) => { if (d && Array.isArray(d.questions)) out[id] = d.questions; });
   return out;
 }
+/** What the pattern analysis depends on: the attempts, NeoBook's records, the topics once they are worked out. */
+function ptSig() {
+  const tpxFresh = typeof TPX !== 'undefined' && !!TPX.data && (!NB || !NB.db || TPX.nbSig === NB.sig);
+  return state.attempts.map(a => a.id + ':' + (a.log ? a.log.out.length : 0) + ':' + (a.telemetrySessionId || '')).join('|') + '#' + (NB ? NB.sig : '') + '#' + (tpxFresh ? TPX.sig : '');
+}
 function patternsNow() {
   const ins = typeof NBCore !== 'undefined' && NBCore && NBCore.insights;
   if (!ins) return null;
   /* topics join once they are worked out (Topics reads the papers' maps first) */
   const tpxFresh = typeof TPX !== 'undefined' && !!TPX.data && (!NB || !NB.db || TPX.nbSig === NB.sig);
   if (typeof tpxData === 'function' && !tpxFresh) tpxEnsure().then(() => { tpxData(); if (PT.sig && !PT.sig.endsWith('#' + TPX.sig)) invalidate(['patterns']); });
-  const topicSig = tpxFresh ? TPX.sig : '';
-  const sig = state.attempts.map(a => a.id + ':' + (a.log ? a.log.out.length : 0) + ':' + (a.telemetrySessionId || '')).join('|') + '#' + (NB ? NB.sig : '') + '#' + topicSig;
+  const sig = ptSig();
   if (PT.sig !== sig || !PT.result) {
     PT.result = ins.analysePatterns(state.attempts.map(a => Object.assign({}, a, { short: a.short || a.paper })), penByAttempt(), typeof tpxTopicsByAttempt === 'function' ? tpxTopicsByAttempt() : {});
     PT.sig = sig;
@@ -13811,38 +13979,50 @@ const shortDate = t => { const d = new Date(t); return `${d.getUTCDate()} ${MONT
 /** "14–20 Sep" or "28 Sep–4 Oct". */
 const weekRange = (a, z) => { const x = new Date(a), y = new Date(z); return x.getUTCMonth() === y.getUTCMonth() ? `${x.getUTCDate()}–${shortDate(z)}` : `${shortDate(a)}–${shortDate(z)}`; };
 
-/** Everything the Wiz knows, computed once per render from your attempts, your target and the exam date. */
+/** The certainty the plan is built for: the chance, on exam day, of your target's low end. */
+const WIZ_CONFS = [0.8, 0.9, 0.95];
+const wizConf = () => { const c = Number(state.prefs.sure); return WIZ_CONFS.includes(c) ? c : 0.9; };
+const ceilHalf = v => Math.ceil(v * 2 - 1e-9) / 2;
+const pctChance = v => (v == null || !isFinite(v) ? '—' : v < 0.01 ? 'under 1%' : v > 0.99 ? 'over 99%' : pct(v, 0));
+/** Everything the Wiz knows, computed once per change of your attempts, your target, the exam date or the certainty you plan for. */
 function wizModel() {
+  const I = typeof NBCore !== 'undefined' && NBCore && NBCore.insights;
   /* every score is part of the key: a re-scored attempt re-plans at once */
-  const key = [state.attempts.length, state.attempts.map(a => a.id + '=' + a.m.net + '@' + a.date).join(','), JSON.stringify(state.prefs.target), state.prefs.examDate, todayISO()].join('|');
+  const key = [state.attempts.length, state.attempts.map(a => a.id + '=' + a.m.net + '@' + a.date).join(','), JSON.stringify(state.prefs.target), state.prefs.examDate, wizConf(), todayISO()].join('|');
   if (wizModel.c && wizModel.c.key === key) return wizModel.c;
   const A = state.attempts;
-  const timed = A.filter(a => a.date && (a.cohort === 'pyq_t' || a.cohort === 'mock_t'));
+  /* in the order they were sat; the same day, in the order recorded */
+  const timed = A.map((a, i) => ({ a, i })).filter(o => o.a.date && (o.a.cohort === 'pyq_t' || o.a.cohort === 'mock_t'))
+    .sort((x, y) => isoUTC(x.a.date) - isoUTC(y.a.date) || x.i - y.i).map(o => o.a);
   const TP = timed.filter(a => a.cohort === 'pyq_t'), TM = timed.filter(a => a.cohort === 'mock_t');
   const toM = a => a.m.pct * PAPER_MAX;
-  const recent = timed.slice(-3);
-  const level = recent.length ? mean(recent.map(toM)) : null;
-  const sd = stdev(timed.slice(-6).map(toM));
-  const cov = recent.length ? mean(recent.map(a => a.m.cov)) : 0.95;
-  const acc = recent.length ? mean(recent.map(a => a.m.acc)) : null;
-  const retakes = recent.filter(a => a.prevSame);
   const spec = targetSpec();
-  const buffer = clamp(Math.round((sd || 6) / 2), 3, 8);
-  const peak = Math.min(PAPER_MAX, spec.lo + buffer);
-  const covPlan = Math.max(cov, 0.95);
-  const accFor = marksOut => clamp((marksOut / PAPER_MAX / covPlan + 0.25) / 1.25, 0, 1);
   // Weeks run Monday–Sunday, from this week to the exam week.
   const now = isoUTC(todayISO()), exam = isoUTC(state.prefs.examDate || DEFAULT_PREFS.examDate);
   const w0 = mondayOf(now), wE = mondayOf(exam), nW = Math.round((wE - w0) / (7 * DAY)) + 1;
   const daysLeft = Math.round((exam - now) / DAY);
+  /* your level: the median of your last five timed attempts (NBCore.insights.surePlan) */
+  const plan = I && I.surePlan && timed.length ? I.surePlan({
+    scores: timed.map((a, i) => ({ t: isoUTC(a.date), score: toM(a), order: i, id: a.id, retake: !!a.prevSame })),
+    lo: spec.lo, weeks: Math.max(1, nW), weeksToExam: Math.max(0, (exam - now) / (7 * DAY)), conf: wizConf(),
+  }) : null;
+  const recent = plan ? timed.slice(-plan.n) : [];
+  const level = plan ? plan.level : null;
+  const cov = recent.length ? mean(recent.map(a => a.m.cov)) : 0.95;
+  const acc = recent.length ? mean(recent.map(a => a.m.acc)) : null;
+  const retakes = recent.filter(a => a.prevSame);
+  /* the plan's end, to the half mark, as every line quotes it */
+  const peak = plan ? half(plan.peak) : spec.lo;
+  /* attempts: at least 95% of the paper, and all of it once the plan needs more than 95% accuracy at 95% */
+  const covPlan = (peak / PAPER_MAX / 0.95 + 0.25) / 1.25 > 0.95 ? 1 : Math.max(cov, 0.95);
+  const accFor = marksOut => clamp((marksOut / PAPER_MAX / covPlan + 0.25) / 1.25, 0, 1);
   const weeks = [];
-  if (level != null && nW >= 1) {
-    const ramp = Math.max(1, nW - 1);
+  if (plan && nW >= 1) {
     for (let i = 0; i < nW; i++) {
       const start = w0 + i * 7 * DAY, end = start + 6 * DAY;
-      const t = level >= peak ? peak : half(level + (peak - level) * Math.min(1, (i + 1) / ramp));
-      const a = accFor(t);
-      weeks.push({ i, start, end, mid: start + 3 * DAY, target: t, acc: a, wrong: Math.floor((1 - a) * PAPER_MAX * covPlan), att: Math.round(PAPER_MAX * covPlan), exam: i === nW - 1 });
+      /* this week: what the next mock needs; later weeks: the level the ramp asks for */
+      const t = Math.min(PAPER_MAX, i === 0 ? ceilHalf(plan.next.goal) : Math.min(peak, ceilHalf(plan.levels[i]))), a = accFor(t);
+      weeks.push({ i, start, end, mid: start + 3 * DAY, level: plan.levels[i], target: t, acc: a, wrong: Math.floor((1 - a) * PAPER_MAX * covPlan), att: Math.round(PAPER_MAX * covPlan), exam: i === nW - 1 });
     }
   }
   const src = TP.length >= 2 ? TP : timed;
@@ -13868,9 +14048,10 @@ function wizModel() {
   weeks.forEach((w, i) => { w.focus = w.exam ? null : slots[i] || null; });
   const wrongAvg = TP.length ? mean(TP.map(a => a.W)) : null;
   const m = {
-    key, timed, TP, TM, recent, level, sd, cov, covPlan, acc, retakes, spec, buffer, peak, accPlan, accLever, accFor,
+    key, timed, TP, TM, recent, level, plan, roll: new Map(plan ? plan.points.map(p => [p.id, p]) : []), avg: plan ? plan.avg : null, sd: plan ? plan.sigma : null,
+    cov, covPlan, acc, retakes, spec, peak, accPlan, accLever, accFor,
     weeks, nW, daysLeft, exam, now, levers, wrongAvg, thisWeek: weeks[0] || null, peakWeek: weeks.length > 1 ? weeks[weeks.length - 2] : weeks[0] || null,
-    perWeek: weeks.length > 1 ? (peak - (level || 0)) / Math.max(1, nW - 1) : null,
+    perWeek: plan ? plan.perWeek : null,
     dAcc: 1.25 * PAPER_MAX * cov / 100, dCov: acc != null ? PAPER_MAX * (1.25 * acc - 0.25) / 100 : null,
   };
   wizModel.c = m;
@@ -13891,7 +14072,7 @@ function coachAside(items) {
 const gapWord = (v, ref) => (v >= ref ? `${marks(half(v - ref))} above` : `${marks(half(ref - v))} short of`);
 const seatTL = () => BENCH.seats[0], seatAI = () => BENCH.seats[1];
 /** One-line reminder that the recent attempts were retakes of papers you had seen. */
-const retakeNote = M => (M.retakes.length === M.recent.length && M.recent.length ? ' All three were retakes of papers you had seen, so this is optimistic.' : M.retakes.length ? ` ${plural(M.retakes.length, 'was a retake', 'were retakes')} of a paper you had seen.` : '');
+const retakeNote = M => (M.retakes.length === M.recent.length && M.recent.length ? ` All ${M.recent.length} were retakes of papers you had seen, so this is optimistic.` : M.retakes.length ? ` ${M.retakes.length} of those ${M.recent.length} ${M.retakes.length === 1 ? 'was a retake of a paper' : 'were retakes of papers'} you had seen.` : '');
 
 /** Coaching for each chart card. Each returns up to four short items, or null when the data can't support one. */
 const COACH = {
@@ -13899,11 +14080,11 @@ const COACH = {
     if (M.level == null) return null;
     const tl = seatTL();
     const out = [
-      { k: 'Where you stand', t: ['Your last 3 timed attempts average ', b(`${marks(half(M.level))}/120`), ` (${rankText(M.level)} on CLAT 2025’s actual results). ${tl.name}, your quota, needs about `, b(`${tl.marks[0]}–${tl.marks[1]}`), ` — you are ${gapWord(M.level, tl.marks[0])} its low end.${retakeNote(M)}`] },
+      { k: 'Where you stand', t: [`The median of your last ${M.plan.n} timed attempts is `, b(`${marks(half(M.level))}/120`), `, their average ${marks(half(M.avg))} (${rankText(M.level)} on CLAT 2025’s actual results). ${tl.name}, your quota, needs about `, b(`${tl.marks[0]}–${tl.marks[1]}`), ` — you are ${gapWord(M.level, tl.marks[0])} its low end.${retakeNote(M)}`] },
       { k: 'Moves this line up', t: [`At your ${pct(M.cov, 0)} coverage, `, b(`+1 pt of accuracy ≈ +${M.dAcc.toFixed(1)} marks`), `; +1 pt of coverage ≈ +${(M.dCov || 0).toFixed(1)}. Accuracy is the bigger lever for you.`] },
     ];
     if (M.wrongAvg != null) out.push({ k: 'Pulls it down', t: ['You average ', b(`${Math.round(M.wrongAvg)} wrong answers`), ` per timed PYQ — ${Math.round(M.wrongAvg * 1.25)} marks gone, since each costs 1.25.`] });
-    if (M.thisWeek) out.push({ k: 'This week', t: ['Full mocks at ', b(`${marks(M.thisWeek.target)}+`), ` (${pct(M.thisWeek.target / PAPER_MAX, 0)}). The line has to rise about ${marks(half(M.perWeek || 0))} marks a week to reach ${marks(M.peak)} by ${fmtDate(state.prefs.examDate, false)}.`] });
+    if (M.thisWeek) out.push({ k: 'This week', t: ['Your next full mock needs ', b(`${marks(M.thisWeek.target)}+`), ` to keep your level on the ramp: about +${marks(half(M.perWeek || 0))} a week to reach ${marks(half(M.peak))} by ${fmtDate(state.prefs.examDate, false)}, where a paper reaches ${marks(M.spec.lo)} ${pctChance(M.plan.chancePeak)} of the time.`] });
     return out;
   },
   marksWent(M) {
@@ -14033,31 +14214,39 @@ function coach(key, ...args) {
    Each week's target is kept the first time that week is planned, so later
    weeks can show what was asked of you and whether the attempt met it; the
    ramp from today is always drawn again from your current level. */
-function planLog() { const P = state.prefs; if (!P.planLog || typeof P.planLog !== 'object') P.planLog = {}; return P.planLog; }
+/* planLog2 holds the weeks planned from your rolling level; planLog, the weeks
+   planned before it, is kept for the weeks already past */
+function planLog() { const P = state.prefs; if (!P.planLog2 || typeof P.planLog2 !== 'object') P.planLog2 = {}; return P.planLog2; }
+function planLogOld() { const P = state.prefs; return P.planLog && typeof P.planLog === 'object' ? P.planLog : {}; }
+/* an entry is { v: target, at: when it was set } */
+const logVal = e => (e != null && typeof e === 'object' ? Number(e.v) : Number(e));
 function planRemember(M) {
   const w = M.thisWeek; if (!w) return;
   const k = new Date(w.start).toISOString().slice(0, 10), log = planLog();
-  if (log[k] == null) { log[k] = w.target; savePrefs(); }
+  if (log[k] == null) { log[k] = { v: w.target, at: Date.now() }; savePrefs(); }
 }
 function planPast(M) {
-  const log = planLog(), w0 = M.thisWeek ? M.thisWeek.start : M.now;
-  return Object.keys(log).map(k => ({ start: isoUTC(k), target: Number(log[k]) })).filter(p => isFinite(p.target) && p.start < w0).map(p => Object.assign(p, { mid: p.start + 3 * DAY })).sort((a, b) => a.start - b.start);
+  const w0 = M.thisWeek ? M.thisWeek.start : M.now, merged = Object.assign({}, planLogOld(), planLog());
+  return Object.keys(merged).map(k => ({ start: isoUTC(k), target: logVal(merged[k]) })).filter(p => isFinite(p.target) && p.start < w0).map(p => Object.assign(p, { mid: p.start + 3 * DAY })).sort((a, b) => a.start - b.start);
 }
-/** the target that applied on day t: the week's remembered target, else this week's */
-function planTargetFor(M, t) {
-  const k = new Date(mondayOf(t)).toISOString().slice(0, 10), log = planLog();
-  if (log[k] != null) return Number(log[k]);
-  const w = M.weeks.find(x => t >= x.start && t <= x.end + DAY);
-  return w ? w.target : null;
+/** The target an attempt on day t was asked to meet: one set before that day
+ *  was over. A target set later was planned from the attempt itself, so it
+ *  judges nothing; then the earlier model's target for that week, else none. */
+function planTargetInfo(M, t) {
+  const k = new Date(mondayOf(t)).toISOString().slice(0, 10), e = planLog()[k], old = planLogOld()[k];
+  if (e != null && (typeof e !== 'object' || !(e.at > t + DAY))) return { v: logVal(e), old: false };
+  if (old != null) return { v: Number(old), old: true };
+  return null;
 }
+const planTargetFor = (M, t) => { const i = planTargetInfo(M, t); return i ? i.v : null; };
 function planStatus(M) {
   const last = M.timed.slice().sort((a, b) => isoUTC(b.date) - isoUTC(a.date))[0];
   if (!last) return null;
-  const tg = planTargetFor(M, isoUTC(last.date));
+  const ti = planTargetInfo(M, isoUTC(last.date)), tg = ti ? ti.v : null;
   const sc = last.m.pct * PAPER_MAX;
   const head = tg == null ? [b(paperShort(last.paper)), ` · ${marks(sc)} on ${shortDate(isoUTC(last.date))}. `]
-    : [b(paperShort(last.paper)), ` · ${marks(sc)} on ${shortDate(isoUTC(last.date))}, `, b(sc >= tg - 0.01 ? `${marks(sc - tg)} above` : `${marks(tg - sc)} below`), ` that week’s target of ${marks(tg)}. `];
-  return head.concat([`With it, your level is ${marks(half(M.level))} and the plan re-set from there: `, b(`+${marks(half(M.perWeek || 0))} a week`), ` to reach ${marks(M.peak)}.`]);
+    : [b(paperShort(last.paper)), ` · ${marks(sc)} on ${shortDate(isoUTC(last.date))}, `, b(sc >= tg - 0.01 ? `${marks(sc - tg)} above` : `${marks(tg - sc)} below`), ti.old ? ` the ${marks(tg)} your earlier plan (the average of your last 3) set for that week. ` : ` that week’s target of ${marks(tg)}. `];
+  return head.concat([`With it, your level — the median of your last ${M.plan.n} — is ${marks(half(M.level))}, and the plan re-set from there: `, b(`+${marks(half(M.perWeek || 0))} a week`), ` to reach ${marks(half(M.peak))}.`]);
 }
 function renderPlan(host, M) {
   host.replaceChildren();
@@ -14118,6 +14307,12 @@ function renderPlan(host, M) {
     const sc = a.m.pct * PAPER_MAX, met = sc >= tg - 0.01;
     svg.append(S('line', { x1: X(isoUTC(a.date)), x2: X(isoUTC(a.date)), y1: Y(tg), y2: Y(sc), stroke: met ? 'var(--good)' : 'var(--bad)', 'stroke-width': 1.4, 'stroke-dasharray': '2 2', opacity: 0.9 }));
   });
+  // your level at every timed attempt: the average (solid) and the median (dotted) of the last five, both kinds together
+  if (M.plan && M.plan.points.length > 1) {
+    const RP = M.plan.points, path = f => RP.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)} ${Y(f(p)).toFixed(1)}`).join('');
+    svg.append(S('path', { d: path(p => p.avg), fill: 'none', stroke: 'var(--roll)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    svg.append(S('path', { d: path(p => p.med), fill: 'none', stroke: 'var(--roll)', 'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-dasharray': '0.1 5' }));
+  }
   // your timed attempts, joined within each kind
   ['mock_t', 'pyq_t'].forEach(k => {
     const xs = M.timed.filter(a => a.cohort === k);
@@ -14126,9 +14321,10 @@ function renderPlan(host, M) {
   });
   spreadLabels(labs, 13, padT + 6, Hh - padB).forEach(l => svg.append(txt(l.x, l.y, l.text, { class: 'halo', fill: l.color, 'font-size': 11, 'font-weight': 600 })));
   // hover: nearest attempt or week
-  const pts = M.timed.map(a => ({ x: X(isoUTC(a.date)), y: Y(a.m.pct * PAPER_MAX), node: () => tipNodes(a.paper, `${a.cohortName} · ${a.when}`, [{ label: 'Score (out of 120)', value: marks(half(a.m.pct * PAPER_MAX)) }, { label: 'On CLAT 2025’s scale', value: rankText(a.m.pct * PAPER_MAX) }], a.prevSame ? 'A retake of a paper you had seen before.' : null) }))
-    .concat(M.weeks.map(w => ({ x: X(Math.max(w.mid, M.now + DAY)), y: Y(w.target), node: () => tipNodes(`${w.exam ? 'Exam week' : `Week ${w.i + 1}`} · ${weekRange(w.start, w.end)}`, w.exam ? 'Exam week' : 'Target for full mocks this week', [
-      { label: 'Score', value: `${marks(w.target)}+ (${pct(w.target / PAPER_MAX, 0)})` }, { label: 'Accuracy', value: `${pct(w.acc, 0)}+` }, { label: 'Wrong answers', value: `≤ ${w.wrong}` }, { label: 'Focus', value: w.exam ? 'light mocks and rest' : w.focus ? w.focus.s.name : '—' },
+  const rollRows = a => { const r = M.roll.get(a.id); if (!r) return []; const w = r.n < 5 ? `Last ${r.n}` : 'Last 5'; return [{ label: `${w} · average`, value: marks(half(r.avg)) }, { label: `${w} · median`, value: marks(half(r.med)) }]; };
+  const pts = M.timed.map(a => ({ x: X(isoUTC(a.date)), y: Y(a.m.pct * PAPER_MAX), node: () => tipNodes(a.paper, `${a.cohortName} · ${a.when}`, [{ label: 'Score (out of 120)', value: marks(half(a.m.pct * PAPER_MAX)) }, ...rollRows(a), { label: 'On CLAT 2025’s scale', value: rankText(a.m.pct * PAPER_MAX) }], a.prevSame ? 'A retake of a paper you had seen before.' : null) }))
+    .concat(M.weeks.map(w => ({ x: X(Math.max(w.mid, M.now + DAY)), y: Y(w.target), node: () => tipNodes(`${w.exam ? 'Exam week' : `Week ${w.i + 1}`} · ${weekRange(w.start, w.end)}`, w.exam ? 'Exam week' : w.i === 0 ? 'What your next full mock needs' : 'Your level by the end of this week', [
+      { label: w.i === 0 ? 'Next full mock' : 'Level (median of last 5)', value: `${marks(w.target)}+ (${pct(w.target / PAPER_MAX, 0)})` }, { label: 'Accuracy', value: `${pct(w.acc, 0)}+` }, { label: 'Wrong answers', value: `≤ ${w.wrong}` }, { label: 'Focus', value: w.exam ? 'light mocks and rest' : w.focus ? w.focus.s.name : '—' },
     ]) })));
   const ring = S('circle', { r: 8, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 1.5, opacity: 0, 'pointer-events': 'none' });
   const overlay = S('rect', { x: padL, y: padT, width: W - padL - padR, height: Hh - padT - padB, fill: 'transparent' });
@@ -14146,30 +14342,153 @@ function renderPlan(host, M) {
   overlay.addEventListener('pointerleave', () => { ring.setAttribute('opacity', 0); tip.hide(); });
   host.append(svg);
 }
+/* ── Coaching from everything the dashboard works out ──
+   The Topics engine (Bayesian mastery, marks at stake, the simulated paper) and
+   the pattern analysis (tests with false-discovery control, the cross-validated
+   question model) are read when they are current. When they are not, they are
+   worked out while the page is idle and the Overview is drawn again with them,
+   so the Wiz never waits on them and never quotes them stale. */
+const WIZ_CACHE_KEY = 'clat_dash_wiz_digest_v1';
+/** Everything the topics and the patterns depend on: your attempts and their logs, NeoBook's records
+ *  (which carry your corrections), the corrections kept here, your target, and the engines' versions. */
+function wizDataKey() {
+  const T = tpxT(), ins = typeof NBCore !== 'undefined' && NBCore && NBCore.insights;
+  return state.attempts.map(a => a.id + '=' + a.m.net + ':' + (a.log ? a.log.out.length : a.tree ? a.tree.length : 0)).join(',') + '#' + (NB ? NB.sig : '') + '#' +
+    (typeof tpxLocalCorrections === 'function' ? tpxLocalCorrections().length : 0) + '#' + JSON.stringify(state.prefs.target || {}) + '#' + (T ? T.CLASSIFIER_VERSION : '') + '#' + (ins ? ins.PATTERNS_VERSION : '');
+}
+/** What the coaching quotes from the topics and the patterns, small enough to keep. */
+function wizDistil(td, pr) {
+  const out = {};
+  if (td) {
+    const A = td.A;
+    out.topics = [...A.nodes.values()].filter(x => !x.facet && x.attempted > 0 && x.level !== 'section' && x.stake && x.stake.gainMarks > 0 &&
+      !x.children.some(c => { const k = A.nodes.get(c); return k && !k.facet && k.attempted > 0; })).sort((x, y) => y.stake.gainMarks - x.stake.gainMarks).slice(0, 2)
+      .map(x => ({ name: x.name, where: tpxPath(x.id, 0).split(' › ').slice(0, -1).join(' › '), mastery: x.mastery.mean, attempted: x.attempted, perPaper: x.stake.perPaper, gain: x.stake.gainMarks }));
+    out.forecast = td.forecast ? { expected: td.forecast.expected, p10: td.forecast.p10, p90: td.forecast.p90, draws: td.forecast.draws } : null;
+  }
+  if (pr) {
+    out.findings = pr.findings.filter(f => f.q < 0.05 && (f.tone === 'weakness' || f.tone === 'habit')).slice(0, 2).map(f => ({ title: f.title, tone: f.tone, effect: f.effect, q: f.q }));
+    const md = pr.model;
+    out.model = { status: md.status, careless: md.careless ? md.careless.length : 0, attempts: md.attempts, improvement: md.cv ? md.cv.improvement : null };
+  }
+  return out;
+}
+function wizCacheRead(key) { const c = store.get(WIZ_CACHE_KEY, null); return c && c.key === key ? c.data : null; }
+function wizWarm(key) {
+  if (wizWarm.busy || wizWarm.key === key) return;
+  wizWarm.busy = true; wizWarm.key = key;
+  const idle = fn => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 5000 }) : setTimeout(fn, 400));
+  /* one stage per idle moment, so the page answers in between */
+  Promise.resolve(typeof tpxEnsure === 'function' ? tpxEnsure() : null).catch(() => null).then(() => idle(() => {
+    let td = null, pr = null;
+    try { td = typeof tpxData === 'function' ? tpxData() : null; } catch (e) { console.warn('wiz: topics', e); }
+    idle(() => {
+      try { pr = patternsNow(); } catch (e) { console.warn('wiz: patterns', e); }
+      if (td || pr) store.set(WIZ_CACHE_KEY, { key, data: wizDistil(td, pr) });
+      wizWarm.busy = false;
+      if (state.prefs.view === 'overview') invalidate(['overview']); else dirty.add('overview');
+    });
+  }));
+}
+/** The topics and patterns figures: from the analyses when they are current, else as kept for this
+ *  version of the data, else worked out while the page is idle (the Overview is drawn again then). */
+function wizInsights() {
+  const key = wizDataKey();
+  const tdFresh = typeof TPX !== 'undefined' && TPX.data && (!NB || !NB.db || TPX.nbSig === NB.sig) && TPX.sig === tpxSig();
+  const prFresh = PT.result && PT.sig === ptSig();
+  if (tdFresh && prFresh) { const d = wizDistil(TPX.data, PT.result); store.set(WIZ_CACHE_KEY, { key, data: d }); return d; }
+  const kept = wizCacheRead(key);
+  if (kept) return kept;
+  wizWarm(key);
+  return tdFresh || prFresh ? wizDistil(tdFresh ? TPX.data : null, prFresh ? PT.result : null) : null;
+}
+/** Coaching items from every analysis, the week's first, then by the marks each is worth. */
+function wizDigest(M) {
+  const P = M.plan, items = [], notes = [];
+  if (!P) return { items, notes };
+  const lo = M.spec.lo, w = M.thisWeek, add = (src, k, worth, t) => items.push({ src, k, worth, t });
+  if (w) {
+    const med = P.next.median, avgN = P.next.average;
+    add('Plan', 'This week', Infinity, ['Your next full mock needs ', b(`${marks(w.target)}+`), ` for the median of your last ${P.n} to keep to the ramp`,
+      med.score == null ? ` — no single paper lifts it that far now; it takes ${med.attempts} papers at ${marks(ceilHalf(P.next.target))}+` : '',
+      avgN.score > w.target + 0.5 ? ['; the average of the same five needs ', b(`${marks(avgN.score)}+`), avgN.reachable ? '' : ', more than one paper holds'] : '',
+      `. After it the plan asks +${marks(half(P.perWeek))} a week, to ${marks(half(M.peak))} by the week of ${shortDate(M.peakWeek.start)}.`]);
+  }
+  if (P.momentum && P.projected) {
+    const mo = P.momentum, gap = Math.max(0, M.peak - P.projected.level);
+    add('Trend', 'Pace', gap, ['Your scores have moved ', b(`${signed(mo.perWeek, 1)} a week`), ` over your last ${mo.n} timed attempts (95% range ${signed(mo.lo, 1)} to ${signed(mo.hi, 1)}); the plan needs +${marks(half(P.perWeek))}. At this pace you would be near `, b(marks(half(P.projected.level))), ` on exam day, where a paper reaches ${marks(lo)}+ ${pctChance(P.projected.chance)} of the time.`]);
+  }
+  const extra = P.z * Math.max(0, P.sigma - 9);
+  if (extra >= 1) add('Trend', 'Steadiness', extra, ['Your papers swing about ', b(`±${marks(half(P.sigma))}`), ` around your level, so ${pctChance(P.conf)} certainty needs ${marks(half(P.need))}. A steady ±9 would need `, b(marks(half(lo + P.z * 9))), `: every mark less swing takes ${P.z.toFixed(1)} off. Fresh papers under full exam conditions, and no guessing below 1 in 5, narrow it.`]);
+  const top = M.levers[0];
+  if (top && top.gain >= 0.5) add('Sections', 'Biggest section lever', top.gain, [b(`${top.s.name} ${pct(top.acc, 0)} → ${pct(M.accLever, 0)}`), ' accuracy is worth ', b(`+${top.gain.toFixed(1)} marks`), ` a paper at your attempt rate (${top.C} of ${top.attAll} right in your timed PYQs).`]);
+  const ix = wizInsights();
+  if (ix && ix.topics) {
+    ix.topics.forEach((x, i) => add('Topics', i ? 'Next topic' : 'Topic to fix first', x.gain, [b(x.name), ` (${x.where}): mastery ${tpxPct(x.mastery)} on ${x.attempted} questions; CLAT sets about ${x.perPaper.toFixed(1)} a paper here, worth `, b(`+${x.gain.toFixed(2)}`), ' marks at your target accuracy.']));
+    const f = ix.forecast;
+    if (f) {
+      const d = f.expected - M.level;
+      add('Topics', 'Topic forecast', Math.abs(d) >= 5 ? Math.abs(d) / 4 : 0.3, ['Sat today, your topic mastery predicts ', b(marks(Math.round(f.expected * 4) / 4)), ` (80% of ${f.draws.toLocaleString()} simulated papers ${marks(Math.round(f.p10))}–${marks(Math.round(f.p90))}), against your level of ${marks(half(M.level))}`,
+        Math.abs(d) >= 5 ? (d > 0 ? ' — you know more than your recent papers show, so marks are being lost in the exam itself: time, nerves, second-guessing.' : ' — your recent papers ran ahead of your topic record, partly on papers you had seen.') : '.']);
+    }
+  } else notes.push('Your topics and patterns are being worked out; they join this list in a moment.');
+  if (ix && ix.findings) ix.findings.forEach(f => add('Patterns', f.tone === 'habit' ? 'Habit' : 'Weakness',
+    f.effect.unit === 'marks' ? Math.abs(f.effect.value) : 0.8, [f.title, ' ', H('span', { class: 'muted', text: `(${ptEffect(f.effect)}; q = ${f.q.toFixed(3)})` })]));
+  if (ix && ix.model) {
+    const md = ix.model;
+    if (md.status === 'earned' && md.careless) add('Model', 'Careless answers', md.careless * 1.25 / Math.max(1, md.attempts), [b(`${md.careless} wrong answers`), ` were ones the question model, cross-validated on your attempts, rated easy for you — careless rather than hard. Re-read the stem before locking.`]);
+    else if (md.status !== 'earned') notes.push(`The question-level model is still earning its say${md.improvement != null ? `: ${pct(md.improvement, 1)} better than the plain rule on attempts it had not seen, and it needs 2%` : ''}. Its predictions do not drive this list yet.`);
+  }
+  if (M.wrongAvg != null && M.wrongAvg >= 8) add('Sections', 'Wrong answers', Math.max(0, M.wrongAvg - (M.thisWeek ? M.thisWeek.wrong * M.TP.length / Math.max(1, M.TP.length) : 0)) * 0.25,
+    ['You average ', b(`${Math.round(M.wrongAvg)} wrong`), ` per timed PYQ — ${Math.round(M.wrongAvg * 1.25)} marks at 1.25 each. Leaving a doubtful one blank still saves 0.25 over getting it wrong.`]);
+  const pinned = items.filter(x => x.worth === Infinity), rest = items.filter(x => x.worth !== Infinity).sort((x, y) => y.worth - x.worth);
+  return { items: pinned.concat(rest).slice(0, 7), notes };
+}
 function wizCard() {
   if (!state.prefs.wiz) return null;
   const M = wizModel(), tl = seatTL(), ai = seatAI();
   const examTxt = `${fmtDate(state.prefs.examDate)}`;
-  if (M.level == null) return card('Benchmark Wiz', `For you: ${WIZ_PROFILE.text}. Add a timed attempt and the Wiz will place it against your benchmarks.`, []);
+  if (M.level == null || !M.plan) return card('Benchmark Wiz', `For you: ${WIZ_PROFILE.text}. Add a timed attempt and the Wiz will place it against your benchmarks.`, []);
+  const P = M.plan, lo = M.spec.lo, nTxt = P.n < 5 ? `last ${P.n}` : 'last 5';
   const host = H('div', { class: 'chart' });
   mountChart(host, () => renderPlan(host, M));
   const w = M.thisWeek;
   const stand = H('div', { class: 'wiz-stand' }, [
     H('div', { class: 'eyebrow', text: 'Where you stand' }),
     H('div', { class: 'wiz-big' }, [marks(half(M.level)), H('small', { text: ' / 120' })]),
-    H('p', {}, [`Average of your last 3 timed attempts — ${rankText(M.level)} on CLAT 2025’s actual results.${retakeNote(M)}`]),
+    H('p', {}, [`Median of your ${nTxt} timed attempts — ${rankText(M.level)} on CLAT 2025’s actual results. Their average is `, b(marks(half(P.avg))),
+      P.avg - P.med > 3 ? ', pulled up by your best papers.' : P.med - P.avg > 3 ? ', pulled down by a weak paper.' : '.', retakeNote(M)]),
+    H('p', { class: 'wiz-odds' }, ['On one paper at this level, your chance of ', b(`${marks(lo)}+`), ' is ', b(pctChance(P.chanceNow)), ` — your papers swing about ±${marks(half(P.sigma))} around it.`]),
     H('ul', { class: 'wiz-gaps' }, BENCH.seats.map(s => H('li', {}, [H('i', { class: 'sw', style: { background: s.key === 'tl' ? 'var(--bench-1)' : 'var(--bench-2)' } }), H('span', {}, [b(s.name), ` (${s.why}) · closed at AIR ${s.ranks.map(r => INR.format(r[1])).join(', ')} in ${s.ranks.map(r => r[0]).join(', ')} ≈ ${s.marks[0]}–${s.marks[1]} marks. You are `, b(gapWord(M.level, s.marks[0])), ' the low end.'])]))),
   ]);
   planRemember(M);
   const status = planStatus(M);
+  const peakTxt = marks(half(M.peak));
+  const why = P.level >= P.need
+    ? [`You are already where a paper reaches ${marks(lo)} ${pctChance(P.conf)} of the time: the plan holds your level. `]
+    : [`Plan: from ${marks(half(M.level))} now to `, b(peakTxt), ` by the week of ${shortDate(M.peakWeek.start)} — `,
+      P.capped ? `${pctChance(P.conf)} certainty of ${marks(lo)}+ would need ${marks(half(P.need))}, more than a paper holds, so the plan aims at ${peakTxt}, where it is ${pctChance(P.chancePeak)}. `
+        : `the level at which a paper reaches ${marks(lo)} (your target’s low end) ${pctChance(P.conf)} of the time, given your ±${marks(half(P.sigma))} swing. `,
+      'That is ', b(`+${marks(half(P.perWeek))} a week`), '.'];
+  const sure = H('div', { class: 'wiz-sure' }, [H('span', { text: 'Plan for' }),
+    segControl(WIZ_CONFS.map(c => [String(c), `${Math.round(c * 100)}% sure`]), String(P.conf), v => { state.prefs.sure = Number(v); savePrefs(); invalidate(); }, { label: 'Certainty to plan for' }),
+    H('span', { text: `of ${marks(lo)}+ on exam day` })]);
   const weekBox = w ? H('div', { class: 'wiz-week' }, [
     status ? H('p', { class: 'wiz-status', style: { margin: '0 0 10px' } }, [H('span', { class: 'eyebrow', text: 'After your latest attempt' }), H('br'), ...status]) : null,
     H('div', { class: 'eyebrow', text: `This week · ${weekRange(w.start, w.end)}` }),
     H('div', { class: 'tp-grid one' }, [
-      ['Full-mock score', `${marks(w.target)}+`], ['Accuracy', `${pct(w.acc, 0)}+`], ['Wrong answers', M.peakWeek && M.peakWeek.wrong < w.wrong ? `≤ ${w.wrong} (≤ ${M.peakWeek.wrong} by ${shortDate(M.peakWeek.start)})` : `≤ ${w.wrong}`], ['Questions attempted', `${w.att}+`], ['Focus', w.focus ? `${w.focus.s.name} (${pct(w.focus.acc, 0)} now)` : 'Full mocks and rest'],
+      ['Next full mock', `${marks(w.target)}+`], ['Your level after it', `${marks(half(w.level))}+ (median of ${nTxt})`], ['Accuracy', `${pct(w.acc, 0)}+`],
+      ['Wrong answers', M.peakWeek && M.peakWeek.wrong < w.wrong ? `≤ ${w.wrong} (≤ ${M.peakWeek.wrong} by ${shortDate(M.peakWeek.start)})` : `≤ ${w.wrong}`], ['Questions attempted', `${w.att}+`], ['Focus', w.focus ? `${w.focus.s.name} (${pct(w.focus.acc, 0)} now)` : 'Full mocks and rest'],
     ].map(([k, v]) => H('div', { class: 'tp-row' }, [H('span', { text: k }), H('b', { text: v })]))),
-    H('p', { class: 'muted', style: { margin: '8px 0 0', fontSize: '12px' } }, [`Plan: from ${marks(half(M.level))} now to `, b(`${marks(M.peak)}`), ` by the week of ${shortDate(M.weeks[Math.max(0, M.weeks.length - 2)].start)} — your target’s low end (${marks(M.spec.lo)}) plus a ${M.buffer}-mark cushion for a harder paper (your scores vary by about ±${marks(half(M.sd || 0))}). That is `, b(`+${marks(half(M.perWeek || 0))} a week`), '.']),
+    H('p', { class: 'muted', style: { margin: '8px 0 0', fontSize: '12px' } }, why),
+    sure,
     M.spec.lo > ai.marks[1] + 4 ? H('p', { class: 'wiz-flag' }, [`Your target (${TGT.value('net')}) is above what NALSAR has needed. ${tl.name} closed near ${tl.marks[0]}–${tl.marks[1]} marks; the 2026 topper scored ${BENCH.topper[2026]}. `, H('button', { class: 'btn plain small', type: 'button', onclick: openTargetSheet, text: 'Edit target' })]) : null,
+  ]) : null;
+  const dg = wizDigest(M);
+  const digest = dg.items.length ? H('div', { class: 'wiz-digest' }, [
+    H('div', { class: 'eyebrow', text: 'Coaching from all your data · the biggest marks first' }),
+    H('ol', { class: 'wiz-dl' }, dg.items.map(it => H('li', {}, [H('span', { class: 'wiz-src', text: it.src }), H('span', { class: 'wiz-dk', text: it.k }), H('span', { class: 'wiz-dt' }, it.t)]))),
+    ...dg.notes.map(n => H('p', { class: 'muted', style: { fontSize: '12px', margin: '8px 0 0' }, text: n })),
   ]) : null;
   const maxGain = Math.max(0.1, ...M.levers.map(l => l.gain));
   const levers = H('div', { class: 'wiz-levers' }, [
@@ -14180,25 +14499,33 @@ function wizCard() {
     ])),
   ]);
   const weeksTable = () => H('div', { class: 'table-wrap' }, H('table', { class: 'tbl' }, [
-    H('thead', {}, H('tr', {}, [['Week', 'l'], ['Dates', 'l'], ['Full-mock score', ''], ['Accuracy', ''], ['Wrong ≤', ''], ['Focus', 'l']].map(([t, c]) => H('th', { class: c, text: t })))),
+    H('thead', {}, H('tr', {}, [['Week', 'l'], ['Dates', 'l'], ['Score to reach', ''], ['Accuracy', ''], ['Wrong ≤', ''], ['Focus', 'l']].map(([t, c]) => H('th', { class: c, text: t })))),
     H('tbody', {}, M.weeks.map(wk => H('tr', { class: wk.i === 0 ? 'now' : '' }, [
-      H('td', { class: 'l', text: wk.exam ? 'Exam week' : `Week ${wk.i + 1}${wk.i === 0 ? ' · now' : ''}` }), H('td', { class: 'l', text: weekRange(wk.start, wk.end) }),
+      H('td', { class: 'l', text: wk.exam ? 'Exam week' : `Week ${wk.i + 1}${wk.i === 0 ? ' · now (next mock)' : ' (level)'}` }), H('td', { class: 'l', text: weekRange(wk.start, wk.end) }),
       H('td', {}, barCell(wk.target / PAPER_MAX, marks(wk.target), { compact: true })), H('td', {}, pct(wk.acc, 0)), H('td', {}, String(wk.wrong)),
       H('td', { class: 'l', text: wk.exam ? 'Light mocks, sleep, revision lists' : wk.focus ? `${wk.focus.s.name} (${pct(wk.focus.acc, 0)} → ${pct(M.accLever, 0)})` : 'Full mocks' }),
     ]))),
   ]));
+  const method = BENCH.method.concat([
+    `Your level is the median of your last five timed attempts (PYQs and mocks together, in the order you sat them); the average of the same five is drawn beside it. The median is what a typical one of those papers looks like, so one retake or one off day moves it least.`,
+    `Your swing is how far each paper landed from the median of the five before it — the error it would have made as a forecast — pulled toward a typical ±9 while there are few papers: ${P.spreadN} forecasts, ±${marks(half(P.sigmaRaw || 0))} measured, ±${marks(half(P.sigma))} used.`,
+    `A chance is the share of papers at a level that reach your target’s low end if they swing as yours do (a normal spread). The level for ${pctChance(P.conf)} is the low end plus ${P.z.toFixed(2)} swings. Each week’s goal is the score your next full mock needs for the median of your last five to keep to the ramp.`,
+  ]);
   return card('Benchmark Wiz', `For you: ${WIZ_PROFILE.text}. CLAT 2027 is on ${examTxt} — ${plural(Math.max(0, M.daysLeft), 'day')}, ${plural(M.nW, 'week')} including this one.`, [
     H('div', { class: 'wiz-top' }, [stand, weekBox]),
     H('div', { class: 'legend', style: { margin: '18px 0 8px' } }, [
       H('span', { class: 'k' }, [glyph('pyq_t'), 'Timed PYQ']), H('span', { class: 'k' }, [glyph('mock_t'), 'Timed mock']),
+      H('span', { class: 'k', title: 'Timed PYQs and mocks together, in the order you sat them' }, [H('i', { class: 'lk roll' }), 'Last 5 · average']),
+      H('span', { class: 'k', title: 'Timed PYQs and mocks together, in the order you sat them' }, [H('i', { class: 'lk roll med' }), 'Last 5 · median (your level)']),
       H('span', { class: 'k' }, [H('i', { class: 'lk', style: { color: 'var(--accent)', borderTopStyle: 'dashed' } }), 'Weekly targets']),
       H('span', { class: 'k' }, [H('i', { class: 'sw', style: { background: 'var(--bench-1)', opacity: 0.5 } }), tl.name]),
       H('span', { class: 'k' }, [H('i', { class: 'sw', style: { background: 'var(--bench-2)', opacity: 0.5 } }), ai.name]),
     ]),
     host,
+    digest,
     levers,
     numbersToggle('Show the week-by-week plan', weeksTable),
-    H('details', { class: 'more' }, [H('summary', { text: 'How the Wiz gets these numbers' }), H('ul', { class: 'notes', style: { marginTop: '10px' } }, BENCH.method.map(t => H('li', { text: t })))]),
+    H('details', { class: 'more' }, [H('summary', { text: 'How the Wiz gets these numbers' }), H('ul', { class: 'notes', style: { marginTop: '10px' } }, method.map(t => H('li', { text: t })))]),
   ], { cls: 'wiz' });
 }
 /** Quick picks for the target editor, from the benchmarks that apply to you. */

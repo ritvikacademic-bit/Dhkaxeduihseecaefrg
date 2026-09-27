@@ -8041,9 +8041,13 @@ var NBCore = (() => {
     PATTERNS_VERSION: () => PATTERNS_VERSION,
     PATTERN_FDR: () => PATTERN_FDR,
     PATTERN_MIN: () => PATTERN_MIN,
+    PRIOR_SWING: () => PRIOR_SWING,
+    PRIOR_SWING_WEIGHT: () => PRIOR_SWING_WEIGHT,
+    ROLL_WINDOW: () => ROLL_WINDOW,
     analysePatterns: () => analysePatterns,
     betaI: () => betaI,
     bhAdjust: () => bhAdjust,
+    chanceAtLeast: () => chanceAtLeast,
     chiSqP: () => chiSqP,
     chiSquare: () => chiSquare,
     chiSquareFit: () => chiSquareFit,
@@ -8051,19 +8055,29 @@ var NBCore = (() => {
     fitLogit: () => fitLogit,
     gammaP: () => gammaP,
     guessKindOf: () => guessKindOf,
+    inOrder: () => inOrder,
+    levelForChance: () => levelForChance,
     lnGamma: () => lnGamma,
+    median: () => median2,
     modelOf: () => modelOf,
+    momentum: () => momentum,
+    nextForAverage: () => nextForAverage,
+    nextForMedian: () => nextForMedian,
     normCdf: () => normCdf,
     olsSlope: () => olsSlope,
     pNorm2: () => pNorm2,
+    paperSpread: () => paperSpread,
     predictLogit: () => predictLogit,
+    rollingLevels: () => rollingLevels,
     rowsOf: () => rowsOf,
     runsTest: () => runsTest,
+    surePlan: () => surePlan,
     tCdf: () => tCdf,
     tCrit: () => tCrit,
     trendTest: () => trendTest,
     twoProp: () => twoProp,
-    wilson: () => wilson
+    wilson: () => wilson,
+    zFor: () => zFor
   });
 
   // src/insights/stats.ts
@@ -8089,13 +8103,13 @@ var NBCore = (() => {
   function gammaP(a, x) {
     if (x <= 0) return 0;
     if (x < a + 1) {
-      let sum = 1 / a, term = sum;
+      let sum2 = 1 / a, term = sum2;
       for (let n = 1; n < 500; n++) {
         term *= x / (a + n);
-        sum += term;
-        if (Math.abs(term) < Math.abs(sum) * 1e-15) break;
+        sum2 += term;
+        if (Math.abs(term) < Math.abs(sum2) * 1e-15) break;
       }
-      return sum * Math.exp(-x + a * Math.log(x) - lnGamma(a));
+      return sum2 * Math.exp(-x + a * Math.log(x) - lnGamma(a));
     }
     return 1 - gammaQcf(a, x);
   }
@@ -9125,6 +9139,125 @@ var NBCore = (() => {
     base.careless = scored2.filter((s) => s.r.outcome === "w" && s.p < 0.15).sort((a, b) => a.p - b.p).slice(0, 12).map((s) => ({ attempt: s.r.short, n: s.r.n, section: s.r.section ? SEC_NAME[s.r.section] : null, pWrong: Math.round(s.p * 1e3) / 1e3 }));
     base.lucky = scored2.filter((s) => s.r.outcome === "c" && s.p > 0.6).sort((a, b) => b.p - a.p).slice(0, 12).map((s) => ({ attempt: s.r.short, n: s.r.n, section: s.r.section ? SEC_NAME[s.r.section] : null, pWrong: Math.round(s.p * 1e3) / 1e3 }));
     return base;
+  }
+
+  // src/insights/trajectory.ts
+  var ROLL_WINDOW = 5;
+  var PRIOR_SWING = 9;
+  var PRIOR_SWING_WEIGHT = 4;
+  var sum = (xs) => xs.reduce((a, x) => a + x, 0);
+  var avgOf = (xs) => sum(xs) / xs.length;
+  function median2(xs) {
+    if (!xs.length) return NaN;
+    const s = xs.slice().sort((a, b) => a - b), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  function inOrder(scores) {
+    return scores.map((s, i) => ({ s, i })).filter((x) => isFinite(x.s.score) && isFinite(x.s.t)).sort((a, b) => {
+      var _a, _b;
+      return a.s.t - b.s.t || ((_a = a.s.order) != null ? _a : a.i) - ((_b = b.s.order) != null ? _b : b.i);
+    }).map((x) => x.s);
+  }
+  function rollingLevels(scores, k = ROLL_WINDOW) {
+    const xs = inOrder(scores);
+    return xs.map((s, i) => {
+      const w = xs.slice(Math.max(0, i - k + 1), i + 1).map((x) => x.score);
+      return { t: s.t, score: s.score, avg: avgOf(w), med: median2(w), n: w.length, id: s.id, retake: s.retake };
+    });
+  }
+  var quarterUp = (v) => Math.ceil(v * 4 - 1e-9) / 4;
+  function nextForAverage(window, target, k = ROLL_WINDOW, max = 120) {
+    const keep = window.slice(-(k - 1)), s = (keep.length + 1) * target - sum(keep);
+    return { score: Math.max(0, quarterUp(s)), reachable: s <= max + 1e-9 };
+  }
+  function nextForMedian(window, target, k = ROLL_WINDOW, max = 120) {
+    const keep = window.slice(-(k - 1));
+    const withNext = (s) => median2(keep.concat([s]));
+    if (withNext(max) < target - 1e-9) {
+      let w = window.slice(-k), m = 0;
+      while (m < k) {
+        w = w.concat([target]).slice(-k);
+        m++;
+        if (median2(w) >= target - 1e-9) break;
+      }
+      return { score: null, attempts: Math.max(2, m) };
+    }
+    if (withNext(0) >= target - 1e-9) return { score: 0, attempts: 1 };
+    let lo = 0, hi = max;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (withNext(mid) >= target - 1e-9) hi = mid;
+      else lo = mid;
+    }
+    return { score: Math.min(max, quarterUp(hi)), attempts: 1 };
+  }
+  function paperSpread(scores, opts = {}) {
+    var _a, _b, _c, _d;
+    const k = (_a = opts.k) != null ? _a : ROLL_WINDOW, prior = (_b = opts.prior) != null ? _b : PRIOR_SWING, w = (_c = opts.priorWeight) != null ? _c : PRIOR_SWING_WEIGHT, minH = Math.max(1, (_d = opts.minHistory) != null ? _d : 2);
+    const xs = inOrder(scores).map((s) => s.score), errors = [];
+    for (let i = minH; i < xs.length; i++) errors.push(xs[i] - median2(xs.slice(Math.max(0, i - k), i)));
+    const n = errors.length, raw = n ? Math.sqrt(sum(errors.map((e) => e * e)) / n) : null;
+    return { sigma: Math.sqrt(((raw != null ? raw : 0) ** 2 * n + prior * prior * w) / (n + w)), raw, n, errors };
+  }
+  var chanceAtLeast = (level, lo, sigma) => normCdf((level - lo) / Math.max(1e-6, sigma));
+  function zFor(conf) {
+    const c = Math.min(0.999, Math.max(0.5, conf));
+    let lo = 0, hi = 5;
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      if (normCdf(mid) < c) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  var levelForChance = (lo, sigma, conf) => lo + zFor(conf) * sigma;
+  function momentum(scores, n = 8) {
+    const xs = inOrder(scores).slice(-n);
+    if (xs.length < 4) return null;
+    const week = 7 * 864e5, t0 = xs[0].t;
+    const fit = olsSlope(xs.map((s) => (s.t - t0) / week), xs.map((s) => s.score));
+    return fit && isFinite(fit.slope) ? { perWeek: fit.slope, lo: fit.lo, hi: fit.hi, n: xs.length } : null;
+  }
+  function surePlan(input) {
+    var _a, _b, _c, _d;
+    const k = (_a = input.k) != null ? _a : ROLL_WINDOW, max = (_b = input.max) != null ? _b : 120, conf = Math.min(0.99, Math.max(0.5, (_c = input.conf) != null ? _c : 0.9));
+    const points = rollingLevels(input.scores, k);
+    if (!points.length) return null;
+    const last = points[points.length - 1];
+    const spread2 = paperSpread(input.scores, { k });
+    const z = zFor(conf), need = input.lo + z * spread2.sigma, peak = Math.min(max, need);
+    const level = last.med, nW = Math.max(1, Math.round(input.weeks)), ramp = Math.max(1, nW - 1);
+    const levels = [];
+    for (let i = 0; i < nW; i++) levels.push(level >= peak ? level : level + (peak - level) * Math.min(1, (i + 1) / ramp));
+    const window = inOrder(input.scores).slice(-k).map((s) => s.score);
+    const target = levels[0];
+    const median3 = nextForMedian(window, target, k, max), average = nextForAverage(window, target, k, max);
+    const goal = Math.min(max, quarterUp(Math.max(target, (_d = median3.score) != null ? _d : target)));
+    const mom = momentum(input.scores);
+    const projectedLevel = mom ? Math.min(max, Math.max(0, level + mom.perWeek * Math.max(0, input.weeksToExam))) : null;
+    return {
+      points,
+      level,
+      avg: last.avg,
+      med: last.med,
+      n: last.n,
+      sigma: spread2.sigma,
+      sigmaRaw: spread2.raw,
+      spreadN: spread2.n,
+      conf,
+      z,
+      need,
+      peak,
+      capped: need > max,
+      chanceNow: chanceAtLeast(level, input.lo, spread2.sigma),
+      chancePeak: chanceAtLeast(peak, input.lo, spread2.sigma),
+      levels,
+      perWeek: nW > 1 ? Math.max(0, peak - level) / ramp : 0,
+      next: { target, median: median3, average, goal },
+      momentum: mom,
+      projected: projectedLevel == null ? null : { level: projectedLevel, chance: chanceAtLeast(projectedLevel, input.lo, spread2.sigma) },
+      perSwingMark: z
+    };
   }
 
   // src/topics/index.ts
@@ -10511,7 +10644,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "abd80f6c58a6";
+  var CORE_BUILD = "5604330983e9";
   return __toCommonJS(index_exports);
 })();
 </script>
