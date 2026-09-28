@@ -1301,7 +1301,6 @@ var NBCore = (() => {
     mapConfidence: () => mapConfidence,
     mapIdFor: () => mapIdFor,
     mapNeedsReview: () => mapNeedsReview,
-    matchWord: () => matchWord,
     mean: () => mean,
     median: () => median,
     mergeKeyParses: () => mergeKeyParses,
@@ -1355,7 +1354,7 @@ var NBCore = (() => {
   var TELEMETRY_VERSION = 1;
   var MAP_VERSION = 2;
   var MAP_BUILD = 5;
-  var METRICS_VERSION = 1;
+  var METRICS_VERSION = 2;
   var MOCK_DB_NAME = "neobook-mock";
   var MOCK_DB_VERSION = 2;
   var SECTION_KEYS = ["en", "gk", "le", "lr", "qt"];
@@ -5196,9 +5195,10 @@ var NBCore = (() => {
   }
 
   // src/mock/guess.ts
-  var GUESS_VERSION = 1;
+  var GUESS_VERSION = 2;
   var GUESS_MIN_CONF = 0.72;
-  var KIND_OF = { eg: "educated", cg: "educated", rg: "random", g: "random" };
+  var LETTER_WINDOW_MS = 6e4;
+  var ZONE = { left: -2, right: 0.9, up: -1, down: 2 };
   var pathLen2 = (pts) => {
     let d = 0;
     for (let i = 1; i < pts.length; i++) {
@@ -5239,128 +5239,56 @@ var NBCore = (() => {
     if (area2 < numArea * 0.35 || area2 > numArea * 25) return false;
     return len >= (r.w + r.h) * 1.2;
   }
-  var SAMPLES = 32;
-  function resample(pts, n) {
-    const total = pathLen2(pts);
-    if (!(total > 0)) return Array.from({ length: n }, () => pts[0] || [0, 0]);
-    const step = total / (n - 1);
-    const out = [pts[0]];
-    let carry = 0;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      let d = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      let from = a;
-      while (carry + d >= step && out.length < n && d > 0) {
-        const t = (step - carry) / d;
-        const p = [from[0] + (b[0] - from[0]) * t, from[1] + (b[1] - from[1]) * t];
-        out.push(p);
-        from = p;
-        d = Math.hypot(b[0] - from[0], b[1] - from[1]);
-        carry = 0;
-      }
-      carry += d;
+  var straightness2 = (pts) => {
+    const len = pathLen2(pts);
+    if (!(len > 0)) return 1;
+    const a = pts[0], b = pts[pts.length - 1];
+    return Math.hypot(b[0] - a[0], b[1] - a[1]) / len;
+  };
+  function turning(pts) {
+    let a = 0;
+    for (let i = 2; i < pts.length; i++) {
+      const p = pts[i - 2], q = pts[i - 1], r = pts[i];
+      const ux = q[0] - p[0], uy = q[1] - p[1], vx = r[0] - q[0], vy = r[1] - q[1];
+      if (Math.hypot(ux, uy) < 0.3 || Math.hypot(vx, vy) < 0.3) continue;
+      a += Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
     }
-    while (out.length < n) out.push(pts[pts.length - 1]);
-    return out.slice(0, n);
+    return a / (2 * Math.PI);
   }
-  function rotateToZero(pts) {
-    const c = centroid(pts);
-    const first = pts[0];
-    const a = -Math.atan2(first[1] - c[1], first[0] - c[0]);
-    const cos = Math.cos(a), sin = Math.sin(a);
-    return pts.map(([x, y]) => [
-      (x - c[0]) * cos - (y - c[1]) * sin + c[0],
-      (x - c[0]) * sin + (y - c[1]) * cos + c[1]
-    ]);
-  }
-  function centroid(pts) {
-    let x = 0, y = 0;
+  var letterLike = (s, R) => straightness2(s.pts) < 0.6 && Math.max(s.bbox[2], s.bbox[3]) >= 0.2 * R && s.bbox[2] <= 1.6 * R && s.bbox[3] <= 1.6 * R;
+  var countsAsLetter = (s) => turning(s.pts) >= 0.5;
+  function joinedEg(pts) {
+    const b = boxOf2(pts), w = Math.max(1e-6, b.w), h = Math.max(1e-6, b.h);
+    const startsLeft = (pts[0][0] - b.x) / w <= 0.45;
+    const left = pts.filter((p) => p[0] <= b.x + b.w * 0.35).map((p) => p[1]);
+    const tallLeft = left.length >= 2 && (Math.max(...left) - Math.min(...left)) / h >= 0.8;
+    const step = Math.max(0.6, b.w * 0.08);
+    let turnsBack = 0, dir = 0, ref = pts[0][0];
     for (const p of pts) {
-      x += p[0];
-      y += p[1];
+      const d = p[0] - ref;
+      if (Math.abs(d) < step) continue;
+      const sg = Math.sign(d);
+      if (dir && sg !== dir) turnsBack++;
+      dir = sg;
+      ref = p[0];
     }
-    return [x / Math.max(1, pts.length), y / Math.max(1, pts.length)];
-  }
-  function scaleAndCentre(pts) {
-    const b = boxOf2(pts);
-    const k = 100 / Math.max(1e-6, Math.max(b.w, b.h));
-    const scaled = pts.map(([x, y]) => [(x - b.x) * k, (y - b.y) * k]);
-    const c = centroid(scaled);
-    return scaled.map(([x, y]) => [x - c[0], y - c[1]]);
-  }
-  var prepare = (strokes) => {
-    const joined = [];
-    for (const s of strokes) for (const p of s) joined.push(p);
-    if (joined.length < 2) return [];
-    return scaleAndCentre(rotateToZero(resample(joined, SAMPLES)));
-  };
-  var meanDistance = (a, b) => {
-    let d = 0;
-    for (let i = 0; i < a.length; i++) {
-      const p = a[i], q = b[i];
-      d += Math.hypot(p[0] - q[0], p[1] - q[1]);
-    }
-    return d / Math.max(1, a.length);
-  };
-  var aspect = (strokes) => {
-    const all = [];
-    for (const s of strokes) for (const p of s) all.push(p);
-    const b = boxOf2(all);
-    return (b.w + 1) / (b.h + 1);
-  };
-  var confOf = (d) => Math.max(0, Math.min(1, 1 - d / (0.5 * Math.hypot(100, 100))));
-  var straightness2 = (strokes) => {
-    let direct = 0, along = 0;
-    for (const s of strokes) {
-      if (s.length < 2) continue;
-      const a = s[0], b = s[s.length - 1];
-      direct += Math.hypot(b[0] - a[0], b[1] - a[1]);
-      along += pathLen2(s);
-    }
-    return along > 0 ? direct / along : 0;
-  };
-  function matchWord(strokes, samples) {
-    const me = prepare(strokes);
-    if (!me.length || !samples.length) return { word: null, conf: 0 };
-    if (straightness2(strokes) > 0.85) return { word: null, conf: 0 };
-    const myAspect = aspect(strokes);
-    let best = null, bestD = Infinity;
-    const perKind = { educated: Infinity, random: Infinity, unknown: Infinity };
-    for (const s of samples) {
-      const them = prepare(s.strokes);
-      if (!them.length) continue;
-      const a = aspect(s.strokes);
-      const ratio2 = Math.max(myAspect, a) / Math.max(1e-6, Math.min(myAspect, a));
-      if (ratio2 > 2.2) continue;
-      const d = meanDistance(me, them);
-      const k = KIND_OF[s.word];
-      if (d < perKind[k]) perKind[k] = d;
-      if (d < bestD) {
-        bestD = d;
-        best = s.word;
-      }
-    }
-    if (!best) return { word: null, conf: 0 };
-    const kind = KIND_OF[best];
-    const other = kind === "educated" ? perKind.random : perKind.educated;
-    const conf = confOf(bestD);
-    if (isFinite(other) && confOf(other) > conf - 0.05) return { word: null, conf };
-    return { word: best, conf };
+    const votes = (startsLeft ? 1 : 0) + (tallLeft ? 1 : 0) + (turnsBack >= 6 ? 1 : 0);
+    return { yes: votes >= 2, votes };
   }
   function numbersOn(map, page) {
     const out = [];
     for (const q of map.questions) if (q.page === page) out.push({ q, box: numberBox(q) });
     return out;
   }
-  function onAnOption(s, q) {
-    const r = rectOf(s), [cx, cy] = centre(r);
-    for (const L of Object.keys(q.options)) {
+  function onAnOption(s, map) {
+    const [cx, cy] = centre(rectOf(s));
+    for (const q of map.questions) for (const L of Object.keys(q.options)) {
       const o = q.options[L];
       if (o && o.page === s.page && inside3(o.region, cx, cy)) return true;
     }
     return false;
   }
-  function deriveGuesses(strokes, map, samples = []) {
+  function deriveGuesses(strokes, map, _samples = []) {
     const out = { version: GUESS_VERSION, questions: {}, unassigned: [] };
     if (!map || !map.questions.length) return out;
     const live = strokes.filter((s) => s.removedAt == null && s.ink === "red");
@@ -5382,32 +5310,43 @@ var NBCore = (() => {
         break;
       }
       if (hit) {
-        rings.push({ s, q: hit.q, box: hit.box });
+        rings.push({ s, q: hit.q });
         taken.add(s.id);
       }
     }
-    for (const { s, q, box } of rings) {
-      const r = rectOf(s);
-      const line = Math.max(box.h, r.h, 8);
-      const word = live.filter((o) => !taken.has(o.id) && o.page === s.page && Math.abs(o.t0 - s.t) < 3e4 && !onAnOption(o, q)).filter((o) => {
-        const ob = rectOf(o), [ox, oy] = centre(ob);
-        const near = Math.abs(oy - (r.y + r.h / 2)) <= line * 1.4;
-        const beside = ox > r.x - line * 6 && ox < r.x + r.w + line * 6;
-        return near && beside && ob.w < line * 6 && ob.h < line * 3;
+    const claim = /* @__PURE__ */ new Map();
+    rings.forEach(({ s: ring }, i) => {
+      const [rx, ry, rw, rh] = ring.bbox, R = Math.max(rw, rh, 1), cx = rx + rw / 2, cy = ry + rh / 2;
+      for (const o of live) {
+        if (o.page !== ring.page || taken.has(o.id)) continue;
+        const dt = Math.abs(o.t0 - ring.t);
+        if (dt > LETTER_WINDOW_MS) continue;
+        const dx = (o.bbox[0] + o.bbox[2] / 2 - cx) / R, dy = (o.bbox[1] + o.bbox[3] / 2 - cy) / R;
+        if (dx < ZONE.left || dx > ZONE.right || dy < ZONE.up || dy > ZONE.down) continue;
+        if (!letterLike(o, R) || onAnOption(o, map)) continue;
+        const c = claim.get(o.id);
+        if (!c || dt < c.dt) claim.set(o.id, { ring: i, dt });
+      }
+    });
+    rings.forEach(({ s, q }, i) => {
+      const word = live.filter((o) => {
+        const c = claim.get(o.id);
+        return !!c && c.ring === i;
       }).sort((a, b) => a.t0 - b.t0);
-      word.forEach((w) => taken.add(w.id));
-      const m = word.length ? matchWord(word.map((w) => w.pts), samples) : { word: null, conf: 0 };
-      const ok = m.word && m.conf >= GUESS_MIN_CONF;
-      out.questions[q.id] = {
-        qid: q.id,
-        ringStrokeId: s.id,
-        t: s.t,
-        kind: ok ? KIND_OF[m.word] : "unknown",
-        word: ok ? m.word : null,
-        conf: ok ? m.conf : word.length ? m.conf : 0,
-        strokeIds: [s.id, ...word.map((w) => w.id)]
-      };
-    }
+      const letters = word.filter(countsAsLetter);
+      let kind = "unknown", w = null, conf = 0;
+      if (letters.length === 1) {
+        const j = joinedEg(letters[0].pts);
+        kind = j.yes ? "educated" : "random";
+        w = j.yes ? "eg" : "g";
+        conf = j.votes === 0 || j.votes === 3 ? 0.95 : 0.8;
+      } else if (letters.length === 2 || letters.length === 3) {
+        kind = "educated";
+        w = "eg";
+        conf = letters.length === 2 ? 0.95 : 0.85;
+      }
+      out.questions[q.id] = { qid: q.id, ringStrokeId: s.id, t: s.t, kind, word: w, conf, strokeIds: [s.id, ...word.map((o) => o.id)] };
+    });
     return out;
   }
 
@@ -5908,7 +5847,6 @@ var NBCore = (() => {
         blueLockCount: k ? k.history.length : 0,
         eliminatedOptions: k ? k.eliminatedOptions.slice() : [],
         finalTwoOptions: k && k.finalTwo ? k.finalTwo.options.slice() : null,
-        /* the ring round the printed number, and the word written beside it */
         firstAnswer: first,
         firstAnswerTimestamp: firstT,
         finalAnswer: final,
@@ -6360,9 +6298,9 @@ var NBCore = (() => {
     if (customScoring) notes.push("Scored " + (sc.correct > 0 ? "+" : "") + sc.correct + " / " + sc.wrong + " / " + sc.skipped + "; the dashboard\u2019s totals assume +1 / \u22120.25.");
     if (s.endReason === "timeout") notes.push("The time ran out.");
     const TAG_MEANING = {
-      EG: "Educated guess \u2014 you ringed the number and wrote eg or cg",
-      RG: "Random guess \u2014 you ringed the number and wrote rg or g",
-      Circled: "Ringed the number, with no word read beside it"
+      EG: "Educated guess \u2014 you ringed the number and wrote two letters (eg)",
+      RG: "Random guess \u2014 you ringed the number and wrote one letter (G)",
+      Circled: "Ringed the number, with no letters written by it"
     };
     const tags = {};
     qm.forEach((q, i) => {
@@ -6372,7 +6310,7 @@ var NBCore = (() => {
     const tagMeanings = {};
     for (const t of Object.keys(TAG_MEANING)) if (Object.values(tags).indexOf(t) >= 0) tagMeanings[t] = TAG_MEANING[t];
     const ringed = qm.filter((q) => q.guessKind).length, unread = qm.filter((q) => q.guessKind === "unknown").length;
-    if (ringed) notes.push(ringed + " question" + (ringed === 1 ? "" : "s") + " had the number ringed as a guess" + (unread ? ", " + (unread === ringed ? "none" : unread) + " without a word that could be read" : "") + ".");
+    if (ringed) notes.push(ringed + " question" + (ringed === 1 ? "" : "s") + " had the number ringed as a guess" + (unread ? ", " + (unread === ringed ? "all" : unread) + " with no letters by the ring" : "") + ".");
     const record = {
       id: "nb-" + s.id,
       paper,
@@ -9137,7 +9075,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "c6fc1c8fae80";
+  var CORE_BUILD = "9d1f531b9555";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -12863,7 +12801,7 @@ function avCheckCard(ctx) {
   return card('Check these', `Where the pen could not be read for certain. Choose what you meant — nothing changes until you save, and then the attempt is scored again once.${mine.length ? ` ${mine.length} question${mine.length === 1 ? ' is' : 's are'} already set by you.` : ''}`, [
     group('Blue mark across two options', amb.map(q => pickRow(q, 'answer', `read as ${q.finalAnswer || 'blank'}${altOf(q) ? `, also touching ${altOf(q)}` : ''}`))),
     strayBox,
-    group('Ringed, word not read', unread.map(q => pickRow(q, 'guess', 'what kind of guess was it?'))),
+    group('Ringed, no letters counted', unread.map(q => pickRow(q, 'guess', 'what kind of guess was it?'))),
     group('Left blank', blanks.map(q => pickRow(q, 'answer', 'no answer was read — pick one if you did answer')), false),
     group('Set by you', mine.map(q => q.answerSetByYou ? pickRow(q, 'answer', `set to ${q.finalAnswer || 'blank'}`) : pickRow(q, 'guess', `set to ${setG[q.questionId]}`)), false),
     H('div', { class: 'avcother' }, [H('span', { class: 'muted', text: 'Another question:' }), other, H('button', { class: 'btn plain', type: 'button', onclick: addOther, text: 'Correct it' })]),
