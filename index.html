@@ -25550,6 +25550,9 @@ function start(cfg){
   delete cfg.documentMapId;
   MK.s = s; MK.seq = 0; MK.chunk = 0; MK.buf = [];
   return saveSession(s).then(function(){
+    /* the map this attempt records against is stored before the first stroke, not only held here */
+    return s.documentMapId ? mapFor(s).catch(function(){ return null; }) : null;
+  }).then(function(){
     logEv('MOCK_CREATED', { meta: { config: cfg, book: s.source } });
     logEv('MOCK_STARTED', { page: S.page | 0, zoom: S.zoom });
     enterMode();
@@ -25872,7 +25875,7 @@ function prepareMap(bk, opts){
         var t0 = performance.now();
         var built = CORE.buildDocumentMapWithModels({
           fp: key, source: source, pages: pages, title: bk.title || bk.name || '',
-          hint: { sections: SETUP.secs.slice(), questionCount: SETUP.touchedQs ? (parseInt(el('mockQs').value, 10) || 0) : 0 }
+          hint: opts.hint || { sections: SETUP.secs.slice(), questionCount: SETUP.touchedQs ? (parseInt(el('mockQs').value, 10) || 0) : 0 }
         });
         var ms = Math.round(performance.now() - t0);
         /* a map the user corrected is their work: a rebuild never replaces it */
@@ -25881,7 +25884,8 @@ function prepareMap(bk, opts){
         if(CORE.extractContent){ try{ built.map = CORE.extractContent(built.map, built.models); }catch(e){ console.warn('question text', e); } }
         if(cached) built.map.rev = Math.max(cached.rev || 0, built.map.rev || 0) + 1;
         if(!persist) return { map: built.map, models: built.models, ms: ms };
-        return (cached ? mapReplaced(cached, built.map) : dbp().then(function(db){ return db.putMap(built.map); }))
+        /* a paper mapped where it had no map: attempts on it waiting for one are scored now */
+        return (cached ? mapReplaced(cached, built.map) : dbp().then(function(db){ return db.putMap(built.map); }).then(function(){ scoreOnMap(built.map); }))
           .then(function(){ return { map: built.map, models: built.models, ms: ms }; });
       }
     })
@@ -25892,7 +25896,8 @@ function prepareMap(bk, opts){
       if(res.map){
         if(res.map.corrected) res.map = CORE.auditMap(res.map);
         else {
-          var extra = CORE.integrityIssues(res.map);
+          /* once each: this copy can be stored again (mapFor) and read back through here */
+          var extra = CORE.integrityIssues(res.map).filter(function(i){ return !(res.map.issues || []).some(function(j){ return j.msg === i.msg; }); });
           if(extra.length){ res.map.issues = (res.map.issues || []).concat(extra); res.map.warnings = res.map.issues.map(function(i){ return i.msg; }); }
         }
       }
@@ -25912,6 +25917,38 @@ function prepareMap(bk, opts){
 
 /* The map an attempt records against: only ever a real fingerprint's. */
 function attemptMapId(bk){ return (MAPS.bk === bk && isRealFp(MAPS.key)) ? CORE.mapIdFor(MAPS.key) : (bk && isRealFp(bk.fp) ? CORE.mapIdFor(bk.fp) : ''); }
+
+/* An attempt's map, from the store — or this tab's copy, put back. Removing the
+   last attempt on a paper removes the paper's map (here, from the dashboard, or
+   synced from the other device) while this tab still holds a copy, and an
+   attempt started on that copy would be recorded against a map that is gone
+   and scored against nothing. So whatever needs an attempt's map asks here. */
+function mapFor(s){
+  return dbp().then(function(db){
+    return db.resolveMap(s).then(function(m){
+      var mem = MAPS.map;
+      if(m || !s || !s.documentMapId || !mem || mem.id !== s.documentMapId || !isRealFp(mem.fp)) return m || null;
+      return db.putMap(mem).then(function(){ return mem; });
+    });
+  });
+}
+
+/* The map to score an attempt against: its own (mapFor), or else the paper's,
+   made now if the paper is open — from what the attempt was set up as, not from
+   whatever the setup sheet last held. `scan` says a scan has pages still to read. */
+function mapToScore(s){
+  return mapFor(s).then(function(m){
+    if(m) return { map: m };
+    var bk = S.book, src = (s && s.source) || {}, cfg = (s && s.config) || {};
+    if(!bk || !bk.doc || !(bk.id === src.bookId || (isRealFp(bk.fp) && bk.fp === src.fp))) return { map: null };
+    return prepareMap(bk, { hint: { sections: (cfg.sections || []).slice(), questionCount: cfg.questionCount || 0 } }).then(function(res){
+      if(res && res.map && res.persist && res.map.id === s.documentMapId) return { map: res.map };
+      return { map: null, scan: !!(res && res.scanned) };
+    }, function(){ return { map: null }; });
+  });
+}
+/* A paper with a fingerprint and questions is scored against its map — never none. */
+function wantsMap(s){ return !!(s && s.config && s.config.questionCount > 0 && (s.documentMapId || (s.source && isRealFp(s.source.fp)))); }
 
 function summaryOf(m){
   var n = m.questions.length, s = m.sections.length, p = m.passages.length;
@@ -26678,7 +26715,7 @@ function openDone(s){
       if(k && k.resolved && DONE.s && DONE.s.id === s.id) return scoreNow(s, k);
       /* a paper printed with its answers — under each question, or in a key at
          the back — needs no upload: offer them, and say how many were read */
-      return db.resolveMap(s).then(function(map){
+      return mapFor(s).then(function(map){
         var kp = map && CORE.printedKey ? CORE.printedKey(map) : null;
         if(!kp || !DONE.s || DONE.s.id !== s.id) return;
         var n = kp.sets[0].entries.length;
@@ -27024,7 +27061,7 @@ function keyChosenImpl(s, input){
   el('mockKeyChecks').style.display = 'none';
   keyMsg('Reading the key…');
   var reading = input.printed
-    ? dbp().then(function(db){ return db.resolveMap(s); }).then(function(map){
+    ? mapFor(s).then(function(map){
         var kp = map && CORE.printedKey ? CORE.printedKey(map) : null;
         if(!kp) throw new Error('this paper prints no answers that could be read');
         return { parse: kp, source: { kind: 'paper', name: map.printed.from === 'inline' ? 'answers printed under the questions' : 'the key printed in the paper', bytes: 0 } };
@@ -27039,7 +27076,7 @@ function keyChosenImpl(s, input){
     : readKey(input);
   reading.then(function(r){
     KEY.parse = r.parse; KEY.source = r.source;
-    return dbp().then(function(db){ return db.resolveMap(s); });
+    return mapFor(s);
   }).then(function(map){
     KEY.map = map;
     KEY.ctx = { setName: s.config.setName, questionCount: s.config.questionCount, sections: s.config.sections };
@@ -27187,11 +27224,19 @@ function addGuessSample(db, word, strokes){
     return db.setMeta('guess.samples', next).then(function(){ return next; });
   });
 }
+/* attempts being scored now, so none is scored twice at once */
+var SCORING = {};
 function finalizeAttempt(s, key){
-  return dbp().then(function(db){
-    return Promise.all([db.getSession(s.id), db.readEvents(s.id), db.resolveMap(s), guessSamples(db)]).then(function(r){
-      var cur = r[0] || s;
-      var b = CORE.deriveAttempt({ session: cur, events: r[1], map: r[2], key: key, now: Date.now(), guessSamples: r[3] });
+  if(SCORING[s.id]) return SCORING[s.id];
+  var job = dbp().then(function(db){
+    return Promise.all([db.getSession(s.id), db.readEvents(s.id), mapToScore(s), guessSamples(db)]).then(function(r){
+      var cur = r[0] || s, map = r[2].map;
+      /* never a score against no map: "0 of 0" for an attempt whose every answer
+         is in its log. It waits, key saved, until its paper has a map again */
+      if(!map && wantsMap(cur)) throw new Error(r[2].scan
+        ? 'its paper is a scan with pages still to be read — once they are read, it is scored by itself'
+        : 'this device has no map of its paper — open the paper, then this attempt again');
+      var b = CORE.deriveAttempt({ session: cur, events: r[1], map: map, key: key, now: Date.now(), guessSamples: r[3] });
       var t = b.test, failed = b.checks.filter(function(c){ return !c.ok; }).map(function(c){ return c.check; });
       return db.putDerived(b).then(function(){
         return appendAfter(cur, [
@@ -27209,6 +27254,44 @@ function finalizeAttempt(s, key){
       });
     });
   });
+  SCORING[s.id] = job;
+  var done = function(){ if(SCORING[s.id] === job) delete SCORING[s.id]; };
+  job.then(done, done);
+  return job;
+}
+/* Attempts on a paper that had no map here when they were to be scored —
+   waiting with their key saved, or, before that was caught, scored against
+   nothing (no question in their result) — are scored once it has one. */
+function scoreOnMap(m){
+  if(!m || !isRealFp(m.fp) || !m.questions || !m.questions.length) return Promise.resolve(0);
+  return dbp().then(function(db){
+    return db.listSessions().then(function(list){
+      var n = 0, chain = Promise.resolve();
+      list.forEach(function(x){
+        if(!x.source || x.source.fp !== m.fp || (x.status !== 'finalized' && x.status !== 'awaiting_key')) return;
+        chain = chain.then(function(){
+          /* nothing runs while a mock is being attempted; the next map made picks them up */
+          if(MK.s) return;
+          /* read again when its turn comes: the one before may have been this one */
+          return Promise.all([db.getSession(x.id), db.getKey(x.id), db.getDerived(x.id)]).then(function(r){
+            var cur = r[0], key = r[1], d = r[2];
+            if(!cur || SCORING[cur.id] || !key || !key.resolved) return;
+            if(cur.status !== 'awaiting_key' && !(cur.status === 'finalized' && d && d.questions && !d.questions.length)) return;
+            n++;
+            return finalizeAttempt(cur, key);
+          });
+        }).catch(function(e){ console.error('scoring on its map', x.id, e); });
+      });
+      return chain.then(function(){
+        if(n){
+          msyncNow('scored on its map');
+          try{ new BroadcastChannel('neobook').postMessage({ type: 'maps-changed' }); }catch(e){}
+          refreshWaiting();
+        }
+        return n;
+      });
+    });
+  }).catch(function(){ return 0; });
 }
 function scoreNow(s, key){
   var m = el('mockDoneMsg'), said = m.style.display !== 'none' ? m.textContent : '';
@@ -27983,7 +28066,7 @@ function recOn(){
   REC.shadow = {}; REC.hlSeen = null; REC.lastKey = ''; REC.lastZoom = S.zoom; REC.lastPage = null;
   REC.map = null; REC.locks = {};
   var s = MK.s;
-  if(s) dbp().then(function(db){ return db.resolveMap(s); }).then(function(m){ if(MK.s === s) REC.map = m; }).catch(function(){});
+  if(s) mapFor(s).then(function(m){ if(MK.s === s) REC.map = m; }).catch(function(){});
   recSizes();
   clearInterval(REC.poll);
   REC.poll = setInterval(function(){ sampleView(null); }, 1000);
