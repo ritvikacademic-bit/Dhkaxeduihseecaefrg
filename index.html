@@ -561,7 +561,9 @@
   #home{ display:none; grid-template-columns:238px 1fr; height:100vh; height:100dvh; background:var(--wash); }
   #home.show{ display:grid; }
   #home.show ~ .app{ display:none !important; }
-  .homerail{ background:var(--paper); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  /* the rail scrolls on its own: a long list of subjects must never push Add book off a landscape screen */
+  .homerail{ background:var(--paper); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0;
+             overflow-y:auto; overscroll-behavior:contain; }
   .hbrand{ padding:22px 22px 18px; display:flex; align-items:baseline; gap:9px; }
   .hbrand h1{ margin:0; font-size:1.3125rem; font-weight:600; letter-spacing:-.02em; }
 
@@ -571,6 +573,8 @@
   .hnavitem:hover{ background:var(--wash); }
   .hnavitem.on{ background:var(--wash); color:var(--ink); font-weight:600; }
   .hnavitem .ic{ font-size:0.875rem; width:18px; text-align:center; }
+  .hnavitem .chev{ margin-left:auto; font-size:0.75rem; color:var(--ink-faint); transition:transform .2s ease; }
+  .hnavitem.folded .chev{ transform:rotate(-90deg); }
   .hsublist{ display:flex; flex-direction:column; gap:1px; margin:2px 0 6px 0; padding-left:8px; }
   .hsublink{ text-align:left; border:0; background:none; padding:7px 13px 7px 30px; border-radius:8px;
              font-size:0.78125rem; color:var(--ink-faint); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1578,7 +1582,7 @@
   <aside class="homerail">
     <div class="hbrand"><svg class="logo" viewBox="0 0 104 92" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M28 6h38v22h-38a11 11 0 0 1 0-22z"/><path d="M66 7l34 3.5-34 5.5z"/><path d="M66 18l27 3.5-27 6z"/><path d="M20 34h38v22h-38a11 11 0 0 1 0-22z"/><path d="M58 35l34 3.5-34 5.5z"/><path d="M58 46l27 3.5-27 6z"/><path d="M12 62h38v22h-38a11 11 0 0 1 0-22z"/><path d="M50 63l34 3.5-34 5.5z"/><path d="M50 74l27 3.5-27 6z"/></g></svg><h1>NeoBook</h1></div>
     <div class="hnav">
-      <button id="navLibrary" class="hnavitem on"><span class="ic">▤</span> Library</button>
+      <button id="navLibrary" class="hnavitem on" aria-controls="genreNav" aria-expanded="false"><span class="ic">▤</span> Library<span class="chev" aria-hidden="true">▾</span></button>
       <div id="genreNav" class="hsublist"></div>
       <button id="navRead" class="hnavitem"><span class="ic">☑</span> Reading List</button>
       <button id="navHl" class="hnavitem"><span class="ic">⚑</span> Notes &amp; Highlights</button>
@@ -5988,6 +5992,7 @@ var NBCore = (() => {
     const next = Object.assign({}, ov);
     if (ov.answers) next.answers = move(ov.answers);
     if (ov.guesses) next.guesses = move(ov.guesses);
+    if (ov.keys) next.keys = move(ov.keys);
     if (ov.topics) next.topics = move(ov.topics);
     return next;
   }
@@ -6001,6 +6006,9 @@ var NBCore = (() => {
     const out = __spreadValues(__spreadValues({}, older), newer);
     const answers = __spreadValues(__spreadValues({}, older.answers || {}), newer.answers || {});
     const guesses = __spreadValues(__spreadValues({}, older.guesses || {}), newer.guesses || {});
+    const keys = __spreadValues(__spreadValues({}, older.keys || {}), newer.keys || {});
+    if (Object.keys(keys).length) out.keys = keys;
+    else delete out.keys;
     if (Object.keys(answers).length) out.answers = answers;
     else delete out.answers;
     if (Object.keys(guesses).length) out.guesses = guesses;
@@ -6029,7 +6037,7 @@ var NBCore = (() => {
     return ka.length === kb.length && ka.every((k) => (b || {})[k] === (a || {})[k]);
   };
   function overridesGain(base, merged) {
-    const scoring = !sameRecord(base == null ? void 0 : base.answers, merged == null ? void 0 : merged.answers) || !sameRecord(base == null ? void 0 : base.guesses, merged == null ? void 0 : merged.guesses);
+    const scoring = !sameRecord(base == null ? void 0 : base.answers, merged == null ? void 0 : merged.answers) || !sameRecord(base == null ? void 0 : base.guesses, merged == null ? void 0 : merged.guesses) || !sameRecord(base == null ? void 0 : base.keys, merged == null ? void 0 : merged.keys);
     const any = scoring || !sameRecord(base == null ? void 0 : base.topics, merged == null ? void 0 : merged.topics) || ((base == null ? void 0 : base.topicLog) || []).length !== ((merged == null ? void 0 : merged.topicLog) || []).length;
     return { any, scoring };
   }
@@ -7177,6 +7185,13 @@ var NBCore = (() => {
     if (!byQid) for (const q of questions) {
       const e = entries.find((k) => k.n === q.n);
       if (e) keyBy.set(q.id, e);
+    }
+    const keyFix = input.session.overrides && input.session.overrides.keys || {};
+    for (const q of questions) {
+      const fix = keyFix[q.id];
+      if (!fix) continue;
+      const was = keyBy.get(q.id);
+      keyBy.set(q.id, fix === "X" ? { n: q.n, qid: q.id, correct: null, status: "withdrawn", conf: 1, confirmed: true } : { n: q.n, qid: q.id, correct: fix, status: "valid", conf: 1, confirmed: true, raw: was ? was.raw : void 0 });
     }
     const rectsOf = /* @__PURE__ */ new Map(), areaOf = /* @__PURE__ */ new Map(), onPage = /* @__PURE__ */ new Map();
     for (const q of questions) {
@@ -10582,7 +10597,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "9d1f531b9555";
+  var CORE_BUILD = "a2cb2236c225";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -19773,8 +19788,19 @@ function buildReadingPage(main){
   });
 }
 
+/* the subjects under Library fold away; how you left them is kept on this device */
+var GENRE_OPEN_KEY = 'lumen:genreNavOpen';
+S.genreNavOpen = (function(){ try{ return localStorage.getItem(GENRE_OPEN_KEY) === '1'; }catch(e){ return false; } })();
+function setGenreNavOpen(on){
+  S.genreNavOpen = !!on;
+  try{ localStorage.setItem(GENRE_OPEN_KEY, on ? '1' : '0'); }catch(e){}
+  setHomeNavUI();
+}
 function setHomeNavUI(){
   $('#navLibrary').classList.toggle('on', S.homeNav==='library');
+  $('#navLibrary').classList.toggle('folded', !S.genreNavOpen);
+  $('#navLibrary').setAttribute('aria-expanded', S.genreNavOpen ? 'true' : 'false');
+  $('#genreNav').style.display = S.genreNavOpen ? '' : 'none';
   $('#navHl').classList.toggle('on', S.homeNav==='hl');
   $('#hlNav').style.display = S.homeNav==='hl' ? '' : 'none';
   $('#navHlBook').classList.toggle('on', S.hlView==='book');
@@ -20187,7 +20213,11 @@ async function renderHome(){
 }
 
 /* ---- wiring ---- */
-$('#navLibrary').onclick = function(){ S.homeNav='library'; S.homeGenre='all'; setHomeNavUI(); renderHome(); homeMenuAutoClose(); };
+/* Library, when you are already in it, folds or unfolds its subjects; from anywhere else it opens it */
+$('#navLibrary').onclick = function(){
+  if(S.homeNav==='library'){ setGenreNavOpen(!S.genreNavOpen); return; }
+  S.homeNav='library'; S.homeGenre='all'; setHomeNavUI(); renderHome(); homeMenuAutoClose();
+};
 $('#navHl').onclick      = function(){ S.homeNav='hl'; setHomeNavUI(); renderHome(); };   // keep open: its two sub-links are right below
 $('#navHlBook').onclick  = function(){ S.hlView='book'; setHomeNavUI(); renderHome(); homeMenuAutoClose(); };
 $('#navHlAll').onclick   = function(){ S.hlView='all'; setHomeNavUI(); renderHome(); homeMenuAutoClose(); };

@@ -4481,6 +4481,7 @@ var NBCore = (() => {
     const next = Object.assign({}, ov);
     if (ov.answers) next.answers = move(ov.answers);
     if (ov.guesses) next.guesses = move(ov.guesses);
+    if (ov.keys) next.keys = move(ov.keys);
     if (ov.topics) next.topics = move(ov.topics);
     return next;
   }
@@ -4494,6 +4495,9 @@ var NBCore = (() => {
     const out = __spreadValues(__spreadValues({}, older), newer);
     const answers = __spreadValues(__spreadValues({}, older.answers || {}), newer.answers || {});
     const guesses = __spreadValues(__spreadValues({}, older.guesses || {}), newer.guesses || {});
+    const keys = __spreadValues(__spreadValues({}, older.keys || {}), newer.keys || {});
+    if (Object.keys(keys).length) out.keys = keys;
+    else delete out.keys;
     if (Object.keys(answers).length) out.answers = answers;
     else delete out.answers;
     if (Object.keys(guesses).length) out.guesses = guesses;
@@ -4522,7 +4526,7 @@ var NBCore = (() => {
     return ka.length === kb.length && ka.every((k) => (b || {})[k] === (a || {})[k]);
   };
   function overridesGain(base, merged) {
-    const scoring = !sameRecord(base == null ? void 0 : base.answers, merged == null ? void 0 : merged.answers) || !sameRecord(base == null ? void 0 : base.guesses, merged == null ? void 0 : merged.guesses);
+    const scoring = !sameRecord(base == null ? void 0 : base.answers, merged == null ? void 0 : merged.answers) || !sameRecord(base == null ? void 0 : base.guesses, merged == null ? void 0 : merged.guesses) || !sameRecord(base == null ? void 0 : base.keys, merged == null ? void 0 : merged.keys);
     const any = scoring || !sameRecord(base == null ? void 0 : base.topics, merged == null ? void 0 : merged.topics) || ((base == null ? void 0 : base.topicLog) || []).length !== ((merged == null ? void 0 : merged.topicLog) || []).length;
     return { any, scoring };
   }
@@ -5670,6 +5674,13 @@ var NBCore = (() => {
     if (!byQid) for (const q of questions) {
       const e = entries.find((k) => k.n === q.n);
       if (e) keyBy.set(q.id, e);
+    }
+    const keyFix = input.session.overrides && input.session.overrides.keys || {};
+    for (const q of questions) {
+      const fix = keyFix[q.id];
+      if (!fix) continue;
+      const was = keyBy.get(q.id);
+      keyBy.set(q.id, fix === "X" ? { n: q.n, qid: q.id, correct: null, status: "withdrawn", conf: 1, confirmed: true } : { n: q.n, qid: q.id, correct: fix, status: "valid", conf: 1, confirmed: true, raw: was ? was.raw : void 0 });
     }
     const rectsOf = /* @__PURE__ */ new Map(), areaOf = /* @__PURE__ */ new Map(), onPage = /* @__PURE__ */ new Map();
     for (const q of questions) {
@@ -9075,7 +9086,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "9d1f531b9555";
+  var CORE_BUILD = "a2cb2236c225";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -12665,8 +12676,8 @@ function avRemoveButton(cur, style) {
    blank that you did answer, a ringed number whose word was not read. Each
    choice is only held here until Save; then it is kept on the attempt (and
    travels with it), the attempt is scored again once, and every view updates. */
-const AVC = { id: null, answers: {}, guesses: {}, extra: [], stray: null };
-function avcReset(id) { if (AVC.id !== id) { AVC.id = id; AVC.answers = {}; AVC.guesses = {}; AVC.extra = []; AVC.stray = null; } }
+const AVC = { id: null, answers: {}, guesses: {}, keys: {}, extra: [], keyExtra: [], stray: null };
+function avcReset(id) { if (AVC.id !== id) { AVC.id = id; AVC.answers = {}; AVC.guesses = {}; AVC.keys = {}; AVC.extra = []; AVC.keyExtra = []; AVC.stray = null; } }
 async function avcStray(ctx) {
   /* blue marks that touched no option, each set against the question it sits nearest */
   const M = nbMock(), db = NB.db, s = ctx.sess;
@@ -12716,13 +12727,13 @@ function avCheckCard(ctx) {
   if (!ctx.sess || !ctx.full) return null;
   avcReset(ctx.sess.id);
   const qs = ctx.qs, ov = ctx.sess.overrides || {};
-  const setA = ov.answers || {}, setG = ov.guesses || {};
+  const setA = ov.answers || {}, setG = ov.guesses || {}, setK = ov.keys || {};
   const byN = n => qs.find(q => q.displayedQuestionNumber === n);
   const amb = qs.filter(q => q.ambiguousFinal);
   const blanks = qs.filter(q => q.outcome === 'skipped');
   const unread = qs.filter(q => q.guessKind === 'unknown');
   const mine = qs.filter(q => q.answerSetByYou || setG[q.questionId]);
-  const pending = () => Object.keys(AVC.answers).length + Object.keys(AVC.guesses).length;
+  const pending = () => Object.keys(AVC.answers).length + Object.keys(AVC.guesses).length + Object.keys(AVC.keys).length;
 
   const saveBtn = H('button', { class: 'btn primary', type: 'button' });
   const status = H('small', { class: 'muted' });
@@ -12730,9 +12741,13 @@ function avCheckCard(ctx) {
 
   const pickRow = (q, kind, why) => {
     const id = q.questionId;
-    const choices = kind === 'guess' ? [['educated', 'Educated'], ['random', 'Random'], ['none', 'Not a guess']] : [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['-', 'Blank']];
-    const held = kind === 'guess' ? AVC.guesses : AVC.answers;
-    const now = held[id] !== undefined ? held[id] : kind === 'guess' ? (setG[id] || (q.guessKind && q.guessKind !== 'unknown' ? q.guessKind : null)) : (setA[id] !== undefined ? setA[id] : (q.finalAnswer || '-'));
+    const choices = kind === 'guess' ? [['educated', 'Educated'], ['random', 'Random'], ['none', 'Not a guess']]
+      : kind === 'key' ? [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['X', 'Withdraw']]
+      : [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D'], ['-', 'Blank']];
+    const held = kind === 'guess' ? AVC.guesses : kind === 'key' ? AVC.keys : AVC.answers;
+    const now = held[id] !== undefined ? held[id] : kind === 'guess' ? (setG[id] || (q.guessKind && q.guessKind !== 'unknown' ? q.guessKind : null))
+      : kind === 'key' ? (setK[id] || (q.keyStatus === 'withdrawn' ? 'X' : q.officialAnswer))
+      : (setA[id] !== undefined ? setA[id] : (q.finalAnswer || '-'));
     const btns = choices.map(([v, label]) => {
       const b = H('button', { class: 'avcpick' + (now === v ? ' on' : ''), type: 'button', text: label, 'aria-pressed': String(now === v) });
       b.onclick = () => { held[id] = v; btns.forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); }); paint(); };
@@ -12772,6 +12787,19 @@ function avCheckCard(ctx) {
   };
   other.addEventListener('keydown', e => { if (e.key === 'Enter') addOther(); });
 
+  /* the institute's key can be wrong: the right answer, set here, is scored instead */
+  const keyWhy = q => `key says ${q.keyStatus === 'withdrawn' ? 'withdrawn' : q.officialAnswer || 'nothing'} · you answered ${q.finalAnswer || 'blank'}`;
+  const keyNum = H('input', { class: 'avcnum', type: 'number', min: '1', placeholder: 'Q no.', 'aria-label': 'A question whose key is wrong' });
+  const keyBox = H('div', { class: 'avclist' }, AVC.keyExtra.map(n => byN(n)).filter(Boolean).map(q => pickRow(q, 'key', keyWhy(q))));
+  const addKey = () => {
+    const n = parseInt(keyNum.value, 10), q = byN(n);
+    if (!q) { status.textContent = n ? `There is no question ${n} in this attempt.` : ''; return; }
+    if (!AVC.keyExtra.includes(n)) { AVC.keyExtra.push(n); keyBox.append(pickRow(q, 'key', keyWhy(q))); }
+    keyNum.value = ''; status.textContent = '';
+  };
+  keyNum.addEventListener('keydown', e => { if (e.key === 'Enter') addKey(); });
+  const keyFixed = qs.filter(q => setK[q.questionId]);
+
   saveBtn.onclick = async () => {
     const n = pending();
     if (!n) return;
@@ -12781,12 +12809,13 @@ function avCheckCard(ctx) {
       const o = Object.assign({}, s.overrides || {});
       o.answers = Object.assign({}, o.answers || {}, AVC.answers);
       o.guesses = Object.assign({}, o.guesses || {}, AVC.guesses);
+      if (Object.keys(AVC.keys).length) o.keys = Object.assign({}, o.keys || {}, AVC.keys);
       o.at = Date.now();
       s.overrides = o; s.version = (s.version || 1) + 1; s.updatedAt = Date.now();
       await db.putSession(s);
       const [events, map, key, samples] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id), db.getMeta('guess.samples').catch(() => null)]);
       if (map && key) await db.putDerived(M.deriveAttempt({ session: s, events, map, key, now: Date.now(), guessSamples: Array.isArray(samples) ? samples : [] }));
-      AVC.answers = {}; AVC.guesses = {};
+      AVC.answers = {}; AVC.guesses = {}; AVC.keys = {};
       try { new BroadcastChannel('neobook').postMessage({ type: 'attempt-changed', id: s.id, from: 'dashboard' }); } catch (e) { /* the other tab carries it next time */ }
       await refreshNeoBook();
       buildModel(); refreshChrome(); invalidate();
@@ -12806,6 +12835,9 @@ function avCheckCard(ctx) {
     group('Set by you', mine.map(q => q.answerSetByYou ? pickRow(q, 'answer', `set to ${q.finalAnswer || 'blank'}`) : pickRow(q, 'guess', `set to ${setG[q.questionId]}`)), false),
     H('div', { class: 'avcother' }, [H('span', { class: 'muted', text: 'Another question:' }), other, H('button', { class: 'btn plain', type: 'button', onclick: addOther, text: 'Correct it' })]),
     extraBox,
+    group('Key put right by you', keyFixed.map(q => pickRow(q, 'key', `key set to ${setK[q.questionId] === 'X' ? 'withdrawn' : setK[q.questionId]}`)), false),
+    H('div', { class: 'avcother' }, [H('span', { class: 'muted', text: 'The key is wrong for:' }), keyNum, H('button', { class: 'btn plain', type: 'button', onclick: addKey, text: 'Correct the key' })]),
+    keyBox,
     H('div', { class: 'avcfoot' }, [saveBtn, status]),
   ].filter(Boolean), { lede: true, foot: total ? null : 'Nothing was left uncertain in this attempt; you can still correct any question above.' });
 }
