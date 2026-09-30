@@ -10616,6 +10616,70 @@ if (pdfjsLib) {
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 }
 
+/* ── the stand-in fonts for papers that do not carry their own ───────────────
+   A coaching paper often names Times New Roman or Arial without embedding it.
+   pdf.js then draws a stand-in, and the tablet's is a wider serif, which pdf.js
+   squeezes to the paper's letter widths: cramped letters, words run together,
+   unreadable in a mock. pdf.js ships stand-ins cut to the same widths (Foxit
+   for Times, Courier and Helvetica; Liberation for Arial). They are fetched once
+   from the CDN this app already uses, kept on the device in the browser's cache,
+   and handed to pdf.js from there — so opening a paper never waits on the
+   network for them, and offline works once they have been fetched. Text
+   positions, which the map reads, come out exactly the same. */
+var PDF_FONT_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/';
+var PDF_FONT_FILES = ['FoxitSerif.pfb', 'FoxitSerifBold.pfb', 'FoxitSerifItalic.pfb', 'FoxitSerifBoldItalic.pfb',
+  'FoxitFixed.pfb', 'FoxitFixedBold.pfb', 'FoxitFixedItalic.pfb', 'FoxitFixedBoldItalic.pfb', 'FoxitSymbol.pfb', 'FoxitDingbats.pfb',
+  'LiberationSans-Regular.ttf', 'LiberationSans-Bold.ttf', 'LiberationSans-Italic.ttf', 'LiberationSans-BoldItalic.ttf'];
+var PDF_FONT = { mem: {}, bad: {}, cache: null };
+function pdfFontCache(){
+  if(!PDF_FONT.cache) PDF_FONT.cache = (window.caches ? caches.open('neobook-pdf-fonts') : Promise.reject(new Error('no cache'))).catch(function(){ return null; });
+  return PDF_FONT.cache;
+}
+/** One stand-in font file as an ArrayBuffer: from memory, else the device's cache, else the CDN (kept afterwards). */
+function pdfFontFile(name){
+  if(PDF_FONT.mem[name]) return PDF_FONT.mem[name];
+  var url = PDF_FONT_BASE + name;
+  var p = pdfFontCache().then(function(c){
+    if(!c) return { c: null, hit: null };
+    return c.match(url).then(function(hit){ return { c: c, hit: hit }; }, function(){ return { c: c, hit: null }; });
+  }).then(function(r){
+    if(r.hit) return r.hit.arrayBuffer();
+    /* a file that could not be fetched is not tried again for a minute, so a paper never waits on it twice */
+    if(PDF_FONT.bad[name] && Date.now() - PDF_FONT.bad[name] < 60000) throw new Error('stand-in font unavailable');
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 8000) : 0;
+    return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(function(res){
+      clearTimeout(timer);
+      if(!res.ok) throw new Error('stand-in font ' + res.status);
+      var keep = res.clone();
+      if(r.c) r.c.put(url, keep).catch(function(){});
+      return res.arrayBuffer();
+    }, function(e){ clearTimeout(timer); throw e; });
+  });
+  PDF_FONT.mem[name] = p;
+  p.catch(function(){ PDF_FONT.bad[name] = Date.now(); delete PDF_FONT.mem[name]; });
+  return p;
+}
+/* pdf.js asks for a font file by name; answer from pdfFontFile (a copy each time: pdf.js hands the bytes to its worker) */
+function PdfStandardFonts(){}
+PdfStandardFonts.prototype.fetch = function(o){
+  return pdfFontFile(o.filename).then(function(buf){ return new Uint8Array(buf.slice(0)); });
+};
+/** The options every paper that is drawn is opened with. */
+function pdfOpts(o){
+  return Object.assign({ useSystemFonts: false, StandardFontDataFactory: PdfStandardFonts, standardFontDataUrl: PDF_FONT_BASE }, o);
+}
+/* Once, when the tablet is idle and online: have every stand-in on the device, so the first mock never meets the network. */
+function pdfFontsPrefetch(){
+  try{ if(localStorage.getItem('lumen:pdfFonts') === PDF_FONT_BASE || (navigator.onLine === false)) return; }catch(e){}
+  var left = PDF_FONT_FILES.slice(), failed = 0;
+  (function next(){
+    if(!left.length){ if(!failed){ try{ localStorage.setItem('lumen:pdfFonts', PDF_FONT_BASE); }catch(e){} } return; }
+    pdfFontFile(left.shift()).then(next, function(){ failed++; next(); });
+  })();
+}
+setTimeout(function(){ if(window.requestIdleCallback) requestIdleCallback(pdfFontsPrefetch, { timeout: 20000 }); else pdfFontsPrefetch(); }, 6000);
+
 const $  = function(s){ return document.querySelector(s); };
 const $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
 const elx = function(t,c){ const e=document.createElement(t); if(c) e.className=c; return e; };
@@ -13241,13 +13305,13 @@ async function openAnyDocument(file, bytes){
   }
 
   const attempt = function(pw){
-    return pdfjsLib.getDocument({
+    return pdfjsLib.getDocument(pdfOpts({
       data: bytes.slice(0),
       password: pw || undefined,
       stopAtErrors: false,          // a broken object must not abandon the whole book
       isEvalSupported: false,
       disableFontFace: false
-    }).promise;
+    })).promise;
   };
   try{ return { doc: await attempt(null), scanned:false }; }
   catch(err){
@@ -13826,7 +13890,7 @@ async function openBook(bk, autoResume){
     }else{
       const bytes = await store.get('bytes:'+bk.id);
       if(!bytes){ toast('That file is gone — add it again.'); return; }
-      try{ bk.doc = await pdfjsLib.getDocument({ data: bytes.slice(0), stopAtErrors:false, isEvalSupported:false }).promise; }
+      try{ bk.doc = await pdfjsLib.getDocument(pdfOpts({ data: bytes.slice(0), stopAtErrors:false, isEvalSupported:false })).promise; }
       catch(e){ toast('That file will not open.'); return; }
     }
   }
@@ -19483,7 +19547,7 @@ async function ensureCover(bk){
     }
     if(!doc){
       var bytes=await store.get('bytes:'+bk.id); if(!bytes) return null;
-      doc=await pdfjsLib.getDocument({ data:bytes.slice(0) }).promise; temp=true;
+      doc=await pdfjsLib.getDocument(pdfOpts({ data:bytes.slice(0) })).promise; temp=true;
     }
     var url=await renderCoverFromDoc(doc);
     if(temp){ try{ doc.destroy(); }catch(e){} }
@@ -19991,7 +20055,7 @@ async function coverFromFile(f){
   }
   if(f.type==='application/pdf' || /\.pdf$/i.test(f.name)){
     var buf = await f.arrayBuffer();
-    var doc = await pdfjsLib.getDocument({ data:buf, stopAtErrors:false, isEvalSupported:false }).promise;
+    var doc = await pdfjsLib.getDocument(pdfOpts({ data:buf, stopAtErrors:false, isEvalSupported:false })).promise;
     var url = await renderCoverFromDoc(doc);
     try{ doc.destroy(); }catch(e){}
     return url;
@@ -20386,7 +20450,7 @@ async function cfDoc(bk){
     }
     var bytes = await store.get('bytes:'+bk.id);
     if(!bytes) return null;
-    return { doc: await pdfjsLib.getDocument({ data:bytes.slice(0) }).promise, temp:true };
+    return { doc: await pdfjsLib.getDocument(pdfOpts({ data:bytes.slice(0) })).promise, temp:true };
   }catch(e){ return null; }
 }
 /* Every cover rendered before this build was multiplied with the reading
