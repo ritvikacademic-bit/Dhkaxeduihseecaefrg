@@ -367,6 +367,48 @@ main{min-height:60vh}
   .kz-bento:not(:has(>.wiz-week))>.kz-stand{grid-column:1/-1}
 }
 .kz-legend{margin:0 0 10px}
+/* ─────────────────────────── The boss fight ─────────────────────────── */
+/* a medallion: a ring of its own state round the boss's glyph; it is drawn the same on a chart and in the card */
+.kz-medal .kz-pad{fill:var(--surface)}
+.kz-medal .kz-ring{fill:var(--surface);stroke:var(--ink-3);stroke-width:1.6}
+.kz-medal .kz-ring2{fill:none;stroke:var(--ink-3);stroke-width:1;opacity:.7}
+.kz-medal .kz-gly{color:var(--ink-2)}
+.kz-medal .kz-glow{fill:var(--accent);opacity:0}
+.kz-medal.kz-final .kz-ring,.kz-medal.kz-final .kz-ring2{stroke:var(--ink)}
+.kz-medal.kz-final .kz-gly{color:var(--ink)}
+.kz-medal.st-fighting .kz-ring,.kz-medal.st-fighting .kz-ring2{stroke:var(--accent);stroke-width:2.2}
+.kz-medal.st-fighting .kz-gly{color:var(--ink)}
+.kz-medal.st-fighting .kz-glow{opacity:.26}
+.kz-medal.st-felled .kz-ring,.kz-medal.st-felled .kz-ring2{stroke:var(--good)}
+.kz-medal.st-felled .kz-gly{color:var(--ink-3);opacity:.6}
+.kz-medal.st-escaped .kz-ring{stroke:var(--bad);stroke-dasharray:3 2}
+.kz-medal.st-escaped .kz-gly{color:var(--ink-3);opacity:.55}
+.kz-medal.st-none{opacity:.4}
+.kz-medal .kz-badge{stroke:var(--surface);stroke-width:1.4}
+.kz-medal .kz-badge.felled{fill:var(--good)}
+.kz-medal .kz-badge.escaped{fill:var(--bad)}
+.kz-medal .kz-mark{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.kz-medal-svg{display:block;flex:none;overflow:visible}
+/* the fight in hand: the boss, its health, what it takes to fell it */
+.kz-arena{display:flex;gap:18px;align-items:center;padding:4px 0 16px;border-bottom:1px solid var(--hairline)}
+.kz-arena-txt{min-width:0;flex:1}
+.kz-boss-name{margin:2px 0 0;font-family:var(--font-display);font-size:22px;line-height:1.2;font-weight:650;letter-spacing:-.024em;text-wrap:balance}
+.kz-boss-sub{margin:4px 0 12px;font-size:12.5px;line-height:1.45;color:var(--ink-3)}
+.kz-hp{height:8px;border-radius:99px;background:var(--fill-2);overflow:hidden;max-width:440px}
+.kz-hp>i{display:block;height:100%;border-radius:inherit;background:color-mix(in oklab,var(--bad) 82%,var(--ink));transition:width .6s var(--ease)}
+.kz-boss-goal{margin:10px 0 0;font-size:13.5px;line-height:1.5;color:var(--ink-2);text-wrap:pretty}
+.kz-boss-goal b{color:var(--ink);font-weight:600}
+.kz-kpi-boss{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--ink-2)}
+.kz-kpi-boss b{color:var(--ink);font-weight:600}
+.kz-boss-count{font-size:12px;font-weight:600;color:var(--ink-2);padding:3px 10px;border-radius:99px;background:var(--fill)}
+/* all ten, in the order you meet them */
+.kz-ladder{list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:14px 8px}
+.kz-rung{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:11.5px;line-height:1.3;color:var(--ink-3)}
+.kz-rung b{font-size:12.5px;font-weight:600;color:var(--ink)}
+.kz-rung.st-felled b{color:var(--ink-2)}
+.kz-rung.kz-now b{color:var(--accent)}
+.kz-rung.st-none{opacity:.55}
+@media (max-width:560px){.kz-arena{flex-direction:column;align-items:flex-start}.kz-boss-name{font-size:19px}.kz-ladder{grid-template-columns:repeat(auto-fit,minmax(76px,1fr))}}
 
 /* ─────────────────────────── Tables ─────────────────────────── */
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-inline:-6px;padding-inline:6px}
@@ -11073,9 +11115,15 @@ function guideWeek() {
 function guideWeekKpi() {
   const g = guideWeek();
   if (!g) return null;
+  let fight = null;
+  try {
+    const F = bossFights(g.M), f = F && F.focus;
+    if (f) { bossSprite(); fight = H('div', { class: 'kz-kpi-boss' }, [bossMedalSVG(f.boss, 26, 'fighting', f.rank === 1, bossWord(f, F)), H('span', {}, [f.i === 0 ? 'This week’s fight: ' : `Next fight, from ${shortDate(f.start)}: `, b(f.boss.short)])]); }
+  } catch (e) { console.warn('bosses', e); }
   return H('div', { class: 'kpi', style: { marginTop: '14px', marginLeft: '10px', display: 'inline-block' } }, [
     H('div', { class: 'l', text: `This week · next full mock ${marks(g.w.target)}+` }),
     H('div', { class: 's', text: `keeps your level (median of last ${g.M.plan.n}: ${marks(half(g.M.level))}) on the plan to ${marks(half(g.M.peak))}` }),
+    fight,
   ]);
 }
 function latestCard(L) {
@@ -14441,21 +14489,40 @@ function renderPlan(host, M) {
     xs.forEach(a => svg.append(marker(a.cohort, X(isoUTC(a.date)), Y(a.m.pct * PAPER_MAX), 4)));
   });
   spreadLabels(labs, 13, padT + 6, Hh - padB).forEach(l => svg.append(txt(l.x, l.y, l.text, { class: 'halo', fill: l.color, 'font-size': 11, 'font-weight': 600 })));
+  // the boss of each week, above that week's target: the hardest at the peak
+  const bossPts = [];
+  try {
+    const F = bossFights(M);
+    if (F) {
+      bossSprite();
+      const perWeek = (W - padL - padR) / ((t1 - t0) / (7 * DAY));
+      F.rows.filter(r => r.i >= 0 && r.i < M.weeks.length && r.state !== 'none').forEach(r => {
+        const isFocus = F.focus === r, isFinal = r.rank === 1;
+        if ((narrow || perWeek < 30) && !isFocus && !isFinal) return;
+        const cx = X(Math.max(r.wk.mid, M.now + DAY)), cy = Y(r.wk.target), rr = isFinal ? 12 : 9.5, my = Math.max(padT + rr + 3, cy - rr - 12);
+        svg.append(S('line', { x1: cx, x2: cx, y1: cy - 4, y2: my + rr + 2, stroke: 'var(--accent)', 'stroke-width': 1, opacity: 0.5 }));
+        svg.append(bossMedalG(r.boss, cx, my, rr, bossVis(r, F), isFinal, bossWord(r, F)));
+        if (isFocus || isFinal) svg.append(txt(cx, my - rr - 6, r.boss.short, { class: 'halo', 'text-anchor': 'middle', fill: 'var(--ink-2)', 'font-size': 10.5, 'font-weight': 600 }));
+        bossPts.push({ x: cx, y: my, rr: rr + 4, node: () => bossTip(r, M, F) });
+      });
+    }
+  } catch (e) { console.warn('bosses', e); }
   // hover: nearest attempt or week
   const rollRows = a => { const r = M.roll.get(a.id); if (!r) return []; const w = r.n < 5 ? `Last ${r.n}` : 'Last 5'; return [{ label: `${w} · average`, value: marks(half(r.avg)) }, { label: `${w} · median`, value: marks(half(r.med)) }]; };
   const pts = M.timed.map(a => ({ x: X(isoUTC(a.date)), y: Y(a.m.pct * PAPER_MAX), node: () => tipNodes(a.paper, `${a.cohortName} · ${a.when}`, [{ label: 'Score (out of 120)', value: marks(half(a.m.pct * PAPER_MAX)) }, ...rollRows(a), { label: 'On CLAT 2025’s scale', value: rankText(a.m.pct * PAPER_MAX) }], a.prevSame ? 'A retake of a paper you had seen before.' : null) }))
     .concat(M.weeks.map(w => ({ x: X(Math.max(w.mid, M.now + DAY)), y: Y(w.target), node: () => tipNodes(`${w.exam ? 'Exam week' : `Week ${w.i + 1}`} · ${weekRange(w.start, w.end)}`, w.exam ? 'Exam week' : w.i === 0 ? 'What your next full mock needs' : 'Your level by the end of this week', [
       { label: w.i === 0 ? 'Next full mock' : 'Level (median of last 5)', value: `${marks(w.target)}+ (${pct(w.target / PAPER_MAX, 0)})` }, { label: 'Accuracy', value: `${pct(w.acc, 0)}+` }, { label: 'Wrong answers', value: `≤ ${w.wrong}` }, { label: 'Focus', value: w.exam ? 'light mocks and rest' : w.focus ? w.focus.s.name : '—' },
     ]) })));
+  pts.push(...bossPts);
   const ring = S('circle', { r: 8, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 1.5, opacity: 0, 'pointer-events': 'none' });
   const overlay = S('rect', { x: padL, y: padT, width: W - padL - padR, height: Hh - padT - padB, fill: 'transparent' });
   svg.append(ring, overlay);
   const onMove = e => {
     const [mx, my] = localXY(svg, W, e);
     let best = null, bd = 30;
-    pts.forEach(p => { const d = Math.hypot(p.x - mx, (p.y - my) * 0.6); if (d < bd) { bd = d; best = p; } });
+    pts.forEach(p => { const d = Math.hypot(p.x - mx, (p.y - my) * 0.6) - (p.rr ? 14 : 0); if (d < bd) { bd = d; best = p; } });
     if (!best) { ring.setAttribute('opacity', 0); tip.hide(); return; }
-    ring.setAttribute('cx', best.x); ring.setAttribute('cy', best.y); ring.setAttribute('opacity', 1);
+    ring.setAttribute('cx', best.x); ring.setAttribute('cy', best.y); ring.setAttribute('r', best.rr || 8); ring.setAttribute('opacity', 1);
     tip.show(e.clientX, e.clientY, best.node());
   };
   overlay.addEventListener('pointermove', onMove);
@@ -14584,6 +14651,202 @@ function wizStatus(M) {
     : `${paperShort(a.paper)}: ${marks(sc)} against ${whose} — ${marks(-d)} short. ${next}`;
   return { tone, label, text, a, score: sc, goal: info.v };
 }
+/* ── The boss fight ──────────────────────────────────────────────────────────
+   Every week's goal is a boss, the hardest at the top of your target. Meet the
+   goal in a timed attempt that week and the boss falls — the same verdict as
+   the glow (wizStatus): the goal logged for the week before you sat the paper.
+   Nothing is stored: who is felled is worked out from your attempts and the
+   plan log each time, so re-planning never swaps a boss or brings one back.
+
+   Which bosses, and in what order: the ten hardest of Elden Ring's base game,
+   in the order of Den of Geek's ranking of its 15 hardest fights (8 Mar 2022,
+   hardest first). Malenia is also the clear community pick: 575 of 719 votes
+   (80%) in a ResetEra poll. No public data measures how hard a boss is, so the
+   order is what people who have fought them say. The Steam figures are
+   supporting evidence, never the order: they count how many players got that
+   far as much as how hard the fight is (the optional dragon Placidusax, 30%,
+   comes out "harder" than Malenia, 36%, which nobody believes). The icons are
+   drawn for this page; none is the game's art. */
+const BOSS_STEAM_DATE = '30 Sep 2026';
+/* hardest first; `steam` is the share of all Steam players who have the boss's achievement */
+const BOSSES = [
+  { id: 'malenia', short: 'Malenia', name: 'Malenia, Blade of Miquella', where: 'Elphael, Brace of the Haligtree', steam: 36.4 },
+  { id: 'maliketh', short: 'Maliketh', name: 'Maliketh, the Black Blade', where: 'Crumbling Farum Azula', steam: 41.6 },
+  { id: 'godskin', short: 'Godskin Duo', name: 'The Godskin Duo', where: 'Crumbling Farum Azula', steam: 43.2 },
+  { id: 'radagon', short: 'Radagon', name: 'Radagon and the Elden Beast', where: 'The Elden Throne', steam: null },
+  { id: 'ordovis', short: 'Ordovis', name: 'Crucible Knight Ordovis', where: null, steam: null },
+  { id: 'radahn', short: 'Radahn', name: 'Starscourge Radahn', where: 'Redmane Castle, Caelid', steam: 53.2 },
+  { id: 'mohg', short: 'Mohg', name: 'Mohg, Lord of Blood', where: 'Mohgwyn Palace', steam: 40.7 },
+  { id: 'niall', short: 'Niall', name: 'Commander Niall', where: 'Castle Sol, Mountaintops of the Giants', steam: 44.0 },
+  { id: 'godfrey', short: 'Godfrey', name: 'Godfrey, First Elden Lord (Hoarah Loux)', where: 'Leyndell, Ashen Capital', steam: 40.5 },
+  { id: 'astel', short: 'Astel', name: 'Astel, Naturalborn of the Void', where: null, steam: 43.4 },
+];
+/* one 24 × 24 glyph per boss: outline drawings in the ink colour; `f` fills a shape, `cut` knocks it out to the card */
+const BOSS_GLYPHS = {
+  malenia: [['path', { d: 'M12 2.2l1.9 11.6L12 16.4l-1.9-2.6Z', f: 1 }], ['path', { d: 'M8 16.6h8M12 16.8V21.4' }],
+    ['path', { d: 'M10 9.6C6.6 10 3.6 8.4 1.8 4.4 4.4 5.6 6.6 5.6 8.6 5c-.6 1.2-.4 2.4.6 3.4.3.5.6.9.8 1.2Z', f: 1 }],
+    ['path', { d: 'M14 9.6c3.4.4 6.4-1.2 8.2-5.2-2.6 1.2-4.8 1.2-6.8.6.6 1.2.4 2.4-.6 3.4-.3.5-.6.9-.8 1.2Z', f: 1 }]],
+  maliketh: [['path', { d: 'M4.2 19.8C12.6 15.4 18.2 9.6 20 3.6c-.4 7.4-6.6 14.2-15.8 16.2Z', f: 1 }], ['path', { d: 'M5.4 14.8l3.8 3.8' }],
+    ['circle', { cx: 6.6, cy: 6.4, r: 2.6 }], ['circle', { cx: 6.6, cy: 6.4, r: 0.7, f: 1 }]],
+  godskin: [['path', { d: 'M8.4 2.4c.4 3.4 4.6 5.6 4.6 10.6a4.6 4.6 0 0 1-9.2 0c0-2.2 1.2-3.4 2.2-4.6.6 1.2 1 1.8 1.6 2.2.4-2.6.2-5.4.8-8.2Z', f: 1 }],
+    ['path', { d: 'M16.6 9c.3 2.4 3.4 3.8 3.4 7.4a3.4 3.4 0 0 1-6.8 0c0-1.6.8-2.4 1.6-3.4.4.8.8 1.3 1.2 1.6.3-1.8.1-3.8.6-5.6Z' }]],
+  radagon: [['path', { d: 'M19.2 7.2A8.6 8.6 0 1 1 12 3.4' }], ['path', { d: 'M12 7.6l4.2 4.4-4.2 4.4-4.2-4.4Z', f: 1 }], ['path', { d: 'M16.2 2.8l2.4 2.4M19.8 6.6l1.4-1.4' }]],
+  ordovis: [['path', { d: 'M7.6 21v-7.2a4.4 4.4 0 0 1 8.8 0V21Z' }], ['path', { d: 'M9.2 14.2h5.6M12 14.2V21' }],
+    ['path', { d: 'M7.8 11.4C5.4 11 4.2 9 4 5.6M4.6 8.6C3.4 8.4 2.6 7.6 2.2 6.2M7 9.4c-1.2-1-1.6-2.2-1.6-3.6' }],
+    ['path', { d: 'M16.2 11.4c2.4-.4 3.6-2.4 3.8-5.8M19.4 8.6c1.2-.2 2-1 2.4-2.4M17 9.4c1.2-1 1.6-2.2 1.6-3.6' }]],
+  radahn: [['path', { d: 'M12.00 3.40L13.38 8.67L18.08 5.92L15.33 10.62L20.60 12.00L15.33 13.38L18.08 18.08L13.38 15.33L12.00 20.60L10.62 15.33L5.92 18.08L8.67 13.38L3.40 12.00L8.67 10.62L5.92 5.92L10.62 8.67Z', f: 1 }],
+    ['ellipse', { cx: 12, cy: 12, rx: 10.6, ry: 4.2, transform: 'rotate(-28 12 12)' }]],
+  mohg: [['path', { d: 'M12 21V7.6M6.8 5.6v3.6c0 2.4 2.4 3.4 5.2 3.4s5.2-1 5.2-3.4V5.6' }],
+    ['path', { d: 'M12 2.6l2 3.4h-4Z M6.8 2.8l1.8 3.2H5Z M17.2 2.8l1.8 3.2h-3.6Z', f: 1 }], ['path', { d: 'M9.6 21h4.8' }]],
+  niall: [['path', { d: 'M6 21.4V3' }], ['path', { d: 'M6 4.2h12.4l-3.2 4.2 3.2 4.2H6Z', f: 1 }], ['circle', { cx: 11.4, cy: 8.4, r: 1.9, cut: 1 }]],
+  godfrey: [['path', { d: 'M12 2.4V21.6' }], ['path', { d: 'M11.4 5.4L3 3.2q2.6 4.4 0 9l8.4-2.4Z', f: 1 }],
+    ['path', { d: 'M12.6 5.4L21 3.2q-2.6 4.4 0 9l-8.4-2.4Z', f: 1 }], ['path', { d: 'M9.8 21.6h4.4' }]],
+  astel: [['circle', { cx: 16.4, cy: 7.6, r: 3.6, f: 1 }], ['path', { d: 'M13.8 10.2C9.6 12.6 5.8 16 2.4 21.6c6-1.8 10.4-4.8 13.2-9.6Z', f: 1 }],
+    ['path', { d: 'M8.8 5.4h3.4M10.5 3.7v3.4M3.6 11.2h2.8M5 9.8v2.8' }]],
+};
+/** The glyphs as SVG symbols, once per page; every medallion draws one with <use>. */
+function bossSprite() {
+  if (document.getElementById('kz-boss-sprite')) return;
+  const svg = S('svg', { id: 'kz-boss-sprite', width: 0, height: 0, 'aria-hidden': 'true', focusable: 'false', style: 'position:absolute;width:0;height:0;overflow:hidden' });
+  BOSSES.forEach(bs => svg.append(S('symbol', { id: `kz-bs-${bs.id}`, viewBox: '0 0 24 24' }, [S('g', { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+    (BOSS_GLYPHS[bs.id] || []).map(([tag, at]) => { const a = Object.assign({}, at); const f = a.f, cut = a.cut; delete a.f; delete a.cut; if (f) { a.fill = 'currentColor'; a.stroke = 'none'; } if (cut) { a.style = 'fill:var(--surface);stroke:none'; } return S(tag, a); }))])));
+  document.body.append(svg);
+}
+/** Where each boss stands, week by week. The hardest boss is the peak week (the first to reach the top of
+ *  your target); the boss before it the week before, and so on back — so a boss belongs to a calendar week
+ *  for good. A week is a fight only if it had a goal logged or an attempt: earlier weeks without either are
+ *  "none". felled: a timed attempt that week met the goal logged for it before the attempt was sat.
+ *  fighting: this week, not yet. upcoming: a later week. escaped: a past week, goal not met. */
+function bossFights(M) {
+  const n = M.weeks.length;
+  if (!n || M.level == null) return null;
+  const peakIdx = n > 1 ? n - 2 : 0, w0 = M.weeks[0].start;
+  const logOf = start => {
+    const k = new Date(start).toISOString().slice(0, 10), e = planLog()[k], o = planLogOld()[k];
+    return e != null ? { v: logVal(e), old: false } : o != null ? { v: Number(o), old: true } : null;
+  };
+  const rows = BOSSES.map((boss, r0) => {
+    const i = peakIdx - r0, start = w0 + i * 7 * DAY, end = start + 6 * DAY, wk = i >= 0 ? M.weeks[i] : null, logged = logOf(start);
+    const judged = M.timed.filter(a => { const t = isoUTC(a.date); return t >= start && t < start + 7 * DAY; }).map(a => {
+      const info = planTargetInfo(M, isoUTC(a.date)), score = a.m.pct * PAPER_MAX;
+      return info ? { a, score, goal: info.v, old: info.old, met: score >= info.v - 0.01 } : null;
+    }).filter(Boolean);
+    const hit = judged.find(j => j.met) || null;
+    const state = hit ? 'felled' : i > 0 ? 'upcoming' : i === 0 ? 'fighting' : (logged || judged.length ? 'escaped' : 'none');
+    return { boss, rank: r0 + 1, i, start, end, wk, logged, judged, hit, state,
+      goal: i > 0 ? null : logged ? logged.v : wk ? wk.target : null, live: i === 0 ? wk.target : null,
+      best: judged.length ? Math.max(...judged.map(j => j.score)) : null };
+  });
+  /* the next fight: the earliest week from now whose boss still stands */
+  const focus = rows.filter(r => r.i >= 0 && r.state !== 'felled').sort((x, y) => x.i - y.i)[0] || null;
+  return { rows, focus, felled: rows.filter(r => r.state === 'felled').length, total: rows.filter(r => r.state !== 'none').length };
+}
+/** The boss's health for the fight in hand: full until you have sat a paper, then down as your best score this
+ *  week closes on the goal (empty at the goal, untouched 15 marks short). */
+function bossHealth(r) {
+  if (r.state === 'felled') return 0;
+  if (r.state !== 'fighting' || r.best == null || r.goal == null) return 1;
+  return clamp(1 - (r.best - (r.goal - 15)) / 15, 0, 1);
+}
+const bossNumber = r => `#${r.rank} of the 10 hardest`;
+/** the next fight is drawn as the live one, and named for what it is */
+const bossVis = (r, F) => (F && F.focus === r ? 'fighting' : r.state);
+const bossWord = (r, F) => (F && F.focus === r && r.state === 'upcoming' ? 'next fight' : BOSS_STATE[r.state]);
+/** One boss as a medallion, drawn at (x, y): a ring of its own state round its glyph. */
+function bossMedalG(boss, x, y, r, state, final, label) {
+  const g = S('g', { class: `kz-medal st-${state}${final ? ' kz-final' : ''}`, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})`, 'pointer-events': 'none' });
+  g.append(S('circle', { class: 'kz-glow', r: r + 5 }), S('circle', { class: 'kz-pad', r: r + 2.4 }));
+  if (final) g.append(S('circle', { class: 'kz-ring2', r: r + 3.4 }));
+  g.append(S('circle', { class: 'kz-ring', r }), S('use', { class: 'kz-gly', href: `#kz-bs-${boss.id}`, x: -r * 0.62, y: -r * 0.62, width: r * 1.24, height: r * 1.24 }));
+  if (state === 'felled' || state === 'escaped') {
+    const bx = r * 0.74, by = r * 0.74, br = Math.max(3.6, r * 0.4), k = br * 0.5;
+    g.append(S('circle', { class: `kz-badge ${state}`, cx: bx, cy: by, r: br }),
+      S('path', { class: 'kz-mark', d: state === 'felled' ? `M${bx - k * 0.9} ${by + k * 0.05}L${bx - k * 0.2} ${by + k * 0.65}L${bx + k} ${by - k * 0.6}` : `M${bx - k * 0.7} ${by - k * 0.7}L${bx + k * 0.7} ${by + k * 0.7}M${bx + k * 0.7} ${by - k * 0.7}L${bx - k * 0.7} ${by + k * 0.7}` }));
+  }
+  g.append(S('title', {}, `${boss.name} — ${label || BOSS_STATE[state]}`));
+  return g;
+}
+const BOSS_STATE = { felled: 'felled', fighting: 'this week’s fight', upcoming: 'ahead', escaped: 'still standing', none: 'not contested' };
+/** The same medallion as a stand-alone picture, for the card. */
+function bossMedalSVG(boss, size, state, final, label) {
+  const svg = S('svg', { viewBox: '-30 -30 60 60', width: size, height: size, class: 'kz-medal-svg', role: 'img', 'aria-label': `${boss.name}: ${label || BOSS_STATE[state]}` });
+  svg.append(bossMedalG(boss, 0, 0, 21, state, final, label));
+  return svg;
+}
+/** What the tooltip says about one boss. */
+function bossTip(r, M, F) {
+  const bs = r.boss, rows = [];
+  if (r.state === 'felled') {
+    rows.push({ label: 'Felled by', value: `${r.hit.a.short || paperShort(r.hit.a.paper)} · ${marks(r.hit.score)}` }, { label: 'Goal that week', value: `${marks(r.hit.goal)}${r.hit.old ? ' (earlier plan)' : ''}` });
+  } else if (r.state === 'fighting') {
+    rows.push({ label: 'This week’s goal', value: r.logged ? `${marks(r.logged.v)}+` : `${marks(r.live)}+` });
+    if (r.best != null) rows.push({ label: 'Best so far', value: marks(r.best) });
+    rows.push({ label: 'Next full mock needs', value: `${marks(r.live)}+` });
+  } else if (r.state === 'upcoming') {
+    rows.push({ label: 'Your level by then', value: `${marks(r.wk.target)}+` });
+  } else if (r.state === 'escaped') {
+    rows.push({ label: 'Goal that week', value: r.logged ? `${marks(r.logged.v)}+` : '—' }, { label: 'Best that week', value: r.best != null ? marks(r.best) : 'no attempt' });
+  }
+  if (bs.where) rows.push({ label: 'Where', value: bs.where });
+  if (bs.steam != null) rows.push({ label: 'Beaten by', value: `${bs.steam.toFixed(1)}% of Steam players` });
+  const note = r.state === 'upcoming' ? 'Felled by meeting that week’s goal, which is set when the week begins.' : r.state === 'escaped' ? 'The week is over; this boss stays where it fell short.' : null;
+  return tipNodes(bs.name, `${bossNumber(r)} · ${r.i === 0 ? 'this week' : `week of ${shortDate(r.start)}`} · ${bossWord(r, F)}`, rows, note);
+}
+/** The boss card: the fight in hand with its health, then all ten in the order you meet them. */
+function bossCard(M, F) {
+  if (!F) return null;
+  bossSprite();
+  const f = F.focus, P = M.plan;
+  const sub = r => [bossNumber(r), r.boss.where, r.boss.steam != null ? `beaten by ${r.boss.steam.toFixed(1)}% of Steam players` : null].filter(Boolean).join(' · ');
+  let arena;
+  if (f) {
+    const hp = Math.round(bossHealth(f) * 100);
+    const goalTxt = f.i === 0
+      ? [`To fell it: a timed attempt of `, b(`${marks(f.logged ? f.logged.v : f.live)}+`), ' this week', f.logged && Math.abs(f.logged.v - f.live) > 0.01 ? [` (the goal set when the week began; your next full mock now needs `, b(`${marks(f.live)}+`), ' to keep your level on the ramp)'] : '', '.',
+        f.best != null ? [' Your best so far this week is ', b(marks(f.best)), '.'] : '']
+      : [`To fell it: meet the goal for the week of ${shortDate(f.start)}. Your next full mock needs `, b(`${marks(ceilHalf(P.next.goal))}+`), ' to keep your level on the ramp, and the week’s own goal is set when it begins.'];
+    arena = H('div', { class: 'kz-arena' }, [
+      bossMedalSVG(f.boss, 84, 'fighting', f.rank === 1, bossWord(f, F)),
+      H('div', { class: 'kz-arena-txt' }, [
+        H('div', { class: 'eyebrow', text: f.i === 0 ? `This week’s fight · ${weekRange(f.start, f.end)}` : `Next fight · week of ${shortDate(f.start)}` }),
+        H('h3', { class: 'kz-boss-name', text: f.boss.name }),
+        H('p', { class: 'kz-boss-sub', text: sub(f) }),
+        H('div', { class: 'kz-hp', role: 'img', 'aria-label': `Boss health ${hp}%` }, [H('i', { style: { width: `${hp}%` } })]),
+        H('p', { class: 'kz-boss-goal' }, goalTxt),
+      ]),
+    ]);
+  } else {
+    arena = H('div', { class: 'kz-arena' }, [H('div', { class: 'kz-arena-txt' }, [H('h3', { class: 'kz-boss-name', text: F.felled === F.total ? 'Every boss is felled' : 'No fight this week' }),
+      H('p', { class: 'kz-boss-goal', text: 'Exam week is the real fight: light mocks, sleep and your revision lists.' })])]);
+  }
+  const ladder = F.rows.slice().sort((x, y) => x.i - y.i).map(r => H('li', { class: `kz-rung st-${bossVis(r, F)}${F.focus === r ? ' kz-now' : ''}`, title: bossTip(r, M, F).map(n => n.textContent).join(' · ') }, [
+    bossMedalSVG(r.boss, 46, bossVis(r, F), r.rank === 1, bossWord(r, F)),
+    H('b', { text: r.boss.short }),
+    H('span', { text: r.state === 'felled' ? `felled ${shortDate(isoUTC(r.hit.a.date))}` : r.state === 'none' ? 'not contested' : `week of ${shortDate(r.start)}` }),
+  ]));
+  const method = [
+    `The ten hardest bosses of Elden Ring’s base game, in the order of Den of Geek’s ranking of its 15 hardest fights (8 Mar 2022, hardest first). Malenia is also the clear community pick: 575 of 719 votes (80%) in a ResetEra poll.`,
+    `No public data measures how hard a boss is, so the order is what people who have fought them say — it is not a number. The Steam figures (${BOSS_STEAM_DATE}, the share of all Steam players with each boss’s achievement) are shown as supporting facts, not used to order: they count how many players got that far as much as how hard the fight is, which would put the optional dragon Placidusax (30%) above Malenia (36%).`,
+    `The hardest boss is the week your plan reaches the top of your target, the next hardest the week before, and so on back, so each boss belongs to one calendar week. Exam week is the real fight.`,
+    `A boss falls when a timed attempt that week meets the goal logged for the week before you sat it — the verdict the glow gives. Retakes count, as they do for the glow. Nothing is stored: every boss is worked out again from your attempts and the plan log, so a re-plan never swaps or revives one.`,
+    `The icons are drawn for this page; none is the game’s art.`,
+  ];
+  return card('The boss fight', 'Each week’s goal is a boss, the hardest at the top of your target. Meet the goal in a timed attempt and it falls.', [
+    arena,
+    H('ol', { class: 'kz-ladder', 'aria-label': 'The ten bosses in the order you meet them' }, ladder),
+    H('details', { class: 'more' }, [H('summary', { text: 'How the bosses are chosen and ordered' }), H('ul', { class: 'notes', style: { marginTop: '10px' } }, method.map(t => H('li', { text: t })))]),
+  ], { cls: 'kz-boss', lede: true, aside: H('span', { class: 'kz-boss-count', text: `${F.felled} of ${F.total} felled` }) });
+}
+/** One toast the first time a boss falls on this device; the first look only records who has. */
+const BOSS_SEEN_KEY = 'clat_dash_bosses_seen_v1';
+function bossCelebrate(F) {
+  if (!F) return;
+  const felled = F.rows.filter(r => r.state === 'felled'), seen = store.get(BOSS_SEEN_KEY, null);
+  store.set(BOSS_SEEN_KEY, felled.map(r => r.boss.id));
+  if (!Array.isArray(seen)) return;
+  const fresh = felled.filter(r => !seen.includes(r.boss.id));
+  if (fresh.length) toast(`${fresh.map(r => r.boss.short).join(' and ')} felled — ${fresh.map(r => `${marks(r.hit.score)} against a goal of ${marks(r.hit.goal)}`).join('; ')}`);
+}
 /* ── Your level, attempt by attempt: the median and the average of your last five, spaced by attempt so
       a fortnight of mocks is not squeezed into a sliver of a calendar; the next slot shows what it needs ── */
 function renderLevel(host, M, st) {
@@ -14636,6 +14899,26 @@ function renderLevel(host, M, st) {
     svg.append(S('circle', { cx: x, cy: Y(goal), r: 5.5, fill: 'var(--surface)', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '3 2' }));
     svg.append(txt(x, Y(goal) - 10, `${marks(goal)}+`, { class: 'halo', 'text-anchor': 'middle', fill: 'var(--ink)', 'font-size': 11, 'font-weight': 600 }));
   }
+  // the boss of the next fight above the goal, and the last boss on your target
+  const bossPts = [];
+  try {
+    const F = bossFights(M);
+    if (F) {
+      bossSprite();
+      const f = F.focus, fin = F.rows[0];
+      if (f && goal != null && f !== fin) {
+        const cx = X(n), cy = Math.max(padT + 24, Y(goal) - 38);
+        svg.append(bossMedalG(f.boss, cx, cy, 10.5, 'fighting', false, bossWord(f, F)));
+        svg.append(txt(cx - 17, cy + 3.5, f.i > 0 ? `${f.boss.short} · from ${shortDate(f.start)}` : f.boss.short, { class: 'halo', 'text-anchor': 'end', fill: 'var(--ink-2)', 'font-size': 10.5, 'font-weight': 600 }));
+        bossPts.push({ x: cx, y: cy, r: 10.5, node: () => bossTip(f, M, F) });
+      }
+      if (fin) {
+        const cx = W - padR - 20, cy = Y(mean(TGT.band('net')));
+        svg.append(bossMedalG(fin.boss, cx, cy, 12, bossVis(fin, F), true, bossWord(fin, F)));
+        bossPts.push({ x: cx, y: cy, r: 12, node: () => bossTip(fin, M, F) });
+      }
+    }
+  } catch (e) { console.warn('bosses', e); }
   // direct labels at the end of each line: a swatch in the line's colour, the words in ink
   const last = RP[n - 1], ends = [
     { y: Y(last.med) + 4, text: `Median ${marks(half(last.med))}`, sw: 'var(--ink)', w: 3 },
@@ -14661,7 +14944,9 @@ function renderLevel(host, M, st) {
   const overlay = S('rect', { x: padL, y: padT, width: W - padL - padR, height: Hh - padT - padB, fill: 'transparent' });
   svg.append(ring, overlay);
   const onMove = e => {
-    const [mx] = localXY(svg, W, e);
+    const [mx, my] = localXY(svg, W, e);
+    const bh = bossPts.find(p => Math.hypot(p.x - mx, p.y - my) <= p.r + 6);
+    if (bh) { ring.setAttribute('opacity', 0); tip.show(e.clientX, e.clientY, bh.node()); return; }
     let best = null, bd = step;
     pts.forEach(p => { const d = Math.abs(p.x - mx); if (d < bd) { bd = d; best = p; } });
     if (!best) { ring.setAttribute('opacity', 0); tip.hide(); return; }
@@ -14697,6 +14982,8 @@ function wizCard() {
     : [`Plan: from ${marks(half(M.level))} now to `, b(peakTxt), ` — the top of your target — by the week of ${shortDate(M.peakWeek.start)}`,
       room > 0 ? `, so an off day of up to ${marks(half(room))} marks still lands inside your range` : '', '. That is ', b(`+${marks(half(P.perWeek))} a week`), '.'];
   const st = wizStatus(M);
+  let boss = null;
+  try { const bf = bossFights(M); boss = bossCard(M, bf); bossCelebrate(bf); } catch (e) { console.warn('bosses', e); }
   const mark = st ? (st.tone === 'good' ? '✓' : st.tone === 'warn' ? '!' : st.tone === 'bad' ? '↓' : '·') : '';
   const weekBox = w ? card(`This week · ${weekRange(w.start, w.end)}`, null, [
     st ? H('div', { class: `wiz-track t-${st.tone}`, role: 'status' }, [H('span', { class: 'wiz-mark', 'aria-hidden': 'true', text: mark }), H('span', {}, [H('b', { text: st.label }), ` · ${st.text}`])]) : null,
@@ -14761,7 +15048,7 @@ function wizCard() {
   /* one chapter: where you stand and this week, then the levers beside your level, then the road and the coaching */
   return [
     H('div', { class: 'kz-sec' }, [H('h2', { text: 'Benchmark Wiz' }), H('p', { text: `For you: ${WIZ_PROFILE.text}. CLAT 2027 is on ${examTxt} — ${plural(Math.max(0, M.daysLeft), 'day')}, ${plural(M.nW, 'week')} including this one.` })]),
-    H('div', { class: 'kz-bento' }, [stand, weekBox, levers, levelBlock, path, digest]),
+    H('div', { class: 'kz-bento' }, [stand, weekBox, boss, levers, levelBlock, path, digest]),
   ];
 }
 /** Quick picks for the target editor, from the benchmarks that apply to you. */
