@@ -1395,7 +1395,7 @@ var NBCore = (() => {
   // src/mock/constants.ts
   var TELEMETRY_VERSION = 1;
   var MAP_VERSION = 2;
-  var MAP_BUILD = 5;
+  var MAP_BUILD = 6;
   var METRICS_VERSION = 2;
   var MOCK_DB_NAME = "neobook-mock";
   var MOCK_DB_VERSION = 2;
@@ -1980,12 +1980,12 @@ var NBCore = (() => {
     const W = pg.w > 0 ? pg.w : Infinity, H2 = pg.h > 0 ? pg.h : Infinity;
     const all0 = (pg.runs || []).map((r) => r && typeof r.s === "string" ? __spreadProps(__spreadValues({}, r), { s: printable(r.s) }) : r);
     const spaces = all0.filter((r) => r && typeof r.s === "string" && r.s !== "" && r.s.trim() === "" && isFinite(r.x) && isFinite(r.y) && r.h > 0);
-    const runs = all0.filter((r) => r && typeof r.s === "string" && r.s.trim() !== "" && isFinite(r.x) && isFinite(r.y) && isFinite(r.w) && r.h > 0 && r.x + r.w > 0 && r.x < W - 1 && r.y < H2 && r.y + r.h > 0 && !/^(\S)\1{3,}$/.test(r.s.trim()));
-    if (!runs.length) return { lines: [], medH: 11 };
-    const hs = runs.map((r) => r.h).sort((a, b) => a - b);
+    const runs2 = all0.filter((r) => r && typeof r.s === "string" && r.s.trim() !== "" && isFinite(r.x) && isFinite(r.y) && isFinite(r.w) && r.h > 0 && r.x + r.w > 0 && r.x < W - 1 && r.y < H2 && r.y + r.h > 0 && !/^(\S)\1{3,}$/.test(r.s.trim()));
+    if (!runs2.length) return { lines: [], medH: 11 };
+    const hs = runs2.map((r) => r.h).sort((a, b) => a - b);
     const medH = hs[hs.length >> 1] || 11;
     const tol = medH * 0.4;
-    const sorted = runs.map((r) => ({ r, cy: r.y + r.h / 2 })).sort((a, b) => a.cy - b.cy || a.r.x - b.r.x);
+    const sorted = runs2.map((r) => ({ r, cy: r.y + r.h / 2 })).sort((a, b) => a.cy - b.cy || a.r.x - b.r.x);
     const rows = [];
     for (const e of sorted) {
       const row = rows[rows.length - 1];
@@ -2248,10 +2248,10 @@ var NBCore = (() => {
   }
   var FUNCTION_WORDS = new Set("the of and to in a is that for it as with was on be by this are which or from an at not have has his their its but they all been one were more can will would also who than about other there into these some only such what when if may should any each must under following given statement statements passage author".split(" "));
   var ENGLISH = [8.2, 1.5, 2.8, 4.3, 12.7, 2.2, 2, 6.1, 7, 0.15, 0.8, 4, 2.4, 6.7, 7.5, 1.9, 0.1, 6, 6.3, 9.1, 2.8, 1, 2.4, 0.15, 2, 0.07];
-  function garbledText(runs) {
+  function garbledText(runs2) {
     const words2 = [];
     const freq = new Array(26).fill(0);
-    for (const r of runs) for (const t of String(r.s || "").split(/\s+/)) {
+    for (const r of runs2) for (const t of String(r.s || "").split(/\s+/)) {
       const w = t.toLowerCase().replace(/[^a-z]/g, "");
       if (!w) continue;
       words2.push(w);
@@ -3316,6 +3316,16 @@ var NBCore = (() => {
     const right = numTok.x + numTok.w;
     return { n, g: l.g, tok, x: tok.x, r: right, punct, q: 0 };
   }
+  function runs(ns) {
+    const out = [];
+    for (let i = 0; i < ns.length; ) {
+      let j = i;
+      while (j + 1 < ns.length && ns[j + 1] === ns[j] + 1) j++;
+      out.push(j > i ? ns[i] + "\u2013" + ns[j] : String(ns[i]));
+      i = j + 1;
+    }
+    return out.join(", ");
+  }
   var KEYHEAD = /^(?:answer\s*keys?|answers?|solutions?|hints?\s*(?:&|and)\s*solutions?|(?:detailed\s+)?(?:explanations?|solutions?))(?:\s*(?:&|and|with)\s*(?:detailed\s+)?(?:explanations?|solutions?))?\s*[:.\-–—]*$/i;
   var PASSAGE_HEAD = /^passage\s*(?:no\.?)?\s*[-–—:.]?\s*(\d{1,2}|[ivxl]{1,6})?\b/i;
   var DIRECTIONS = /^(?:directions?|instructions?)\b/i;
@@ -3825,7 +3835,7 @@ var NBCore = (() => {
       if (l.edge) continue;
       const t = l.toks[0];
       if (!t) continue;
-      const m = t.t.match(/^([IVXLivxl]{1,7})[.)]$/);
+      const m = t.t.match(/^([IVXLivxl]{1,7})[.)]$/) || t.t.match(/^([IVXL]{1,7})[.)](?=[A-Z])/);
       if (!m || !m[1]) continue;
       const v = romanValue(m[1]);
       if (!v || inStem(l.g) || chain2.some((c) => c.g === l.g)) continue;
@@ -4091,7 +4101,48 @@ var NBCore = (() => {
           return k && q.sectionId && k !== q.sectionId;
         });
         const whole = table.length >= 2 && table[0].from === questions[0].n && table.every((t, i) => i === 0 || t.from === table[i - 1].to + 1) && table[table.length - 1].to === questions[questions.length - 1].n;
-        if (clash.length && !whole) issues.push({ kind: "sections", msg: "The contents table and the section headings disagree on " + clash.length + " questions." });
+        const headSeq = heads.map((h) => h.k).filter((k, i, a) => i === 0 || a[i - 1] !== k);
+        const tableSeq = table.map((t) => t.k);
+        const opensQuestions = heads.every((h, i) => chain2.some((c) => c.g > h.g && c.g < (heads[i + 1] ? heads[i + 1].g : Infinity)));
+        const credible = headSeq.length >= 2 && new Set(headSeq).size === headSeq.length && opensQuestions && headSeq.every((k, i) => tableSeq.indexOf(k) >= 0 && (i === 0 || tableSeq.indexOf(k) > tableSeq.indexOf(headSeq[i - 1])));
+        if (clash.length && !credible) {
+          if (!whole) issues.push({ kind: "sections", msg: "The contents table and the section headings disagree on " + clash.length + " questions." });
+        } else if (clash.length) {
+          const runOf = (s) => {
+            const [a, b] = s.range;
+            const out = [];
+            let last = a - 1;
+            for (let i = 0; i < questions.length; i++) {
+              if (chain2[i].g <= s.g) continue;
+              const n = questions[i].n;
+              if (n === last + 1 && n <= b) {
+                out.push(i);
+                last = n;
+                if (n === b) break;
+              } else if (out.length) break;
+            }
+            return out;
+          };
+          const printed = merged.filter((s) => s.range).map(runOf).filter((r) => r.length > 1);
+          const tableSec = questions.map((q) => q.sectionId);
+          const headSec = questions.map((q, i) => byHead(q, i) || q.sectionId);
+          const cut = (sec) => printed.filter((r) => new Set(r.map((i) => sec[i])).size > 1).length;
+          const cutTable = cut(tableSec), cutHead = cut(headSec);
+          const at = questions.findIndex((q, i) => tableSec[i] !== headSec[i]);
+          const head = heads.filter((h) => h.g < chain2[at].g).pop();
+          const headName = head ? "\u201C" + all[head.g].text + "\u201D (page " + (all[head.g].page + 1) + ")" : "the heading";
+          const nums = runs(clash.map((q) => q.n));
+          const sameFor = (sec) => SECTION_NAMES[sec[at]] || "no section";
+          if (cutTable > cutHead) {
+            questions.forEach((q, i) => {
+              q.sectionId = headSec[i] || null;
+            });
+            secSource = "headings";
+            issues.push({ kind: "sections", msg: "Questions " + nums + ": the contents table puts " + (clash.length > 1 ? "them" : "it") + " in " + sameFor(tableSec) + ", but " + headName + " opens " + SECTION_NAMES[headSec[at]] + " before " + (clash.length > 1 ? "them" : "it") + ", and the table\u2019s boundary would split a passage whose range the paper prints. Read from the heading." });
+          } else if (!(whole && cutHead > cutTable)) {
+            issues.push({ kind: "sections", msg: "The contents table and the section headings disagree on " + clash.length + " question" + (clash.length > 1 ? "s" : "") + " (" + nums + "): the table says " + sameFor(tableSec) + ", " + headName + " says " + sameFor(headSec) + ". The table was kept and nothing printed in the paper settles it \u2014 use Sections to set where each one begins." });
+          }
+        }
       }
     }
     if (secSource === "none") {
@@ -4141,7 +4192,7 @@ var NBCore = (() => {
       });
       const row = table.find((t) => t.k === k);
       let conf2 = secSource === "table" ? 1 : secSource === "headings" ? 0.9 : secSource === "running" ? 0.85 : 0.7;
-      if (row && tableOk && !restarts && qs.length !== row.to - row.from + 1) conf2 = 0.7;
+      if (secSource === "table" && row && tableOk && !restarts && qs.length !== row.to - row.from + 1) conf2 = 0.7;
       sections.push({
         id: k,
         name: SECTION_NAMES[k],
@@ -4280,6 +4331,21 @@ var NBCore = (() => {
     if (qs.length >= 40 && secs.size === 1) {
       const only = [...secs][0];
       issues.push({ kind: "sections", msg: "All " + qs.length + " questions are in one section (" + SECTION_NAMES[only] + "). A full paper has several \u2014 use Sections to set where each one begins." });
+    }
+    const byId = new Map(qs.map((q) => [q.id, q]));
+    for (const p of map.passages) {
+      const mine = p.questionIds.map((id) => byId.get(id)).filter((q) => !!q && !!q.sectionId);
+      if (mine.length < 2 || new Set(mine.map((q) => q.sectionId)).size < 2) continue;
+      const parts = [];
+      for (let i = 0; i < mine.length; ) {
+        let j = i;
+        while (j + 1 < mine.length && mine[j + 1].sectionId === mine[i].sectionId) j++;
+        const a = mine[i].n, b = mine[j].n;
+        parts.push(SECTION_NAMES[mine[i].sectionId] + " (" + (a === b ? a : a + "\u2013" + b) + ")");
+        i = j + 1;
+      }
+      const first = mine[0], last = mine[mine.length - 1];
+      issues.push({ kind: "sections", page: first.page, msg: "The passage for questions " + first.n + "\u2013" + last.n + " is split between " + parts.join(" and ") + ": either a section starts in the wrong place or the passage runs further than it should. Check which: Sections sets where each one begins, Mark a passage where a passage starts." });
     }
     return issues;
   }
@@ -5841,7 +5907,7 @@ var NBCore = (() => {
       }
     }
     closeRun();
-    const timeBefore = (runs2, t) => runs2.reduce((a, [x, y]) => a + Math.max(0, Math.min(y, t) - x), 0);
+    const timeBefore = (runs3, t) => runs3.reduce((a, [x, y]) => a + Math.max(0, Math.min(y, t) - x), 0);
     const qm = questions.map((q, i) => {
       const t = T(q.id);
       const k = ink.questions[q.id];
@@ -5980,18 +6046,18 @@ var NBCore = (() => {
     });
     const sumOf = (m, keys) => keys.reduce((a, k) => a + (m && m[k] || 0), 0);
     const ACTIVE = ["PASSAGE_INITIAL_READ", "QUESTION_ACTIVE", "QUESTION_REVISIT", "PASSAGE_REVISIT_FOR_QUESTION", "PASSAGE_REVISIT"];
-    const runs = [];
+    const runs2 = [];
     for (const iv of ivs) {
       const k = secOf2(iv);
       if (!k) continue;
-      const last = runs[runs.length - 1];
+      const last = runs2[runs2.length - 1];
       if (last && last.k === k) {
         last.t1 = iv.t1;
         last.ms += iv.t1 - iv.t0;
-      } else runs.push({ k, t0: iv.t0, t1: iv.t1, ms: iv.t1 - iv.t0 });
+      } else runs2.push({ k, t0: iv.t0, t1: iv.t1, ms: iv.t1 - iv.t0 });
     }
     const sustained = [];
-    for (const r of runs) {
+    for (const r of runs2) {
       if (r.ms < SECTION_MIN_RUN_MS) continue;
       const last = sustained[sustained.length - 1];
       if (last && last.k === r.k) {
@@ -6752,13 +6818,13 @@ var NBCore = (() => {
   function runsTest(seq) {
     const n1 = seq.filter(Boolean).length, n2 = seq.length - n1;
     if (n1 < 2 || n2 < 2) return null;
-    let runs = 1;
-    for (let i = 1; i < seq.length; i++) if (seq[i] !== seq[i - 1]) runs++;
+    let runs2 = 1;
+    for (let i = 1; i < seq.length; i++) if (seq[i] !== seq[i - 1]) runs2++;
     const n = n1 + n2, mu = 2 * n1 * n2 / n + 1;
     const v = 2 * n1 * n2 * (2 * n1 * n2 - n) / (n * n * (n - 1));
     if (!(v > 0)) return null;
-    const z = (runs - mu) / Math.sqrt(v);
-    return { runs, expected: mu, z, p: pNorm2(z) };
+    const z = (runs2 - mu) / Math.sqrt(v);
+    return { runs: runs2, expected: mu, z, p: pNorm2(z) };
   }
   function olsSlope(x, y) {
     const n = x.length;
@@ -9128,7 +9194,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "a2cb2236c225";
+  var CORE_BUILD = "7a556ab3cbb7";
   return __toCommonJS(index_exports);
 })();
 </script>
