@@ -190,6 +190,19 @@ dialog.sheet.narrow{width:min(620px,calc(100vw - 32px))}
 .coach-h{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--accent);letter-spacing:0}
 .coach .ck{display:block;font-size:11.5px;font-weight:600;color:var(--ink);letter-spacing:0;margin-bottom:1px}
 .coach b{color:var(--ink);font-weight:600}
+/* the readings: "Next" deals the unread ones; a changed reading says what it was; the week's goal stays, ruled off */
+.kz-wiz-next{appearance:none;margin:-6px -6px -6px auto;padding:6px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:11.5px;font-weight:600;color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.kz-wiz-next:hover{color:var(--accent);background:color-mix(in oklab,var(--accent) 8%,transparent)}
+.kz-wiz-next i{font-style:normal;font-weight:500;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.kz-wiz-q{color:var(--ink-3);font-size:11.5px}
+.kz-wiz-was{display:block;margin:4px 0 0;font-size:11.5px;line-height:1.4;color:var(--accent)}
+.wiz-dl li .kz-wiz-was{grid-column:2}
+.kz-wiz-pin{margin:0;padding-top:10px;border-top:1px solid var(--hairline);font-size:12px;line-height:1.45;color:var(--ink-3)}
+.kz-wiz-pin b{color:var(--ink-2)}
+.kz-wiz-done{margin:0;font-size:12.5px;line-height:1.5;color:var(--ink-3)}
+.kz-wiz-done .btn{display:flex;margin:6px 0 0 -8px;font-size:12.5px}
+.kz-wiz-side{display:inline-flex;align-items:center}
+.kz-wiz-side .kz-wiz-next{margin:0;font-size:12.5px}
 .kz-stand p{margin:8px 0 12px;font-size:13.5px;line-height:1.5;color:var(--ink-2);text-wrap:pretty}
 .wiz-big{font-family:var(--font-display);font-size:48px;font-weight:600;letter-spacing:-.04em;line-height:1;margin-top:2px;font-variant-numeric:tabular-nums}
 .wiz-big small{font-size:16px;font-weight:500;color:var(--ink-3);letter-spacing:0}
@@ -1332,12 +1345,14 @@ var NBCore = (() => {
     extractContent: () => extractContent,
     garbledText: () => garbledText,
     hasContent: () => hasContent,
+    hasRawLog: () => hasRawLog,
     inferAttention: () => inferAttention,
     inferConfig: () => inferConfig,
     integrityIssues: () => integrityIssues,
     isAttemptId: () => isAttemptId,
     isCurrentMap: () => isCurrentMap,
     isEventChunk: () => isEventChunk,
+    isHollowDerived: () => isHollowDerived,
     lockOf: () => lockOf,
     looksLikeTestPaper: () => looksLikeTestPaper,
     mapConfidence: () => mapConfidence,
@@ -1622,6 +1637,28 @@ var NBCore = (() => {
   }
   var eventIdOf = (attemptId, seq) => `${attemptId}:${seq}`;
 
+  // src/mock/rawlog.ts
+  function hasRawLog(events) {
+    if (!events || !events.length) return false;
+    let first = null;
+    for (const e of events) {
+      if (e && typeof e.seq === "number" && isFinite(e.seq) && (!first || e.seq < first.seq)) first = e;
+    }
+    return !!first && (first.seq <= 1 || first.type === "MOCK_CREATED");
+  }
+  function isHollowDerived(d) {
+    const qs = d && Array.isArray(d.questions) ? d.questions : null;
+    if (!qs || !qs.length) return false;
+    for (const q of qs) {
+      if (!q) continue;
+      if (q["firstSeenAt"] != null || q["firstEngagedAt"] != null) return false;
+      if (Number(q["totalActiveTimeMs"]) > 0 || Number(q["blueLockCount"]) > 0 || Number(q["redInteractionCount"]) > 0) return false;
+      if (Array.isArray(q["answerHistory"]) && q["answerHistory"].length) return false;
+      if (Array.isArray(q["eliminatedOptions"]) && q["eliminatedOptions"].length) return false;
+    }
+    return true;
+  }
+
   // src/mock/db.ts
   var MIGRATIONS = [
     /* 0 → 1 */
@@ -1721,6 +1758,9 @@ var NBCore = (() => {
         out.sort((a, b) => a.seq - b.seq);
         return out;
       }),
+      /* chunks are keyed [attempt, n] and written in order, so the first one by key
+         holds the log's first events: a real log starts at the attempt's start */
+      hasLog: (id) => one("events", "readonly", (s) => s.openCursor(eventRange(id))).then((cur) => !!cur && isEventChunk(cur.value) && hasRawLog(cur.value.events)),
       putMap: (m) => put("maps", m),
       getMap: (id) => get("maps", id),
       mapsForFp: (fp) => one("maps", "readonly", (s) => s.index("fp").getAll(fp)),
@@ -9194,7 +9234,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "7a556ab3cbb7";
+  var CORE_BUILD = "77acc1fb6f3c";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -10076,7 +10116,7 @@ const paperKey = a => String(a.paper).toLowerCase().replace(/\s+/g, ' ').trim();
    are read from there on every load and never copied into this dashboard's own
    storage: one attempt, one record, in one place — so nothing can be left
    half-removed, and the raw log stays the source of every number. */
-const NB = { attempts: [], practice: [], bundles: new Map(), sessions: new Map(), db: null, loaded: false, applied: false, booted: false, error: null, sig: '' };
+const NB = { attempts: [], practice: [], bundles: new Map(), sessions: new Map(), noLog: new Map(), logged: new Map(), db: null, loaded: false, applied: false, booted: false, error: null, sig: '' };
 const nbMock = () => (typeof NBCore !== 'undefined' && NBCore && NBCore.mock) || null;
 
 /** NeoBook's store, if this device has one. `create` opens it even when it does
@@ -10096,18 +10136,32 @@ async function nbOpen(create = false) {
 }
 /** An attempt's derived metrics, computed again from its raw log when they are
  *  missing or older than this build — the log is the truth, the numbers are an
- *  opinion about it that any build may improve. */
-async function nbBundle(db, s) {
+ *  opinion about it that any build may improve.
+ *
+ *  Only where the log is. An attempt that came from the other device can arrive
+ *  without it (the log is its largest part; a push cut short leaves the rest),
+ *  and scoring it again would read every question as blank. Such an attempt
+ *  keeps the numbers it came with, and `noLog` is told. A record already made
+ *  from nothing, before this was stopped, is never shown: where the log is it
+ *  is made again, and where it is not the attempt waits for the record the
+ *  sync service holds (nbPull takes it back). */
+async function nbBundle(db, s, noLog) {
   const M = nbMock();
   const have = await db.getDerived(s.id);
-  if (have && have.target && have.metricsVersion === M.METRICS_VERSION) return have;
+  const hollow = !!(have && M.isHollowDerived(have));
+  if (have && have.target && have.metricsVersion === M.METRICS_VERSION && !hollow) return have;
   const [events, map, key, samples] = await Promise.all([db.readEvents(s.id), db.resolveMap(s), db.getKey(s.id), db.getMeta('guess.samples').catch(() => null)]);
+  const kept = hollow ? null : have || null;
+  if (!M.hasRawLog(events)) {
+    if (noLog) noLog.set(s.id, { paper: (s.config && s.config.paperName) || 'An attempt', date: (s.config && s.config.date) || null, hidden: !kept, bare: !have });
+    return kept;
+  }
   /* without the paper's map there are no questions to score: an attempt whose
      map has not arrived yet (or was purged) keeps the metrics it came with */
-  if (!key || !map || !map.questions.length) return have || null;
+  if (!key || !map || !map.questions.length) return kept;
   const made = M.deriveAttempt({ session: s, events, map, key, now: Date.now(), guessSamples: Array.isArray(samples) ? samples : [] });
   /* fewer questions than before is kept only when the map itself did not change (a map read again may rightly have fewer) */
-  if (have && have.questions && made.questions.length < have.questions.length && made.questions.length < map.questions.length) return have;
+  if (kept && kept.questions && made.questions.length < kept.questions.length && made.questions.length < map.questions.length) return kept;
   try { await db.putDerived(made); } catch (e) { /* derived again next time */ }
   return made;
 }
@@ -10119,8 +10173,9 @@ async function loadNeoBook() {
     const [sessions, tombs] = await Promise.all([db.listSessions(), db.listTombstones()]);
     const gone = new Set(tombs.map(t => t.attemptId));
     const live = sessions.filter(s => s.status === 'finalized' && !gone.has(s.id)).sort((a, b) => (a.finishedAt || 0) - (b.finishedAt || 0));
-    const made = await Promise.all(live.map(s => nbBundle(db, s).catch(e => { console.warn('NeoBook attempt skipped', s.id, e); return null; })));
-    NB.bundles = new Map(); NB.sessions = new Map(); NB.attempts = []; NB.practice = [];
+    const noLog = new Map();
+    const made = await Promise.all(live.map(s => nbBundle(db, s, noLog).catch(e => { console.warn('NeoBook attempt skipped', s.id, e); return null; })));
+    NB.bundles = new Map(); NB.sessions = new Map(); NB.attempts = []; NB.practice = []; NB.noLog = noLog; NB.logged = new Map();
     live.forEach((s, i) => {
       const d = made[i];
       if (!d) return;
@@ -10139,7 +10194,8 @@ async function loadNeoBook() {
      correction re-scores an attempt without adding one, and a paper whose map
      gained its questions' words bumps its attempts without re-scoring them —
      the views must redraw for both */
-  NB.sig = [...NB.bundles.entries()].map(([id, d]) => id + '@' + (d.computedAt || 0) + '.' + ((NB.sessions.get(id) || {}).version || 0)).sort().join(',');
+  NB.sig = [...NB.bundles.entries()].map(([id, d]) => id + '@' + (d.computedAt || 0) + '.' + ((NB.sessions.get(id) || {}).version || 0)).sort().join(',') +
+    '#' + [...NB.noLog.entries()].map(([id, x]) => id + (x.hidden ? '!' : '')).sort().join(',');
 }
 /** Read again (another tab may have finished a mock) and redraw only if something changed. */
 async function refreshNeoBook() {
@@ -10194,6 +10250,34 @@ async function nbPost(base, path, body, ms = 12000) {
     return await r.json();
   } finally { if (timer) clearTimeout(timer); }
 }
+/** An attempt scored on this device without its raw log, before that was stopped, was left holding a record
+ *  of blanks (nbBundle no longer shows it); and a push cut short can leave a finished attempt here with no
+ *  record at all. The service holds the record the attempt was sent with: that one is taken, for every such
+ *  attempt, whatever its version. A record scored on a log is never replaced, a record of blanks is never
+ *  taken, and nothing is made for an attempt that is not here. Returns how many were put right. */
+async function nbTakeBack(db, man, base, auth) {
+  const M = nbMock();
+  let n = 0;
+  for (const a of (man && man.attempts) || []) {
+    const slices = (a.parts || []).filter(p => p.part === 'derived').map(p => p.idx | 0).sort((x, y) => x - y);
+    if (!slices.length || slices.some((v, i) => v !== i)) continue;
+    const mine = await db.getDerived(a.attemptId);
+    if ((mine && !M.isHollowDerived(mine)) || await db.getTombstone(a.attemptId)) continue;
+    if (!mine) { const s = await db.getSession(a.attemptId); if (!s || s.status !== 'finalized') continue; }
+    let text = '';
+    for (const idx of slices) {
+      const r = await nbPost(base, '/mock/part', Object.assign({ attemptId: a.attemptId, part: 'derived', idx }, auth), 20000);
+      if (!r || r.error || typeof r.body !== 'string') { text = null; break; }
+      text += r.body;
+    }
+    let theirs = null;
+    try { theirs = text ? JSON.parse(text) : null; } catch (e) { theirs = null; }
+    if (!theirs || theirs.attemptId !== a.attemptId || !Array.isArray(theirs.questions) || !theirs.questions.length || M.isHollowDerived(theirs)) continue;
+    await db.putDerived(theirs);
+    n++;
+  }
+  return n;
+}
 /** Ask the service for what it has, take what is new, and leave everything else alone. */
 async function nbPull(manual) {
   const M = nbMock();
@@ -10247,6 +10331,9 @@ async function nbPull(manual) {
       const gain = M.overridesGain ? M.overridesGain(session.overrides, merged) : { any: false, scoring: false };
       if (merged) session.overrides = merged;
       if (gain.any) { session.version = (session.version || 1) + 1; session.updatedAt = Date.now(); }
+      /* the arriving result does not count what only this copy had: NeoBook scores
+         it again on the device that holds the pen record, and clears this */
+      if (gain.scoring) session.needsScore = true;
       const key = join('key'), derived = join('derived'), map = join('map');
       const evs = join('events') || [];
       const blocks = [];
@@ -10256,12 +10343,20 @@ async function nbPull(manual) {
         const cur = await db.getMap(map.id);
         if (!cur || (cur.rev || 0) < (map.rev || 0)) await db.putMap(map);
       }
-      if (blocks.length) await db.replaceEvents(a.attemptId, blocks.map((b, i) => ({ attemptId: a.attemptId, chunk: i, from: b[0].seq, to: b[b.length - 1].seq, events: b })));
+      /* a log is never cut short by a copy, nor a real result replaced by one made
+         from no log: what is here stays when it is the better of the two */
+      if (blocks.length && evs.length > (await db.readEvents(a.attemptId)).length) {
+        await db.replaceEvents(a.attemptId, blocks.map((b, i) => ({ attemptId: a.attemptId, chunk: i, from: b[0].seq, to: b[b.length - 1].seq, events: b })));
+      }
       if (key) await db.putKey(key);
-      if (derived) await db.putDerived(gain.scoring ? Object.assign({}, derived, { metricsVersion: 0 }) : derived);
+      const had = derived && await db.getDerived(a.attemptId);
+      if (derived && !(had && M.isHollowDerived(derived) && !M.isHollowDerived(had))) {
+        await db.putDerived(gain.scoring ? Object.assign({}, derived, { metricsVersion: 0 }) : derived);
+      }
       await db.putSession(session);
       added++;
     }
+    added += await nbTakeBack(db, man, base, auth);
     PULL.added += added;
     PULL.at = Date.now();
     if (added) await refreshNeoBook();
@@ -10563,8 +10658,8 @@ function card(title, desc, body, extra = {}) {
   const head = cardHead(title, desc, extra.aside, extra.lede || !filled);
   // Benchmark Wiz: when it has something to say about this card, it sits beside the chart (above it on narrow screens).
   const tips = extra.coach && typeof coachAside === 'function' ? extra.coach : null;
-  const content = tips && tips.length ? [H('div', { class: 'coach-wrap' }, [H('div', { class: 'card-main' }, body || []), coachAside(tips)])] : (body || []);
-  const el = H('section', { class: 'card' + (extra.cls ? ' ' + extra.cls : '') + (tips && tips.length ? ' has-coach' : ''), 'aria-label': title }, [head].concat(content));
+  const content = tips ? [H('div', { class: 'coach-wrap' }, [H('div', { class: 'card-main' }, body || []), coachAside(tips)])] : (body || []);
+  const el = H('section', { class: 'card' + (extra.cls ? ' ' + extra.cls : '') + (tips ? ' has-coach' : ''), 'aria-label': title }, [head].concat(content));
   if (extra.foot) el.append(H('div', { class: 'card-foot' }, extra.foot));
   return el;
 }
@@ -12920,6 +13015,8 @@ function avCheckCard(ctx) {
     saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
     try {
       const M = nbMock(), db = NB.db, s = Object.assign({}, await db.getSession(ctx.sess.id) || ctx.sess);
+      /* scored again from the raw log, so only where the log is: nothing is written otherwise */
+      if (!M.hasRawLog(await db.readEvents(s.id))) throw new Error('this attempt’s pen record is on your other device, so it cannot be scored again here. Make the change there.');
       const o = Object.assign({}, s.overrides || {});
       o.answers = Object.assign({}, o.answers || {}, AVC.answers);
       o.guesses = Object.assign({}, o.guesses || {}, AVC.guesses);
@@ -12968,13 +13065,21 @@ function renderAttempt(el) {
     ch.other.length ? H('optgroup', { label: ch.nb.length ? 'Other attempts' : 'Attempts' }, ch.other.map(opt)) : null,
   ]);
   const d = cur.d;
+  /* whether this device holds the attempt's pen record: asked once per attempt, when it is opened */
+  if (d && NB.db && !NB.logged.has(cur.id)) {
+    NB.logged.set(cur.id, null);
+    NB.db.hasLog(cur.id).then(ok => { NB.logged.set(cur.id, ok); if (!ok) invalidate(['attempt']); }).catch(() => {});
+  }
+  const noLog = !!d && (NB.logged.get(cur.id) === false || NB.noLog.has(cur.id));
+  const where = noLog ? ' · its pen record is on your other device' : '';
   const title = cur.a ? `${cur.a.paper}${cur.a.set ? ` · ${cur.a.set}` : ''}` : cur.p.name;
-  const sub = cur.a ? `${cur.a.cohortName} · ${cur.a.when}${d ? ' · recorded in NeoBook' : ''}` : `${SEC_NAME[cur.p.section] || 'Mixed'} practice · ${cur.p.date ? fmtDate(cur.p.date) : 'Undated'} · recorded in NeoBook`;
+  const sub = cur.a ? `${cur.a.cohortName} · ${cur.a.when}${d ? ' · recorded in NeoBook' : ''}${where}` : `${SEC_NAME[cur.p.section] || 'Mixed'} practice · ${cur.p.date ? fmtDate(cur.p.date) : 'Undated'} · recorded in NeoBook${where}`;
   const head = viewHead(title, sub, H('div', { class: 'filter-group avhead' }, [picker, typeof avRemoveButton === 'function' ? avRemoveButton(cur) : null]));
   if (!d) return fill(el, head, avPlain(cur.a));
   const ctx = { d, a: cur.a || null, p: cur.p || null, full: d.target === 'attempt', t: d.test, qs: d.questions, sess: NB.sessions.get(cur.id) || null };
-  /* Verify settles what the pen could not read; an attempt with no pen log has nothing to settle */
-  const panes = AV_PANES.filter(p => !p.needsLog || (ctx.sess && ctx.full));
+  /* Verify settles what the pen could not read; an attempt with no pen log has nothing to settle, and one
+     whose log is on the other device cannot be scored again here: it is settled there */
+  const panes = AV_PANES.filter(p => !p.needsLog || (ctx.sess && ctx.full && !noLog));
   const pane = panes.some(p => p.k === state.prefs.attemptPane) ? state.prefs.attemptPane : 'summary';
   const seg = H('nav', { class: 'seg small', id: 'avTabs', role: 'tablist', 'aria-label': 'Analysis of this attempt' }, [H('span', { class: 'thumb', 'aria-hidden': 'true' })].concat(panes.map(p => H('button', {
     type: 'button', role: 'tab', 'aria-selected': String(p.k === pane), tabindex: p.k === pane ? '0' : '-1',
@@ -13511,6 +13616,17 @@ function avSequence(steps, c) {
   return box;
 }
 
+/** Attempts left out because this device scored them without their pen record: named, with what happens next. */
+function nbHeldNote() {
+  const held = [...NB.noLog.values()].filter(x => x.hidden);
+  if (!held.length) return null;
+  /* said as it is: a result made here without the pen record, or no result here at all */
+  const made = held.filter(x => !x.bare), bare = held.filter(x => x.bare), one = l => l.length === 1;
+  return H('p', { class: 'muted', style: { margin: '0 0 12px', fontSize: '13px', lineHeight: '1.5' } }, [b(`${plural(held.length, 'attempt')} not shown: `), listText(held.map(x => x.paper)), '. ',
+    made.length ? `${bare.length ? listText(made.map(x => x.paper)) + ': the' : 'The'} pen record is on your other device, and the result kept here was made without it. ` : '',
+    bare.length ? `${made.length ? listText(bare.map(x => x.paper)) + ' came' : one(bare) ? 'It came' : 'They came'} from your other device without ${one(bare) ? 'its' : 'their'} result or pen record. ` : '',
+    `The result ${one(held) ? 'it was' : 'they were'} sent with is taken from the sync service the next time it answers, if the service holds it whole${nbDevice() ? '' : ' (this device is not paired with it)'}.`]);
+}
 /** What NeoBook recorded on this device: the attempts, and where they live. */
 function neobookCard() {
   const items = NB.attempts.map(a => ({ id: a.telemetrySessionId, name: `${a.paper}${a.set ? ` · ${a.set}` : ''}`, when: a.date, kind: 'Full length' }))
@@ -13518,6 +13634,7 @@ function neobookCard() {
   if (!items.length) {
     if (NB.error) return card('Attempts recorded in NeoBook', 'NeoBook’s store could not be read in this browser, so any attempts it holds are missing here.', [H('p', { class: 'muted', style: { margin: 0, fontSize: '13px' }, text: String(NB.error && NB.error.message || NB.error) })], { lede: true });
     if (nbDevice()) return card('Attempts recorded in NeoBook', 'Nothing from NeoBook on this device yet. Attempts finished on your other device arrive through NeoBook’s sync service.', [
+      nbHeldNote(),
       H('button', { class: 'btn', type: 'button', onclick: e => { e.target.disabled = true; nbPull(true).finally(() => invalidate(['data'])); }, text: 'Check the other device' }),
       PULL.error ? H('p', { class: 'muted', style: { marginTop: '10px', fontSize: '13px' }, text: String(PULL.error.message || PULL.error) }) : null,
     ], { lede: true });
@@ -13531,6 +13648,8 @@ function neobookCard() {
     ]),
   ])));
   const sync = nbDevice() ? H('button', { class: 'btn', type: 'button', onclick: e => { e.target.disabled = true; nbPull(true).finally(() => invalidate(['data'])); }, text: 'Check the other device' }) : null;
+  const held = nbHeldNote();
+  if (held) list.prepend(held);
   return card('Attempts recorded in NeoBook', `${plural(items.length, 'attempt')} came from NeoBook’s Attempt Mock on this device. They are read from NeoBook’s own storage every time this page loads — never copied here — so an attempt and its raw log, answer key and metrics stay one thing.${nbDevice() ? ' Attempts finished on your other device arrive through NeoBook’s sync service.' : ''}`, [sync, list].filter(Boolean), {
     lede: true,
     foot: 'Open shows the whole attempt: sections, passages, every question, timing, behaviour and its timeline.',
@@ -14266,7 +14385,11 @@ function wizModel() {
       weeks.push({ i, start, end, mid: start + 3 * DAY, level: plan.levels[i], target: t, acc: a, wrong: Math.floor((1 - a) * PAPER_MAX * covPlan), att: Math.round(PAPER_MAX * covPlan), exam: i === nW - 1 });
     }
   }
-  const src = TP.length >= 2 ? TP : timed;
+  /* the sections are read off your latest timed papers that carry section counts — the last five, so a new
+     paper moves every lever at once; with fewer than two of those, off your timed PYQs */
+  const counted = timed.filter(a => a.secMode === 'counts' && a.sec);
+  const src = counted.length >= 2 ? counted.slice(-5) : TP.length >= 2 ? TP : timed;
+  const leverFrom = counted.length >= 2 ? `your last ${src.length} timed papers${timed.slice(-src.length).every((a, i) => a === src[i]) ? '' : ' with section counts'}` : TP.length >= 2 ? 'your timed PYQs' : 'your timed attempts';
   const accPlan = accFor(peak);
   // Section levers aim at the plan's accuracy, but never past 95%: beyond that, extra marks come from coverage.
   const accLever = Math.min(accPlan, 0.95);
@@ -14287,168 +14410,1362 @@ function wizModel() {
     alloc.forEach(x => { for (let k = 0; k < x.n; k++) slots.push(x.l); });
   }
   weeks.forEach((w, i) => { w.focus = w.exam ? null : slots[i] || null; });
-  const wrongAvg = TP.length ? mean(TP.map(a => a.W)) : null;
   const m = {
-    key, timed, TP, TM, recent, level, plan, roll: new Map(plan ? plan.points.map(p => [p.id, p]) : []), avg: plan ? plan.avg : null, sd: plan ? plan.sigma : null,
+    key, timed, TP, TM, recent, counted, leverSrc: src, leverFrom, level, plan, roll: new Map(plan ? plan.points.map(p => [p.id, p]) : []), avg: plan ? plan.avg : null, sd: plan ? plan.sigma : null,
     cov, covPlan, acc, retakes, spec, peak, accPlan, accLever, accFor,
-    weeks, nW, daysLeft, exam, now, levers, wrongAvg, thisWeek: weeks[0] || null, peakWeek: weeks.length > 1 ? weeks[weeks.length - 2] : weeks[0] || null,
+    weeks, nW, daysLeft, exam, now, levers, thisWeek: weeks[0] || null, peakWeek: weeks.length > 1 ? weeks[weeks.length - 2] : weeks[0] || null,
     perWeek: plan ? plan.perWeek : null,
-    dAcc: 1.25 * PAPER_MAX * cov / 100, dCov: acc != null ? PAPER_MAX * (1.25 * acc - 0.25) / 100 : null,
   };
   wizModel.c = m;
   return m;
 }
 
-/* ── Coach panel beside a chart ── */
-function coachAside(items) {
-  const icon = S('svg', { viewBox: '0 0 16 16', width: 14, height: 14, 'aria-hidden': 'true' }, [
-    S('circle', { cx: 8, cy: 8, r: 6.4, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.4 }),
-    S('path', { d: 'M10.6 5.4 9 9 5.4 10.6 7 7Z', fill: 'currentColor' }),
-  ]);
-  return H('aside', { class: 'coach', 'aria-label': 'Benchmark Wiz coaching' }, [
-    H('div', { class: 'coach-h' }, [icon, 'Benchmark Wiz']),
-    ...items.map(it => H('div', { class: 'ci' }, [H('span', { class: 'ck', text: it.k }), H('div', {}, it.t)])),
-  ]);
-}
 const gapWord = (v, ref) => (v >= ref ? `${marks(half(v - ref))} above` : `${marks(half(ref - v))} short of`);
 const seatTL = () => BENCH.seats[0], seatAI = () => BENCH.seats[1];
 /** One-line reminder that the recent attempts were retakes of papers you had seen. */
 const retakeNote = M => (M.retakes.length === M.recent.length && M.recent.length ? ` All ${M.recent.length} were retakes of papers you had seen, so this is optimistic.` : M.retakes.length ? ` ${M.retakes.length} of those ${M.recent.length} ${M.retakes.length === 1 ? 'was a retake of a paper' : 'were retakes of papers'} you had seen.` : '');
 
-/** Coaching for each chart card. Each returns up to four short items, or null when the data can't support one. */
-const COACH = {
-  trendsMain(M) {
-    if (M.level == null) return null;
-    const tl = seatTL();
-    const out = [
-      { k: 'Where you stand', t: [`The median of your last ${M.plan.n} timed attempts is `, b(`${marks(half(M.level))}/120`), `, their average ${marks(half(M.avg))} (${rankText(M.level)} on CLAT 2025’s actual results). ${tl.name}, your quota, needs about `, b(`${tl.marks[0]}–${tl.marks[1]}`), ` — you are ${gapWord(M.level, tl.marks[0])} its low end.${retakeNote(M)}`] },
-      { k: 'Moves this line up', t: [`At your ${pct(M.cov, 0)} coverage, `, b(`+1 pt of accuracy ≈ +${M.dAcc.toFixed(1)} marks`), `; +1 pt of coverage ≈ +${(M.dCov || 0).toFixed(1)}. Accuracy is the bigger lever for you.`] },
-    ];
-    if (M.wrongAvg != null) out.push({ k: 'Pulls it down', t: ['You average ', b(`${Math.round(M.wrongAvg)} wrong answers`), ` per timed PYQ — ${Math.round(M.wrongAvg * 1.25)} marks gone, since each costs 1.25.`] });
-    if (M.thisWeek) out.push({ k: 'This week', t: ['Your next full mock needs ', b(`${marks(M.thisWeek.target)}+`), ` to keep your level on the ramp: about +${marks(half(M.perWeek || 0))} a week to reach ${marks(half(M.peak))}, the top of your target, by ${fmtDate(state.prefs.examDate, false)}.`] });
-    return out;
-  },
-  marksWent(M) {
-    if (!M.TP.length) return null;
-    const gap = mean(M.TP.map(a => a.m.gap)), wc = mean(M.TP.map(a => a.m.wrongCost));
-    const out = [{ k: 'Where you stand', t: ['Per timed PYQ you drop ', b(`${marks(half(gap))} marks`), '; ', b(`${marks(half(wc))}`), ` of them (${pct(wc / gap, 0)}) are wrong answers, not blanks.`] }];
-    out.push({ k: 'Moves it up', t: ['Turning one wrong answer right is worth ', b('+1.25'), '; leaving a doubtful one blank instead is still ', b('+0.25'), '.'] });
-    if (M.thisWeek && M.peakWeek) out.push({ k: 'Wrong-answer path', t: ['At ', `${M.thisWeek.att} attempted, each extra mark means 0.8 fewer wrong answers. This week `, b(`≤ ${M.thisWeek.wrong}`), ` (you averaged ${Math.round(M.wrongAvg)}); by the week of ${shortDate(M.peakWeek.start)}, `, b(`≤ ${M.peakWeek.wrong}`), '.'] });
-    return out;
-  },
-  accCov(M) {
-    const r = (xs, f) => { const v = xs.map(f); return pctRange(Math.min(...v), Math.max(...v)); };
-    const out = [];
-    if (M.TP.length >= 2) out.push({ k: 'Timed PYQs', t: ['Accuracy ', b(r(M.TP, a => a.m.acc)), ' is the short bar; coverage is already ', r(M.TP, a => a.m.cov), '.'] });
-    if (M.TM.length >= 2) {
-      const qt = M.TM.map(a => secM(a, 'qt')).filter(x => x && x.exact);
-      out.push({ k: 'Mocks', t: ['Coverage ', b(r(M.TM, a => a.m.cov)), ' held the score down', qt.length ? `; Quants was ${qt.map(x => x.att).join(', ')} of ${qt[0].M} attempted.` : '.'] });
-    }
-    if (M.thisWeek) out.push({ k: 'This week', t: ['Attempt ', b(`${M.thisWeek.att}+ questions`), ' and hold accuracy at ', b(`${pct(M.thisWeek.acc, 0)}+`), '.'] });
-    return out.length ? out : null;
-  },
-  secTrend(M) {
-    if (!M.levers.length) return null;
-    const top = M.levers.slice(0, 3);
-    const out = [{ k: 'Next marks come from', t: [`If every section reached ${pct(M.accLever, 0)} accuracy${M.accLever < M.accPlan ? '' : ' (your plan’s level)'}: `, ...top.flatMap((l, i) => [i ? ', ' : '', b(`${l.s.name} +${l.gain.toFixed(1)}`)]), ' marks per paper.'] }];
-    const w = M.levers.slice().sort((x, y) => x.acc - y.acc)[0];
-    out.push({ k: 'Weakest', t: [b(`${w.s.name} ${pct(w.acc, 0)}`), ` in your timed PYQs (${w.C} of ${w.attAll} right).`] });
-    if (M.thisWeek && M.thisWeek.focus) { const f = M.thisWeek.focus; out.push({ k: 'This week', t: ['Focus on ', b(f.s.name), `: move accuracy from ${pct(f.acc, 0)} toward ${pct(Math.min(M.accLever, f.acc + 0.08), 0)}.`] }); }
-    return out;
-  },
-  secProfile(M) {
-    if (!M.levers.length) return null;
-    const by = M.levers.slice().sort((x, y) => y.acc - x.acc), hi = by[0], lo = by[by.length - 1];
-    return [
-      { k: 'Your shape', t: ['Strongest ', b(`${hi.s.name} ${pct(hi.acc, 0)}`), ', weakest ', b(`${lo.s.name} ${pct(lo.acc, 0)}`), ` — a ${Math.round((hi.acc - lo.acc) * 100)}-point spread.`] },
-      { k: 'Target shape', t: [`For ${marks(M.peak)}/120 at your coverage, every section needs about `, b(pct(M.accPlan, 0)), ' accuracy. A flatter line at that height beats one great section.'] },
-    ];
-  },
-  retake(M) {
-    const pairs = retakePairs();
-    if (!pairs.length) return null;
-    const fresh = M.TM.length ? mean(M.TM.map(a => a.m.pct * PAPER_MAX)) : null;
-    return [{ k: 'Read with care', t: ['Retakes rise partly because you have seen the paper. ', fresh != null ? ['Your fresh-paper level is closer to your mocks: ', b(`${marks(half(fresh))}/120`), '.'] : 'Judge readiness from papers you have not seen.'] }];
-  },
-  paperRun(M, L) {
-    let worst = null;
-    L.forEach(a => {
-      const qs = decodeLog(a);
-      if (!qs) return;
-      const cost = qs.map(q => (q.out === 'w' ? 1.25 : q.out === 's' ? 1 : 0));
-      for (let i = 0; i + 10 <= cost.length; i++) { const v = sum(cost.slice(i, i + 10)); if (!worst || v > worst.v) worst = { a, i, v, s0: qs[i].sec, s1: qs[i + 9].sec }; }
+/* WIZ:BEGIN */
+/* ── The readings ────────────────────────────────────────────────────────────
+   What the Wiz says beside a chart is no longer a fixed sentence with your
+   numbers dropped in. Every way of reading your attempts that the data can
+   support is worked out afresh — a "reading": one finding, with the counts it
+   stands on — and each visit is dealt the ones you have not read yet.
+
+   A reading is only ever arithmetic on your own attempts: counts, rates with
+   their intervals, what-ifs priced at +1 / −0.25, and the tests that survived
+   false-discovery control. Nothing is drawn at random and nothing is invented:
+   the same data and the same reading history give the same deal.
+
+   What "new" means. A reading is remembered by its own sentence. Once it has
+   been on screen it is not dealt again — until a number in it changes, when it
+   may come back saying what it was. But a changed number is not a new idea:
+   readings never read come first, and among the ones that have moved, the ones
+   read least often. So a new attempt brings what is new about it, and a lens you
+   have read comes round again only after the others have had their turn. When a
+   chart has nothing unread it says so; it never rewords a reading to look new.
+
+   This region is pure: it is given your attempts and the model, and it returns
+   readings. test/dashboard-wiz.test.mjs lifts it whole and runs it. */
+/** Bold, and quiet, runs inside a reading's text. */
+const bb = t => ({ b: String(t) });
+const mm = t => ({ m: String(t) });
+/** A reading's words as plain text: what it is remembered by. */
+function wizPlain(k, t) {
+  const flat = x => (Array.isArray(x) ? x.map(flat).join('') : x == null || x === false ? '' : typeof x === 'object' ? String(x.b != null ? x.b : x.m != null ? x.m : '') : String(x));
+  return `${k}: ${flat(t)}`.replace(/\s+/g, ' ').trim();
+}
+function wizHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+const wzNum = (v, d = 1) => (v == null || !isFinite(v) ? '—' : (v < 0 ? MINUS : '') + Math.abs(Number(v)).toFixed(d).replace(/\.0+$/, ''));
+const wzMk = v => marks(half(v));
+const wzSigned = (v, d = 1) => (v == null || !isFinite(v) ? '—' : `${v < 0 ? MINUS : '+'}${wzNum(Math.abs(v), d)}`);
+const wzClock = ms => mmss(Math.round(ms / 1000));
+const wzScore = a => a.m.pct * PAPER_MAX;
+const wzMedian = xs => { const s = xs.filter(v => v != null && isFinite(v)).sort((a, b) => a - b), m = s.length >> 1; return s.length ? (s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) : null; };
+const wzQuant = (xs, p) => { const s = xs.filter(v => v != null && isFinite(v)).sort((a, b) => a - b); if (!s.length) return null; const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return s[lo] + (s[hi] - s[lo]) * (i - lo); };
+/** "Q61–65" for a list of printed numbers; "Q61" for one. */
+const wzQs = ns => (ns.length ? (ns.length === 1 || ns[0] === ns[ns.length - 1] ? `Q${ns[0]}` : `Q${ns[0]}–${ns[ns.length - 1]}`) : '');
+/** Where a paper came from, read off its name: the institute, or CLAT's own. */
+const wzSource = a => { const p = String(a.paper); return /^\s*CLAT\b/i.test(p) ? 'CLAT' : (p.match(/^\s*(LPT|LE|PW)\b/i) || [])[1] ? p.match(/^\s*(LPT|LE|PW)\b/i)[1].toUpperCase() : null; };
+/** A rate with its 95% interval in words: "41% (95% 30–53%)". */
+function wzRate(I, k, n) { const w = I.wilson(k, n); return w.lo == null ? pct(k / n, 0) : `${pct(k / n, 0)} (95% ${pctRange(w.lo, w.hi)})`; }
+/** Two rates compared: the difference, and whether it stands clear of chance at this many questions. */
+function wzGap(I, k1, n1, k2, n2) {
+  const t = n1 && n2 ? I.twoProp(k1, n1, k2, n2) : null;
+  return t ? { diff: t.diff, lo: t.lo, hi: t.hi, p: t.p } : null;
+}
+const wzChance = p => (p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(p < 0.01 ? 3 : 2)}`);
+/** "1 mark", "0.75 marks". */
+const wzMw = v => `${marks(v)} ${Math.abs(v) === 1 ? 'mark' : 'marks'}`;
+/** How a comparison stands, in words: clear of chance only once every comparison the readings make is allowed for. */
+const wzStand = j => (j.lvl === 'sure' ? ` Clear of chance, with the other comparisons made here allowed for (q = ${j.q < 0.001 ? '<0.001' : j.q.toFixed(j.q < 0.01 ? 3 : 2)}).`
+  : j.lvl === 'lean' ? ` Suggestive, not settled (${wzChance(j.p)}).` : ` Within chance (${wzChance(j.p)}).`);
+
+/** Everything the lenses share, worked out once per deal of the pool. */
+function wizFacts(X) {
+  const M = X.M, timed = M.timed, I = X.I;
+  const cnt = timed.filter(a => a.secMode === 'counts' && a.sec);
+  const win = cnt.slice(-5);
+  /* named for what they are: the last five timed papers only when no timed paper without section counts sits among them */
+  const tail = l => l.length > 0 && timed.slice(-l.length).every((a, i) => a === l[i]);
+  const winName = tail(win) ? `your last ${win.length} timed papers` : `your last ${win.length} timed papers with section counts`;
+  const rec = M.recent || [];
+  const recName = `your last ${rec.length} timed papers`;
+  /* a section across the window, exact counts only */
+  const sec = SECS.map(s => Object.assign({ s }, pooledSec(win, s.k))).filter(r => r.n && r.M);
+  const logged = X.A.filter(a => a.log && a.log.out && decodeLog(a));
+  const tlog = timed.filter(a => a.log && a.log.out && decodeLog(a));
+  /* attempts the pen recorded: their own per-question record */
+  const penAll = timed.map(a => ({ a, d: X.pen.get(a.id) })).filter(x => x.d && Array.isArray(x.d.questions) && x.d.questions.length);
+  const penWin = penAll.slice(-5);
+  const pq = penWin.flatMap(x => x.d.questions.map(q => ({ a: x.a, d: x.d, q })));
+  const scored = pq.filter(r => r.q.outcome === 'correct' || r.q.outcome === 'wrong' || r.q.outcome === 'skipped');
+  const att = pq.filter(r => r.q.outcome === 'correct' || r.q.outcome === 'wrong');
+  const right = l => l.filter(r => r.q.outcome === 'correct').length;
+  const penName = penWin.length === 1 ? penWin[0].a.short : `your last ${penWin.length} papers recorded with the pen`;
+  /* the kind of guess a label stands for, by what you said it means */
+  const guessOf = (a, q) => {
+    const tag = q.tag; if (!tag) return null;
+    return I.guessKindOf ? I.guessKindOf(tag, String((a.tagMeanings || {})[tag] || '')) : 'guess';
+  };
+  /* every question of the timed papers that carry a log: your latest five, so a reading follows your present habits */
+  const lwin = tlog.slice(-5);
+  const lq = lwin.flatMap(a => decodeLog(a).map(q => ({ a, q, g: guessOf(a, q) })));
+  const lwinName = lwin.length === 1 ? lwin[0].short : tail(lwin) ? `your last ${lwin.length} timed papers` : `your last ${lwin.length} timed papers with a question log`;
+  /* the section you sit last: the end of your paper is mostly that section, so a reading about the end of
+     the paper says so, and never calls it tiredness (whether accuracy falls through the paper with the
+     section held fixed is the pattern engine's test, and it speaks for itself) */
+  const endOf = list => {
+    const os = list.filter(a => Array.isArray(a.order) && a.order.length >= 4), tally = {};
+    os.forEach(a => { const k = a.order[a.order.length - 1]; tally[k] = (tally[k] || 0) + 1; });
+    const k = Object.keys(tally).sort((p, q) => tally[q] - tally[p])[0] || null, m = k ? tally[k] : 0;
+    /* said only of the papers the reading itself covers, and only when most of them end on the same section */
+    return os.length >= 2 && os.length * 2 >= list.length && m / os.length >= 0.6
+      ? { k, note: ` ${SEC_NAME[k]} is the section you sit last (${m} of ${os.length === list.length ? 'these' : 'the'} ${os.length} papers${os.length === list.length ? '' : ' with a recorded order'}), so this is that section as much as the clock.` }
+      : { k: null, note: '' };
+  };
+  return { M, I, timed, cnt, win, winName, rec, recName, sec, logged, tlog, lwin, lq, lwinName, penAll, penWin, pq, scored, att, right, penName, guessOf, endOf,
+    secName: k => SEC_NAME[k] || k, tl: X.tl, ai: X.ai };
+}
+
+const WIZ_FAMILIES = [];
+/** Every reading the data supports now. A lens that has too little to stand on adds nothing; one that
+ *  throws is dropped and the rest carry on — a reading never breaks a card. */
+function wizPool(X) {
+  const out = [], seen = new Set();
+  let F;
+  try { F = wizFacts(X); } catch (e) { if (X.onError) X.onError(e); return out; }
+  const add = c => {
+    if (!c || !c.id || !c.t || seen.has(c.id)) return;
+    const plain = wizPlain(c.k, c.t);
+    /* a missing number shows as a dash or a NaN: such a reading is not ready to be said */
+    if (/—|NaN|undefined|Infinity|null/.test(plain)) return;
+    seen.add(c.id);
+    out.push(Object.assign({ kind: 'see', src: 'Level', worth: 1, ch: [] }, c, { plain, h: wizHash(c.fp != null ? `${c.id}|${c.fp}` : plain), worth: isFinite(c.worth) ? Math.max(0, c.worth) : 0 }));
+  };
+  const go = fn => { try { fn(); } catch (e) { if (X.onError) X.onError(e); } };
+  /* A comparison a reading makes (one rate against another) is judged with every other one made here,
+     Benjamini–Hochberg, so a gap is called clear of chance only if it stays so once all of them are allowed
+     for. The first pass gathers the p-values; the second writes the readings with their verdicts. */
+  const ps = {};
+  let q = null;
+  F.judge = (id, p) => {
+    if (!q) { ps[id] = p; return { lvl: 'none', p, q: null }; }
+    const v = q[id];
+    return { lvl: v != null && v < 0.05 ? 'sure' : p < 0.15 ? 'lean' : 'none', p, q: v == null ? null : v };
+  };
+  const quiet = () => {};
+  WIZ_FAMILIES.forEach(f => { try { f(X, F, quiet, fn => { try { fn(); } catch (e) { /* said in the second pass */ } }); } catch (e) { /* likewise */ } });
+  const ids = Object.keys(ps), adj = ids.length && X.I.bhAdjust ? X.I.bhAdjust(ids.map(i => ps[i])) : ids.map(i => ps[i]);
+  q = {}; ids.forEach((id, i) => { q[id] = adj[i]; });
+  WIZ_FAMILIES.forEach(f => go(() => f(X, F, add, go)));
+  return out;
+}
+
+/** The deal: from the readings of one chart (or of all, for `ch` null), the ones not read yet. Never-read
+ *  readings come first, the biggest marks first; then the ones whose numbers have moved since they were
+ *  read, the least-read first — so the lens you have seen most waits longest. Among readings read equally
+ *  often, no two of the same kind or family while another is waiting. Deterministic: the same pool and the
+ *  same history give the same deal. */
+function wizDeal(pool, seen, opts = {}) {
+  const take = opts.take || 3, ch = opts.ch || null, skip = opts.skip || null;
+  const all = pool.filter(c => !ch || c.ch.indexOf(ch) >= 0);
+  const state = c => { const s = seen && seen[c.id]; return !s ? 'new' : s.h !== c.h ? 'moved' : 'read'; };
+  const reads = c => (seen && seen[c.id] ? seen[c.id].n || 1 : 0);
+  const fresh = all.filter(c => state(c) !== 'read' && !(skip && skip.has(c.id))).sort((x, y) => reads(x) - reads(y) || y.worth - x.worth || (x.id < y.id ? -1 : 1));
+  const items = [], kinds = new Set(), fams = new Set();
+  const fam = c => c.id.split(':')[0];
+  while (items.length < take) {
+    const left = fresh.filter(c => items.indexOf(c) < 0);
+    if (!left.length) break;
+    /* variety is sought only among the readings read equally often: an unread reading is never passed over
+       for one already read, however alike it is to the one before it */
+    const tier = reads(left[0]), same = left.filter(c => reads(c) === tier);
+    const pick = same.find(c => !kinds.has(c.kind) && !fams.has(fam(c))) || same.find(c => !fams.has(fam(c))) || same[0];
+    items.push(pick); kinds.add(pick.kind); fams.add(fam(pick));
+  }
+  return {
+    items: items.map(c => Object.assign({}, c, { state: state(c), was: seen && seen[c.id] && seen[c.id].h !== c.h ? seen[c.id] : null })),
+    unread: fresh.length, left: fresh.length - items.length, total: all.length,
+  };
+}
+/** The history after these readings have been on screen: what each said, when, and how many times it has
+ *  been read in all (a count that a change of numbers does not reset). At most `cap` are kept, the oldest
+ *  dropped first. */
+function wizSeenAdd(seen, items, now, cap = 800) {
+  const next = Object.assign({}, seen || {});
+  items.forEach(c => { const was = next[c.id]; next[c.id] = { h: c.h, at: now, n: (was ? was.n || 1 : 0) + 1, v: c.fig ? String(c.fig.v) : null }; });
+  const ids = Object.keys(next);
+  if (ids.length > cap) ids.sort((a, b) => (next[a].at || 0) - (next[b].at || 0)).slice(0, ids.length - cap).forEach(id => { delete next[id]; });
+  return next;
+}
+/** Forget that one chart's readings were read, so they are dealt again from the top. */
+function wizSeenClear(seen, pool, ch) {
+  const next = Object.assign({}, seen || {});
+  pool.forEach(c => { if (!ch || c.ch.indexOf(ch) >= 0) delete next[c.id]; });
+  return next;
+}
+/* ── your level, the plan and the benchmarks: the score chart ── */
+WIZ_FAMILIES.push(function wizLevel(X, F, add, go) {
+  const M = F.M, P = M.plan, I = F.I, tl = F.tl, ai = F.ai;
+  if (M.level == null || !P) return;
+  const ch = ['trendsMain'], lo = M.spec.lo, level = M.level, rec = F.rec, quota = tl.marks[0];
+  const wAvg = rec.length ? mean(rec.map(a => a.W)) : null;
+  go(() => add({ id: 'stand', ch, kind: 'see', src: 'Level', k: 'Where you stand', worth: Math.max(0.5, quota - level), fig: { n: 'your level', v: wzMk(level) },
+    t: [`The median of ${F.recName} is `, bb(`${wzMk(level)}/120`), `, their average ${wzMk(P.avg)} (${rankText(level)} on CLAT 2025’s actual results). ${tl.name}, your quota, needs about `, bb(`${quota}–${tl.marks[1]}`), `: you are ${gapWord(level, quota)} its low end.${retakeNote(M)}`] }));
+  go(() => {
+    if (M.acc == null) return;
+    const cov = M.cov, acc = M.acc, dAcc = 1.25 * PAPER_MAX * cov / 100, dCov = PAPER_MAX * (1.25 * acc - 0.25) / 100;
+    const gA = 1.25 * PAPER_MAX * cov * Math.max(0, M.accPlan - acc), gC = PAPER_MAX * (1.25 * acc - 0.25) * Math.max(0, 1 - cov);
+    add({ id: 'lever', ch: ch.concat('accCov'), kind: 'act', src: 'Level', k: 'The bigger lever', worth: Math.max(gA, gC) / 2, fig: { n: 'accuracy', v: pct(acc, 0) },
+      t: [`At ${pct(cov, 0)} coverage and ${pct(acc, 0)} accuracy (${F.recName}), a point of accuracy is worth ${dAcc.toFixed(1)} marks and a point of coverage ${dCov.toFixed(1)}. Closing accuracy to the plan’s ${pct(M.accPlan, 0)} is `, bb(`+${wzNum(gA)} a paper`), '; attempting all 120 at today’s accuracy is ', bb(`+${wzNum(gC)}`), `. ${gA >= gC ? 'Accuracy' : 'Coverage'} is the bigger lever.`] });
+  });
+  go(() => {
+    if (wAvg == null || wAvg < 3) return;
+    add({ id: 'tax', ch: ch.concat('marksWent'), kind: 'see', src: 'Marks', k: 'What wrong answers take', worth: wAvg * 0.25, fig: { n: 'wrong answers a paper', v: wzNum(wAvg) },
+      t: ['You average ', bb(`${wzNum(wAvg)} wrong answers`), ` across ${F.recName}: ${wzNum(wAvg * 1.25)} marks gone at 1.25 each, `, bb(`${wzNum(wAvg * 0.25)} of them pure penalty`), ' that a blank would have kept.'] });
+  });
+  go(() => {
+    const B = BENCH.bands2025, b = B.find(([m]) => level >= m), q = B.find(([m]) => quota >= m);
+    if (!b || b[0] >= 90) return;
+    const r = v => INR.format(Math.round(v / 10) * 10), rpm = (b[2] - b[1]) / 5, rq = q && q !== b && q[0] < 90 ? (q[2] - q[1]) / 5 : null;
+    add({ id: 'rankmark', ch, kind: 'odd', src: 'Level', k: 'What one mark buys', worth: 1.6,
+      t: [`On CLAT 2025’s actual results, ${b[0]}–${b[0] + 5} marks spanned AIR ${r(b[1])}–${r(b[2])}: about `, bb(`${r(rpm)} places a mark`), ` where you are, so one wrong answer turned right (+1.25) is about ${r(rpm * 1.25)} places.`, rq ? ` Near your quota’s ${quota} a mark is about ${r(rq)}.` : ''] });
+  });
+  go(() => {
+    const gap = quota - level;
+    if (gap > 0) {
+      const flips = Math.ceil(gap / 1.25 - 1e-9);
+      add({ id: 'flips', ch, kind: 'act', src: 'Level', k: 'The gap, in questions', worth: gap / 2, fig: { n: 'the gap to your quota', v: wzMk(gap) },
+        t: [`You are ${wzMk(gap)} marks short of your quota’s ${quota}. That is `, bb(`${flips} wrong answers turned right`), wAvg != null && wAvg >= flips ? ` out of the ${wzNum(wAvg, 0)} you average` : '', `: about ${wzNum(flips / SECS.length, 1)} a section.`,
+          Math.abs(lo - quota) >= 2 && lo > level ? ` Your target’s low end, ${marks(lo)}, is ${Math.ceil((lo - level) / 1.25 - 1e-9)}.` : ''] });
+    } else add({ id: 'flips', ch, kind: 'see', src: 'Level', k: 'The cushion, in questions', worth: 1,
+      t: [`You are ${wzMk(-gap)} marks above your quota’s ${quota}: a cushion of `, bb(`${Math.floor(-gap / 1.25)} wrong answers`), '.'] });
+  });
+  go(() => {
+    const mo = P.momentum;
+    if (!mo) return;
+    const none = mo.lo < 0 && mo.hi > 0;
+    add({ id: 'pace', ch, kind: 'see', src: 'Trend', k: none ? 'No direction yet' : 'Pace', worth: 3, fig: { n: 'your pace', v: `${signed(mo.perWeek, 1)} a week` },
+      t: none ? [`Over your last ${mo.n} timed papers the line moves `, bb(`${signed(mo.perWeek, 1)} a week`), `, but its 95% range (${signed(mo.lo, 1)} to ${signed(mo.hi, 1)}) spans zero: no direction can be read from it yet. The plan needs +${wzMk(P.perWeek)} a week.`]
+        : ['Your scores have moved ', bb(`${signed(mo.perWeek, 1)} a week`), ` over your last ${mo.n} timed papers (95% range ${signed(mo.lo, 1)} to ${signed(mo.hi, 1)}); the plan needs +${wzMk(P.perWeek)}.`,
+          P.projected ? [' At this pace you would be near ', bb(wzMk(P.projected.level)), ` on exam day, where a paper reaches ${marks(lo)}+ ${pctChance(P.projected.chance)} of the time.`] : ''] });
+  });
+  go(() => {
+    if (!(P.chancePeak < 0.95)) return;
+    const room = M.peak - lo, steadyAt = I.chanceAtLeast(M.peak, lo, 6);
+    /* with one score for a target there is no room above it to be steady in: nothing to say */
+    if (steadyAt - P.chancePeak < 0.03) return;
+    add({ id: 'steady', ch, kind: 'see', src: 'Trend', k: 'Steadiness', worth: Math.max(0.5, (steadyAt - P.chancePeak) * 12), fig: { n: 'your swing', v: `±${wzMk(P.sigma)}` },
+      t: ['Your papers swing about ', bb(`±${wzMk(P.sigma)}`), ' around your level', room > 0 && P.sigma > room ? `, more than the ${wzMk(room)} marks your range leaves above ${marks(lo)}` : '',
+        `. So even at ${wzMk(M.peak)}, a paper lands at ${marks(lo)}+ about `, bb(`${pctChance(P.chancePeak)} of the time`), `; at a steady ±6 it would be ${pctChance(steadyAt)}.`] });
+  });
+  go(() => {
+    /* the bar is your target's low end; where that is still out of sight ten marks on, your quota's */
+    const bar = I.chanceAtLeast(level + 10, lo, P.sigma) >= 0.02 ? lo : quota;
+    if (level >= bar || I.chanceAtLeast(level + 10, bar, P.sigma) < 0.02) return;
+    const c = d => pctChance(I.chanceAtLeast(level + d, bar, P.sigma));
+    add({ id: 'chances', ch, kind: 'if', src: 'Trend', k: 'What five marks of level buy', worth: 1.5,
+      t: [`With papers swinging ±${wzMk(P.sigma)}, the chance that one paper reaches ${bar === lo ? marks(lo) : `your quota’s ${quota}`}: `, bb(c(0)), ` at your ${wzMk(level)}, ${c(5)} at ${wzMk(level + 5)}, ${c(10)} at ${wzMk(level + 10)}.`,
+        bar === lo && quota !== lo ? ` For your quota’s ${quota} it is ${pctChance(I.chanceAtLeast(level, quota, P.sigma))} today.` : ''] });
+  });
+  go(() => {
+    if (rec.length !== 5) return;
+    const w = rec.map(wzScore), keep = w.slice(1).sort((a, b) => a - b), nx = P.next;
+    add({ id: 'window', ch, kind: 'if', src: 'Level', k: 'What your next paper can do', worth: 2.2,
+      t: [`Your next timed paper pushes ${rec[0].short} (${marks(w[0])}) out of your last five. Whatever you score, your level then lands between `, bb(`${marks(keep[1])} and ${marks(keep[2])}`), ': one paper cannot move a median further.',
+        nx && nx.median ? (nx.median.score == null ? ` This week’s goal takes ${nx.median.attempts} papers at ${marks(ceilHalf(nx.target))}+.` : ` ${marks(nx.median.score)}+ on it keeps your level on the ramp.`) : ''] });
+  });
+  go(() => {
+    if (F.win.length < 3) return;
+    const last = F.win[F.win.length - 1];
+    const rows = SECS.map(s => {
+      const xs = F.win.map(a => ({ a, m: secM(a, s.k) })).filter(x => x.m && x.m.exact && x.m.M).sort((p, q) => q.m.pct - p.m.pct);
+      const size = (secM(last, s.k) || {}).M;
+      return xs.length && size ? { s, hi: xs[0], lo: xs[xs.length - 1], size } : null;
     });
-    if (!worst) return null;
-    const allowed = TGT.band('lost')[1] * 10;
-    return [
-      { k: 'Steepest stretch', t: [b(`Q${worst.i + 1}–${worst.i + 10}`), ` in ${worst.a.short} (${worst.s0 === worst.s1 ? SEC_NAME[worst.s0] : `${SEC_NAME[worst.s0]} into ${SEC_NAME[worst.s1]}`}): `, b(`${marks(worst.v)} marks`), ` dropped in 10 questions. Your target allows about ${marks(half(allowed))} per 10.`] },
-      { k: 'Do next', t: ['Click those squares in the question map below to open each question in the paper.'] },
-    ];
-  },
-  qmap(M, L) {
-    const rows = SECS.map(s => ({ s, w: sum(L, a => (decodeLog(a) || []).filter(q => q.sec === s.k && q.out === 'w').length) })).sort((x, y) => y.w - x.w);
-    if (!rows[0] || !rows[0].w) return null;
-    const latest = L[L.length - 1], lw = (decodeLog(latest) || []).filter(q => q.out === 'w').length;
-    return [
-      { k: 'Most wrong', t: [b(`${rows[0].s.name} ${rows[0].w}`), `, then ${rows[1].s.name} ${rows[1].w}, across ${listText(L.map(a => a.short))}.`] },
-      { k: 'This week', t: ['Re-solve the ', b(`${lw} wrong answers`), ` in ${latest.short}${M.thisWeek && M.thisWeek.focus ? `, starting with ${M.thisWeek.focus.s.name}` : ''}. Each square opens its question.`] },
-    ];
-  },
-  guess(M, L) {
-    const gs = L.map(a => ({ a, g: guessStats(a) })).filter(x => x.g && !x.g.none);
-    if (!gs.length) return null;
-    const accs = gs.map(x => x.g.marked.acc).filter(v => v != null);
-    const bad = gs.flatMap(x => x.g.groups.filter(g => g.att >= 3 && g.acc != null && g.acc < 0.2).map(g => ({ a: x.a, g })));
-    const out = [{ k: 'Your guesses', t: ['Marked guesses hit ', b(pctRange(Math.min(...accs), Math.max(...accs))), ' — above the 20% break-even, so each one still adds about ', b(`+${(1.25 * mean(accs) - 0.25).toFixed(2)}`), ' marks on average.'] }];
-    if (bad.length) out.push({ k: 'Stop doing', t: bad.map((x, i) => [i ? '; ' : '', b(`${x.g.tag} ${pct(x.g.acc, 0)}`), ` in ${x.a.short}`]).flat().concat([' — below break-even, so those cost marks. Leave that kind blank.']) });
-    return out;
-  },
-  options(M, L) {
-    let big = null;
-    L.forEach(a => { const os = optionStats(a); if (!os) return; os.rows.forEach(r => { if (!big || Math.abs(r.bias) > Math.abs(big.r.bias)) big = { a, r }; }); });
-    if (!big || Math.abs(big.r.bias) < 4) return null;
-    return [{ k: 'Habit to watch', t: ['In ', b(big.a.short), ` you picked ${big.r.o} `, b(`${Math.abs(big.r.bias)} times ${big.r.bias > 0 ? 'more' : 'fewer'}`), ` than the key had it. When stuck between two options, don’t default to ${big.r.o}.`] }];
-  },
-  pace(M, list) {
-    const iv = list.filter(a => a.intervals && a.intervals.length >= 4);
-    if (!iv.length) return null;
-    const first = mean(iv.map(a => a.intervals[0][0])), last = mean(iv.map(a => a.intervals[a.intervals.length - 1][0]));
-    const mf = mean(iv.map(a => a.intervals[0][3])), ml = mean(iv.map(a => a.intervals[a.intervals.length - 1][3]));
-    const attempted = mean(iv.map(a => sum(a.intervals, x => x[0]))), extra = Math.max(0, Math.round(120 - attempted));
-    const out = [{ k: 'Your pattern', t: ['First 30 minutes: ', b(`${Math.round(first)} questions, ${marks(half(mf))} marks`), '. Last 30: ', b(`${Math.round(last)} questions, ${marks(half(ml))} marks`), '.'] }];
-    if (extra >= 5) out.push({ k: 'Worth fixing', t: [`You attempt about ${Math.round(attempted)} of 120. An even 30 per block adds `, b(`${extra} attempts`), '. If those extra questions go only half right (each then worth +0.375), that is still about ', b(`+${Math.round(extra * 0.375)} marks`), ' a mock; below 20% right they would cost marks.'] });
-    out.push({ k: 'Target', t: ['30 questions and about ', b(`${TGT.value('block')} marks`), ' in every 30-minute block.'] });
-    return out;
-  },
-  secTime(M, list) {
-    const a = list[list.length - 1];
-    const rows = SECS.map(s => ({ s, m: secM(a, s.k) })).filter(r => r.m && r.m.t);
-    if (rows.length < 2) return null;
+    if (rows.some(r => !r)) return;
+    const top = sum(rows, r => r.hi.m.pct * r.size), bot = sum(rows, r => r.lo.m.pct * r.size), scale = PAPER_MAX / sum(rows, r => r.size);
+    const worst = F.win.slice().sort((p, q) => wzScore(p) - wzScore(q))[0];
+    const bestA = F.win.slice().sort((p, q) => wzScore(q) - wzScore(p))[0], near = top * scale - wzScore(bestA) < 3;
+    /* which paper each best came from, papers grouped: "English from M 30; CA/GK and Legal from M 45" */
+    const from = [...new Set(rows.map(r => r.hi.a))].map(a => `${listText(rows.filter(r => r.hi.a === a).map(r => r.s.name))} from ${a.short}`).join('; ');
+    const mine = rows.filter(r => r.hi.a === bestA).length;
+    add({ id: 'ceiling', ch: ch.concat('secProfile'), kind: 'odd', src: 'Level', k: near ? 'Your best paper was nearly your best everything' : 'A paper you have already sat, in pieces', worth: Math.min(6, Math.max(0.5, (top * scale - level) / 3)), fig: { n: 'that paper', v: wzMk(top * scale) },
+      t: [`Your best showing in each section across ${F.winName} adds up to `, bb(`${wzMk(top * scale)}/120`),
+        near ? `, barely above ${bestA.short}’s ${marks(wzScore(bestA))}: ${mine} of the ${rows.length} bests are from that one paper. It was close to everything going right at once, so plan on the median, not on it.`
+          : ` (${from}). You have done every part of that paper, never on the same day.`] });
+    add({ id: 'floor', ch: ch.concat('secProfile'), kind: 'odd', src: 'Level', k: 'The day everything misfires', worth: 1.1,
+      t: [`Your weakest showing in each section across ${F.winName} adds up to `, bb(`${wzMk(bot * scale)}/120`), `. Your lowest actual paper there was ${marks(wzScore(worst))} (${worst.short}), so your bad days do not all land together.`] });
+  });
+  go(() => {
+    if (F.win.length < 3) return;
+    const by = F.win.slice().sort((p, q) => q.m.net - p.m.net), hi = by[0], low = by[by.length - 1];
+    const d = SECS.map(s => { const x = secM(hi, s.k), y = secM(low, s.k); return x && y && x.exact && y.exact ? { s, v: x.net - y.net } : null; }).filter(Boolean).sort((p, q) => q.v - p.v);
+    if (d.length < 3 || hi.m.net - low.m.net < 5) return;
+    add({ id: 'spread', ch: ch.concat('secProfile'), kind: 'odd', src: 'Level', k: 'Best paper against worst', worth: 2,
+      t: [`Your best and worst of ${F.winName}, ${hi.short} (${marks(hi.m.net)}) and ${low.short} (${marks(low.m.net)}), are ${marks(hi.m.net - low.m.net)} marks apart. `, bb(`${d[0].s.name} is ${marks(d[0].v)} of it`), `, ${d[1].s.name} ${marks(d[1].v)}, ${d[2].s.name} ${marks(d[2].v)}.`] });
+  });
+  go(() => {
+    if (rec.length !== 5) return;
+    const w = rec.map(wzScore), i = w.indexOf(Math.max(...w)), rest = w.filter((_, j) => j !== i), med4 = wzMedian(rest), fall = P.med - med4;
+    add({ id: 'holdup', ch, kind: 'odd', src: 'Level', k: 'Without your best paper', worth: 1.5,
+      t: [`Take ${rec[i].short} (${marks(w[i])}) out of your last five and their average drops from ${wzNum(mean(w))} to `, bb(wzNum(mean(rest))), `; the median you are planned from goes from ${marks(P.med)} to ${marks(med4)}.`,
+        fall >= 3 ? ' One paper is holding your level up.' : ' Your level does not hang on your best paper: that is what a median buys.'] });
+  });
+  go(() => {
+    const re = F.timed.filter(a => a.prevSame), fr = F.timed.filter(a => !a.prevSame);
+    if (re.length < 2 || fr.length < 2) return;
+    const mr = mean(re.map(wzScore)), mf = mean(fr.map(wzScore));
+    add({ id: 'seen', ch: ch.concat('retake'), kind: 'see', src: 'Level', k: 'Seen papers and unseen ones', worth: Math.abs(mr - mf) / 3,
+      t: [`${plural(re.length, 'timed paper')} of yours ${re.length === 1 ? 'was one' : 'were ones'} you had sat before (${listText(re.map(a => a.short))}): they average `, bb(wzNum(mr)), ', against ', bb(wzNum(mf)), ` on the ${fr.length} you had not seen. Judge your level on the unseen ones.`] });
+  });
+  go(() => {
+    const ts = F.timed.map(a => isoUTC(a.date)), n14 = ts.filter(t => t > X.now - 14 * DAY && t <= X.now).length;
+    if (n14 < 2 || M.daysLeft <= 0) return;
+    const lastN = ts.slice(-6), g = (lastN[lastN.length - 1] - lastN[0]) / DAY / (lastN.length - 1);
+    if (!(g > 0)) return;
+    const left = Math.floor(M.daysLeft / g);
+    add({ id: 'cadence', ch, kind: 'see', src: 'Level', k: 'Your rhythm', worth: 1, fp: `${n14}|${Math.round(g * 2)}|${Math.round(left / 5)}`,
+      t: ['You have sat ', bb(`${n14} timed papers in the last 14 days`), `, one every ${wzNum(g)} days. Held to exam day that is about ${left} more: your last-five window would turn over ${Math.floor(left / 5)} times.`] });
+  });
+  go(() => {
+    const r = s => s.ranks.map(x => INR.format(x[1])).join(', ');
+    add({ id: 'quota-ai', ch, kind: 'see', src: 'Level', k: 'What domicile is worth', worth: 0.8,
+      t: [`${tl.name} closed at AIR ${r(tl)} and needs about ${quota}–${tl.marks[1]}; ${ai.name} closed at AIR ${r(ai)} and needs ${ai.marks[0]}–${ai.marks[1]}. Your quota is the nearer door by about `, bb(`${ai.marks[0] - quota} marks`), '.'] });
+  });
+  go(() => {
+    if (F.timed.length < 6) return;
+    const s = F.timed.map(wzScore), hit = F.timed.filter(a => wzScore(a) >= quota);
+    add({ id: 'range', ch, kind: 'odd', src: 'Level', k: 'The spread of your papers', worth: 1,
+      t: [`Your ${F.timed.length} timed papers run from ${marks(Math.min(...s))} to ${marks(Math.max(...s))}; the middle half sit between `, bb(`${wzMk(wzQuant(s, 0.25))} and ${wzMk(wzQuant(s, 0.75))}`), '. ',
+        hit.length ? `${hit.length} reached your quota’s ${quota}${hit.length <= 3 ? ` (${listText(hit.map(a => `${a.short} ${marks(wzScore(a))}`))})` : ''}.` : `None has reached your quota’s ${quota} yet.`] });
+  });
+  go(() => {
+    const T = F.timed, s = T.map(wzScore);
+    if (T.length < 6) return;
+    const cut = wzQuant(s, 2 / 3), pairs = T.map((a, i) => ({ a, i })).filter(x => s[x.i] >= cut && x.i < T.length - 1).map(x => ({ a: x.a, b: T[x.i + 1], d: s[x.i + 1] - s[x.i] }));
+    if (pairs.length < 2 || !pairs.every(p => p.d < 0)) return;
+    add({ id: 'afterbest', ch, kind: 'odd', src: 'Trend', k: 'After a best paper', worth: 1.2,
+      t: [`After each of your ${pairs.length} best papers the next one scored lower, by `, bb(`${wzNum(-mean(pairs.map(p => p.d)))} marks on average`), ` (${pairs.slice(-3).map(p => `${p.a.short} ${marks(wzScore(p.a))} → ${p.b.short} ${marks(wzScore(p.b))}`).join('; ')}). That is swing, not decline: a best paper is partly a kind one.`] });
+  });
+  go(() => {
+    const g = new Map();
+    F.timed.forEach(a => { const k = wzSource(a); if (k) g.set(k, (g.get(k) || []).concat(a)); });
+    const rows = [...g.entries()].filter(([, l]) => l.length >= 2).map(([k, l]) => { const s = l.map(wzScore); return { k: k === 'CLAT' ? 'CLAT’s own papers' : `${k} mocks`, n: l.length, mean: mean(s), lo: Math.min(...s), hi: Math.max(...s) }; });
+    if (rows.length < 2) return;
+    const wide = rows.slice().sort((p, q) => (q.hi - q.lo) - (p.hi - p.lo))[0];
+    add({ id: 'sources', ch, kind: 'odd', src: 'Level', k: 'By who set the paper', worth: 1,
+      t: [rows.map(r => `${r.k}: ${r.n}, average ${wzNum(r.mean)} (${marks(r.lo)}–${marks(r.hi)})`).join('. '), '. ', bb(`${wide.k[0].toUpperCase()}${wide.k.slice(1)} swing widest`), ` for you, ${marks(wide.hi - wide.lo)} marks from worst to best.`] });
+  });
+  go(() => {
+    const w0 = mondayOf(X.now), inW = (a, s) => { const t = isoUTC(a.date); return t >= s && t < s + 7 * DAY; };
+    const now = F.timed.filter(a => inW(a, w0)), prev = F.timed.filter(a => inW(a, w0 - 7 * DAY));
+    if (!now.length || !prev.length) return;
+    const m1 = mean(now.map(wzScore)), m0 = mean(prev.map(wzScore));
+    add({ id: 'week', ch, kind: 'see', src: 'Trend', k: 'This week against last', worth: 0.9,
+      t: [`This week: ${plural(now.length, 'timed paper')}, ${listText(now.map(a => marks(wzScore(a))))}${now.length > 1 ? `, averaging ${wzNum(m1)}` : ''}. Last week: ${prev.length}, averaging ${wzNum(m0)}. `, bb(`${wzSigned(m1 - m0)} marks`), ' week on week.'] });
+  });
+  go(() => {
+    if (M.acc == null || level >= quota) return;
+    const need = c => (quota / PAPER_MAX / c + 0.25) / 1.25, at = need(M.cov), full = need(1);
+    add({ id: 'accneed', ch: ch.concat('accCov'), kind: 'if', src: 'Level', k: 'What your quota asks of each answer', worth: 2,
+      t: at > 1 ? [`At your ${pct(M.cov, 0)} coverage, your quota’s ${quota} is out of reach even with every answer right. Attempt all 120 and it needs `, bb(`${pct(full, 0)} accuracy`), `; you are at ${pct(M.acc, 0)}.`]
+        : [`For your quota’s ${quota} at your ${pct(M.cov, 0)} coverage you need `, bb(`${pct(at, 0)} accuracy`), `; attempt all 120 and it falls to ${pct(full, 0)}. You are at ${pct(M.acc, 0)}.`] });
+  });
+});
+/* ── where the marks went, and the two bars: accuracy and coverage ── */
+WIZ_FAMILIES.push(function wizLoss(X, F, add, go) {
+  const M = F.M, rec = F.rec, lo = M.spec.lo, T = F.timed;
+  if (!rec.length) return;
+  const ch = ['marksWent'], gap = mean(rec.map(a => a.m.gap)), wc = mean(rec.map(a => a.m.wrongCost)), sk = mean(rec.map(a => a.m.skipCost)), wAvg = mean(rec.map(a => a.W));
+  go(() => {
+    if (!(gap > 0)) return;
+    add({ id: 'loss', ch, kind: 'see', src: 'Marks', k: 'What you drop', worth: gap / 8, fig: { n: 'marks dropped a paper', v: wzNum(gap) },
+      t: [`Across ${F.recName} you drop `, bb(`${wzNum(gap)} marks a paper`), `: ${wzNum(wc)} (${pct(wc / gap, 0)}) to wrong answers, ${wzNum(sk)} to blanks.`] });
+  });
+  F.win.slice(-2).forEach(a => go(() => {
+    const rows = SECS.map(s => ({ s, m: secM(a, s.k) })).filter(r => r.m && r.m.exact).map(r => Object.assign(r, { lost: r.m.lost })).sort((p, q) => q.lost - p.lost), tot = sum(rows, r => r.lost), Mq = sum(rows, r => r.m.M);
+    if (rows.length < 3 || !(tot > 0)) return;
+    add({ id: `losssec:${a.id}`, ch: ch.concat('secTrend'), kind: 'see', src: 'Marks', k: `Where ${a.short} leaked`, worth: 1.5,
+      t: [`In ${a.short}, ${rows[0].s.name} dropped `, bb(`${marks(rows[0].lost)} of your ${marks(tot)} lost marks`), ` (${pct(rows[0].lost / tot, 0)}) from ${pct(rows[0].m.M / Mq, 0)} of the paper; ${rows[1].s.name} ${marks(rows[1].lost)}, ${rows[2].s.name} ${marks(rows[2].lost)}.`] });
+  }));
+  T.slice(-4).forEach((cur, i, l) => go(() => {
+    const prev = l[i - 1];
+    if (!prev) return;
+    const dA = cur.m.att - prev.m.att, dC = cur.C - prev.C, dW = cur.W - prev.W, net = dC - 0.25 * dW;
+    /* only where you answered more and the extra answers split into more right and more wrong: then what
+       they brought is a fair question. Anything else is one paper going better or worse than another. */
+    if (dA < 3 || dC < 0 || dW < 0) return;
+    add({ id: `marginal:${prev.id}>${cur.id}`, ch: ch.concat('accCov'), kind: 'odd', src: 'Marks', k: 'What the extra answers brought', worth: Math.min(3, Math.abs(net) / 2 + 0.5),
+      t: [`From ${prev.short} to ${cur.short} you answered ${dA} more questions: ${dC} more right and ${dW} more wrong, `, bb(`${pct(dC / dA, 0)} of the extra`), `. Net ${net < 0 ? MINUS : '+'}${wzMw(Math.abs(net))}. Different papers, so a signal, not a law.`] });
+  }));
+  go(() => {
+    const low = F.win.flatMap(a => SECS.map(s => ({ a, s, m: secM(a, s.k) }))).filter(r => r.m && r.m.exact && r.m.att >= 8 && r.m.acc <= 0.3).sort((p, q) => p.m.acc - q.m.acc).slice(0, 3);
+    low.forEach(r => add({ id: `breakeven:${r.a.id}:${r.s.k}`, ch: ch.concat('secTrend'), kind: 'odd', src: 'Marks', k: 'Near the line where answering stops paying', worth: 1.5,
+      t: [`${r.s.name} in ${r.a.short}: ${r.m.C} right of ${r.m.att} answered, ${pct(r.m.acc, 0)}. Below 20% an answer costs more than it earns: those ${r.m.att} answers made `, bb(wzMw(r.m.net)), '.'] }));
+  });
+  go(() => {
+    const allow = PAPER_MAX - lo;
+    if (!(gap > allow)) return;
+    add({ id: 'allowance', ch, kind: 'see', src: 'Marks', k: 'What your target allows', worth: Math.max(0.5, (gap - allow) / 4),
+      t: [`Your target’s low end allows ${marks(allow)} marks dropped in a paper. You drop ${wzNum(gap)}, ${wzNum(wc)} of it in wrong answers: even with no blank left, wrong answers would have to fall from ${wzNum(wAvg)} to `, bb(`${Math.floor(allow / 1.25)} or fewer`), '.'] });
+  });
+  go(() => {
+    const rows = F.sec.filter(r => r.att > 0), S = sum(rows, r => r.S / r.n), val = sum(rows, r => (r.S / r.n) * (1.25 * r.acc - 0.25));
+    if (S < 3) return;
+    add({ id: 'blankvalue', ch: ch.concat('accCov'), kind: 'if', src: 'Marks', k: 'What your blanks are worth', worth: Math.max(0.5, val / 1.5), fig: { n: 'blanks a paper', v: wzNum(S) },
+      t: ['You leave ', bb(`${wzNum(S)} questions blank a paper`), ` (${F.winName}). Answered at your own accuracy in each section they are worth about `, bb(`${wzSigned(val)} marks`), `; narrowed to two options and tossed, ${wzSigned(S * 0.375)}.`] });
+  });
+  go(() => {
+    if (T.length < 6) return;
+    const a = T.slice(-3), z = T.slice(-6, -3), f = (l, g) => mean(l.map(x => g(x) / x.M));
+    const w1 = f(a, x => x.m.wrongCost), w0 = f(z, x => x.m.wrongCost), b1 = f(a, x => x.m.skipCost), b0 = f(z, x => x.m.skipCost);
+    const dir = d => (d > 0.01 ? 1 : d < -0.01 ? -1 : 0), dw = dir(w1 - w0), db = dir(b1 - b0), word = d => (d > 0 ? 'are up' : d < 0 ? 'are down' : 'held');
+    if (!dw && !db) return;
+    const verdict = dw > 0 && db < 0 ? 'You are trading blanks for wrong answers.' : dw < 0 && db > 0 ? 'You are trading wrong answers for blanks.' : `Wrong answers ${word(dw)}; blanks ${word(db)}.`;
+    add({ id: 'trade', ch, kind: 'see', src: 'Marks', k: 'Wrong answers against blanks', worth: Math.abs((w1 + b1) - (w0 + b0)) * PAPER_MAX / 3 + 0.5,
+      t: [`In your last 3 timed papers wrong answers took ${pct(w1, 0)} of the paper and blanks ${pct(b1, 0)}; in the 3 before, ${pct(w0, 0)} and ${pct(b0, 0)}. `, bb(verdict)] });
+  });
+  go(() => {
+    if (T.length < 4) return;
+    const by = T.slice().sort((p, q) => q.W - p.W), hi = by[0], low = by[by.length - 1];
+    add({ id: 'costliest', ch, kind: 'odd', src: 'Marks', k: 'Your costliest paper', worth: 1,
+      t: [`For wrong answers, your costliest timed paper is ${hi.short}: `, bb(`${hi.W} wrong, ${marks(hi.m.wrongCost)} marks`), `. Your cleanest is ${low.short} with ${low.W} (${marks(low.m.wrongCost)}).`] });
+  });
+  go(() => {
+    const clean = F.cnt.flatMap(a => SECS.map(s => ({ a, s, m: secM(a, s.k) }))).filter(r => r.m && r.m.exact && r.m.W === 0 && r.m.att >= 10);
+    if (!clean.length) return;
+    const l = clean.slice(-3);
+    add({ id: 'clean', ch: ch.concat('secProfile'), kind: 'odd', src: 'Marks', k: 'Sections without a wrong answer', worth: 0.6,
+      t: [`${plural(clean.length, 'section')} on record with no wrong answer: `, bb(l.map(r => `${r.s.name} in ${r.a.short}, ${r.m.C} of ${r.m.att}`).join('; ')), clean.length > l.length ? ' (the latest three).' : '.'] });
+  });
+  go(() => {
+    const x = F.penWin[F.penWin.length - 1];
+    if (!x) return;
+    const bl = x.d.questions.filter(q => q.outcome === 'skipped'), worked = bl.filter(q => q.totalActiveTimeMs > 5000);
+    if (bl.length < 3) return;
+    add({ id: `seenblank:${x.a.id}`, ch: ch.concat('accCov'), kind: 'see', src: 'Marks', k: `The blanks in ${x.a.short}`, worth: 0.375 * worked.length + 0.3,
+      t: [`Of your ${bl.length} blanks in ${x.a.short}, ${bl.length - worked.length} you never worked on and `, bb(`${worked.length} you worked on and left`), worked.length ? `: ${wzClock(sum(worked, q => q.totalActiveTimeMs))} spent on questions that scored nothing.` : '.'] });
+  });
+});
+
+WIZ_FAMILIES.push(function wizCover(X, F, add, go) {
+  const M = F.M, rec = F.rec, lo = M.spec.lo, T = F.timed, I = F.I, ch = ['accCov'];
+  go(() => {
+    if (rec.length < 3) return;
+    const ac = rec.map(a => a.m.acc), cv = rec.map(a => a.m.cov), mA = mean(ac), mC = mean(cv);
+    const dA = 1.25 * PAPER_MAX * mC * (Math.max(...ac) - Math.min(...ac)), dC = PAPER_MAX * (1.25 * mA - 0.25) * (Math.max(...cv) - Math.min(...cv));
+    add({ id: 'ranges', ch, kind: 'see', src: 'Coverage', k: 'Which bar moves your score', worth: 2,
+      t: [`Across ${F.recName} accuracy ran ${pctRange(Math.min(...ac), Math.max(...ac))} and coverage ${pctRange(Math.min(...cv), Math.max(...cv))}. At your averages, accuracy’s range is worth `, bb(`${wzNum(dA)} marks`), ` and coverage’s ${wzNum(dC)}: your score follows ${dA >= dC ? 'accuracy' : 'coverage'}.`] });
+  });
+  go(() => {
+    if (T.length < 6) return;
+    const by = T.slice().sort((p, q) => p.m.cov - q.m.cov), h = by.length >> 1, thin = by.slice(0, h), full = by.slice(-h);
+    const aT = sum(thin, a => a.m.att), aF = sum(full, a => a.m.att), dAtt = aF - aT, dC = sum(full, a => a.C) - sum(thin, a => a.C);
+    if (dAtt < 8 * h) return;
+    const m = dC / dAtt, per = (dC - 0.25 * (dAtt - dC)) / h, ols = I.olsSlope(T.map(a => a.m.att / a.M * PAPER_MAX), T.map(wzScore));
+    add({ id: 'extra', ch: ch.concat('trendsMain'), kind: 'odd', src: 'Coverage', k: 'What the extra answers are worth', worth: 3, fig: { n: 'right among the extra answers', v: pct(m, 0) },
+      t: [`Your ${h} fullest timed papers hold ${aF} answers, your ${h} thinnest ${aT}. The ${dAtt} extra answers brought ${dC >= 0 ? `${dC} more right` : `${-dC} fewer right`}: `,
+        bb(`${pct(m, 0)} of them, ${wzSigned(per)} marks a paper`), '.',
+        ols && isFinite(ols.slope) ? ` Paper by paper, each extra answer has gone with ${wzSigned(ols.slope, 2)} marks (95% ${wzSigned(ols.lo, 2)} to ${wzSigned(ols.hi, 2)}).` : '', ' Different papers, so a signal, not a law.'] });
+  });
+  go(() => {
+    if (T.length < 4) return;
+    const by = T.filter(a => a.m.perAtt != null).sort((p, q) => q.m.perAtt - p.m.perAtt), hi = by[0], low = by[by.length - 1];
+    add({ id: 'efficiency', ch, kind: 'odd', src: 'Coverage', k: 'Marks per answer', worth: 1,
+      t: [`Per question answered, your best timed paper returned ${hi.m.perAtt.toFixed(2)} marks (${hi.short}) and your worst ${low.m.perAtt.toFixed(2)} (${low.short}). Your target’s low end needs `, bb(`${(lo / PAPER_MAX).toFixed(2)} on all 120`), '.'] });
+  });
+  go(() => {
+    const L = T[T.length - 1];
+    if (!L || rec.length < 3 || L.m.acc == null) return;
+    const bA = rec.slice().sort((p, q) => q.m.acc - p.m.acc)[0], bC = rec.slice().sort((p, q) => q.m.cov - p.m.cov)[0];
+    const f = (c, a) => PAPER_MAX * c * (1.25 * a - 0.25), sA = f(L.m.cov, bA.m.acc), sC = f(bC.m.cov, L.m.acc), now = wzScore(L);
+    if (bA === L && bC === L) return;
+    add({ id: `identity:${L.id}`, ch, kind: 'if', src: 'Coverage', k: `${L.short}, with your own bests`, worth: Math.max(0.5, (Math.max(bA === L ? 0 : sA, bC === L ? 0 : sC) - now) / 4),
+      t: [`${L.short}: ${pct(L.m.cov, 0)} coverage at ${pct(L.m.acc, 0)} accuracy made ${marks(now)}.`,
+        bA === L ? '' : [` The same coverage at your best recent accuracy (${pct(bA.m.acc, 0)}, ${bA.short}) is `, bb(wzMk(sA)), '.'],
+        bC === L ? '' : [` The same accuracy at your best recent coverage (${pct(bC.m.cov, 0)}, ${bC.short}) is `, bb(wzMk(sC)), '.'],
+        bA === L ? ' It was your most accurate paper of the five.' : bC === L ? ' It was your fullest paper of the five.' : ''] });
+  });
+  go(() => {
+    const rows = F.sec.filter(r => r.M > 0).map(r => Object.assign({ cov: r.att / r.M }, r)).sort((p, q) => p.cov - q.cov), w = rows[0];
+    if (rows.length < 3) return;
+    const rest = rows.slice(1), cr = sum(rest, r => r.att) / sum(rest, r => r.M);
+    if (!(w.cov < cr - 0.08)) return;
+    add({ id: 'seccov', ch: ch.concat('secTrend'), kind: 'see', src: 'Coverage', k: 'Where your blanks sit', worth: Math.max(0.5, (w.S / w.n) * Math.max(0, 1.25 * (w.acc || 0) - 0.25)), fig: { n: `${w.s.name} answered`, v: pct(w.cov, 0) },
+      t: [`Your blanks sit in ${w.s.name}: `, bb(`${pct(w.cov, 0)} answered`), ` over ${F.winName} (${w.att} of ${w.M}), against ${pct(cr, 0)} everywhere else.`,
+        w.acc != null ? ` At your ${w.s.name} accuracy (${pct(w.acc, 0)}) each of those blanks is worth ${wzSigned(1.25 * w.acc - 0.25, 2)} if answered.` : ''] });
+  });
+  go(() => {
+    const full = T.filter(a => a.S <= 2);
+    if (full.length < 2) return;
+    const s = full.map(wzScore);
+    add({ id: 'fullpapers', ch, kind: 'odd', src: 'Coverage', k: 'When you answer everything', worth: 0.7,
+      t: [`You have answered every question, or all but two, in ${full.length} timed papers: ${full.slice(-4).map(a => `${a.short} ${marks(wzScore(a))}`).join(', ')}. `, bb(`Full coverage has meant anything from ${marks(Math.min(...s))} to ${marks(Math.max(...s))}`), ': it is accuracy that decides which.'] });
+  });
+});
+/* ── the five sections ── */
+const wzOrd = n => ['first', 'second', 'third', 'fourth', 'fifth'][n - 1] || `${n}th`;
+WIZ_FAMILIES.push(function wizSections(X, F, add, go) {
+  const M = F.M, I = F.I, S = F.sec, ch = ['secTrend', 'secProfile'], n = F.win.length;
+  if (!S.length) return;
+  const answered = S.filter(r => r.att >= 10);
+  go(() => {
+    const top = M.levers.slice(0, 3);
+    if (!top.length || top[0].gain < 0.5) return;
+    add({ id: 'levers', ch, kind: 'act', src: 'Sections', k: 'Next marks come from', worth: top[0].gain, fig: { n: `${top[0].s.name}’s lever`, v: `+${top[0].gain.toFixed(1)}` },
+      t: [`If every section reached ${pct(M.accLever, 0)} accuracy${M.accLever < M.accPlan ? '' : ', your plan’s level'}: `, ...top.flatMap((l, i) => [i ? ', ' : '', bb(`${l.s.name} +${l.gain.toFixed(1)}`)]), ` marks a paper, at the rate you answer them in ${M.leverFrom}.`] });
+  });
+  go(() => {
+    const w = answered.slice().sort((p, q) => p.acc - q.acc)[0], ci = w ? I.wilson(w.C, w.att) : null;
+    if (!w) return;
+    add({ id: 'weakest', ch, kind: 'see', src: 'Sections', k: 'Weakest', worth: 1.4, fig: { n: `${w.s.name} accuracy`, v: pct(w.acc, 0) },
+      t: [bb(`${w.s.name} ${pct(w.acc, 0)}`), ` is your lowest section across ${F.winName}: ${w.C} right of ${w.att} answered${ci && ci.lo != null ? `, a 95% range of ${pctRange(ci.lo, ci.hi)}` : ''}.`] });
+  });
+  go(() => {
+    if (answered.length < 3) return;
+    const by = answered.slice().sort((p, q) => q.acc - p.acc), hi = by[0], lo = by[by.length - 1], at = answered.filter(r => r.acc >= M.accPlan).length;
+    add({ id: 'shape', ch, kind: 'see', src: 'Sections', k: 'Your shape', worth: 1.2,
+      t: ['Strongest ', bb(`${hi.s.name} ${pct(hi.acc, 0)}`), ', weakest ', bb(`${lo.s.name} ${pct(lo.acc, 0)}`), `: a ${Math.round((hi.acc - lo.acc) * 100)}-point spread across ${F.winName}.`] });
+    add({ id: 'targetshape', ch, kind: 'see', src: 'Sections', k: 'Target shape', worth: 1.3,
+      t: [`For ${marks(M.peak)}/120 at your coverage, every section needs about `, bb(`${pct(M.accPlan, 0)} accuracy`), `. ${at ? `${at} of your ${answered.length} sections ${at === 1 ? 'is' : 'are'} there` : `None of your ${answered.length} sections is there yet`}. A flatter line at that height beats one great section.`] });
+  });
+  go(() => {
+    const last3 = F.cnt.slice(-3);
+    if (last3.length < 3) return;
+    SECS.forEach(s => {
+      const ms = last3.map(a => secM(a, s.k));
+      if (ms.some(m => !m || !m.exact || m.att < 5)) return;
+      const v = ms.map(m => m.acc), dir = v[0] > v[1] && v[1] > v[2] ? -1 : v[0] < v[1] && v[1] < v[2] ? 1 : 0;
+      if (!dir || Math.abs(v[2] - v[0]) < 0.1) return;
+      add({ id: `sectrend:${s.k}`, ch, kind: 'see', src: 'Sections', k: `${s.name}, three papers running`, worth: Math.abs(v[2] - v[0]) * ms[2].att * 1.25 / 2,
+        t: [`${s.name} accuracy ${dir < 0 ? 'fell' : 'rose'} in each of your last three timed papers: `, bb(v.map(x => pct(x, 0)).join(' → ')), ` (${last3.map(a => a.short).join(', ')}). Different papers, so part of it is the paper.`] });
+    });
+  });
+  go(() => {
+    const L = F.cnt[F.cnt.length - 1], pool = F.cnt.slice(-8);
+    if (!L || pool.length < 3) return;
+    SECS.forEach(s => {
+      /* your best on a paper you had not seen before, where there is one */
+      const cands = pool.map(a => ({ a, m: secM(a, s.k) })).filter(x => x.m && x.m.exact && x.m.att >= 8), unseen = cands.filter(x => !x.a.prevSame);
+      const now = secM(L, s.k), best = (unseen.length ? unseen : cands).sort((p, q) => q.m.acc - p.m.acc)[0];
+      if (!now || !now.exact || now.att < 5 || !best || best.a === L) return;
+      const d = (best.m.acc - now.acc) * now.att * 1.25;
+      if (d < 2) return;
+      add({ id: `secbest:${s.k}`, ch, kind: 'odd', src: 'Sections', k: `${s.name} at your own best`, worth: d / 2,
+        t: [`${s.name}: ${pct(now.acc, 0)} in ${L.short} (${now.C} of ${now.att}). You held `, bb(`${pct(best.m.acc, 0)} in ${best.a.short}`), ` (${best.m.C} of ${best.m.att}). The same section at your own best is `, bb(`${wzSigned(d)} marks`), '.'] });
+    });
+  });
+  go(() => {
+    const by = S.filter(r => r.M > 0).map(r => ({ r, v: r.net / r.M })).sort((p, q) => q.v - p.v);
+    if (by.length < 3) return;
+    add({ id: 'return', ch, kind: 'see', src: 'Sections', k: 'Marks per question, by section', worth: 1.2,
+      t: [`Marks per question on the paper, across ${F.winName}: `, bb(`${by[0].r.s.name} ${by[0].v.toFixed(2)}`), by.slice(1, -1).map(x => `, ${x.r.s.name} ${x.v.toFixed(2)}`).join(''), ', ', bb(`${by[by.length - 1].r.s.name} ${by[by.length - 1].v.toFixed(2)}`), '.'] });
+    const net = sum(by, x => x.r.net), Mq = sum(by, x => x.r.M), two = by.slice().sort((p, q) => q.r.net - p.r.net).slice(0, 2);
+    if (net > 0) add({ id: 'carry', ch, kind: 'odd', src: 'Sections', k: 'What carries your score', worth: 1,
+      t: [`${two[0].r.s.name} and ${two[1].r.s.name} bring `, bb(`${pct((two[0].r.net + two[1].r.net) / net, 0)} of your marks`), ` from ${pct((two[0].r.M + two[1].r.M) / Mq, 0)} of the paper (${F.winName}).`] });
+  });
+  go(() => {
+    const totW = sum(S, r => r.W), Mq = sum(S, r => r.M);
+    if (totW < 20) return;
+    const w = S.filter(r => r.W >= 8).map(r => ({ r, sw: r.W / totW, sq: r.M / Mq })).sort((p, q) => q.sw / q.sq - p.sw / p.sq)[0];
+    if (!w || w.sw <= w.sq + 0.03) return;
+    add({ id: 'wrongshare', ch, kind: 'see', src: 'Sections', k: 'Where your wrong answers gather', worth: (w.sw - w.sq) * totW / n * 1.25 / 2 + 0.5,
+      t: [`${w.r.s.name} holds ${pct(w.sq, 0)} of the questions and `, bb(`${pct(w.sw, 0)} of your wrong answers`), ` (${w.r.W} of ${totW} across ${F.winName}).`] });
+  });
+  go(() => {
+    const os = F.cnt.filter(a => Array.isArray(a.order) && a.order.length >= 4);
+    if (os.length < 3) return;
+    const lastOf = a => a.order[a.order.length - 1], tally = {};
+    os.forEach(a => { tally[lastOf(a)] = (tally[lastOf(a)] || 0) + 1; });
+    const k = Object.keys(tally).sort((p, q) => tally[q] - tally[p])[0], when = os.filter(a => lastOf(a) === k), other = os.filter(a => lastOf(a) !== k);
+    const p = l => pooledSec(l, k), a = p(when), z = p(other);
+    if (!a.M) return;
+    add({ id: 'lastsec', ch: ch.concat('secTime'), kind: 'odd', src: 'Sections', k: 'The section you sit last', worth: 1.5,
+      t: [`${SEC_NAME[k]} came last in ${when.length} of your ${os.length} timed papers with a recorded order: there you answered `, bb(`${pct(a.att / a.M, 0)} of it at ${pct(a.acc, 0)}`), '.',
+        z.M && z.att ? ` When it was not last (${listText(other.map(x => x.short))}): ${pct(z.att / z.M, 0)} at ${pct(z.acc, 0)}. Few papers, so a lead, not a finding.` : ''] });
+    /* a paper sat in another order than usual */
+    const usual = {}; SECS.forEach(s => { const ps = os.map(x => x.order.indexOf(s.k)).filter(i => i >= 0).sort((u, v) => u - v); usual[s.k] = ps.length ? ps[ps.length >> 1] : null; });
+    const odd = os.slice().reverse().map(x => ({ x, mv: SECS.map(s => ({ s, d: Math.abs(x.order.indexOf(s.k) - usual[s.k]), at: x.order.indexOf(s.k) })).filter(r => r.at >= 0 && usual[r.s.k] != null).sort((u, v) => v.d - u.d)[0] })).find(r => r.mv && r.mv.d >= 2);
+    if (!odd) return;
+    const here = secM(odd.x, odd.mv.s.k), rest = pooledSec(os.filter(x => x !== odd.x), odd.mv.s.k);
+    if (!here || !here.exact || here.att < 5 || !rest.att || Math.abs(here.acc - rest.acc) < 0.15) return;
+    add({ id: `moved:${odd.x.id}`, ch, kind: 'odd', src: 'Sections', k: 'A section sat out of its usual place', worth: 1.5,
+      t: [`In ${odd.x.short} you sat ${odd.mv.s.name} ${wzOrd(odd.mv.at + 1)} instead of ${wzOrd(usual[odd.mv.s.k] + 1)}: `, bb(`${here.C} of ${here.att} right (${pct(here.acc, 0)})`), `, against ${pct(rest.acc, 0)} in your other papers. One paper, so a lead, not a finding.`] });
+  });
+  go(() => M.levers.filter(l => l.gain >= 1).forEach(l => {
+    const now = l.att * l.acc, more = Math.ceil(l.att * M.accLever - now - 1e-9);
+    if (more < 1) return;
+    add({ id: `flip:${l.s.k}`, ch, kind: 'act', src: 'Sections', k: `${l.s.name}, in right answers`, worth: l.gain * 0.8,
+      t: [`${l.s.name}: about ${wzNum(now)} right of ${wzNum(l.att)} answered a paper (${M.leverFrom}). The plan’s ${pct(M.accLever, 0)} is `, bb(`${more} more right ${more === 1 ? 'answer' : 'answers'}`), `, worth +${l.gain.toFixed(1)}.`] });
+  }));
+  go(() => {
+    const by = S.filter(r => r.att > 0).map(r => ({ r, att: r.att / r.n, v: 1.25 * r.att / r.n / 100 })).sort((p, q) => q.v - p.v);
+    if (by.length < 3) return;
+    const hi = by[0], lo = by[by.length - 1];
+    add({ id: 'pointvalue', ch, kind: 'see', src: 'Sections', k: 'What a point of accuracy is worth', worth: 1.5,
+      t: [`A point of accuracy is worth ${hi.v.toFixed(2)} marks in ${hi.r.s.name} (${wzNum(hi.att, 0)} answers a paper) and ${lo.v.toFixed(2)} in ${lo.r.s.name} (${wzNum(lo.att, 0)}): the same gain pays `, bb(`${wzNum(hi.v / lo.v)}× more in ${hi.r.s.name}`), '.'] });
+  });
+  go(() => {
+    const w = answered.slice().sort((p, q) => p.acc - q.acc)[0], top = M.levers[0];
+    if (!w || !top || top.s.k === w.s.k) return;
+    const rank = M.levers.findIndex(l => l.s.k === w.s.k), lv = M.levers[rank];
+    if (rank < 1 || !lv) return;
+    add({ id: 'weaknotbig', ch, kind: 'odd', src: 'Sections', k: 'Weakest is not biggest', worth: 1.5,
+      t: [`${w.s.name} is your weakest section (${pct(w.acc, 0)}) but only your ${wzOrd(rank + 1)} biggest lever (+${lv.gain.toFixed(1)}): it is ${wzNum(lv.att, 0)} answers a paper. `, bb(`${top.s.name} at ${pct(top.acc, 0)} holds +${top.gain.toFixed(1)}`), '.'] });
+  });
+  go(() => {
+    if (n < 3) return;
+    const rows = SECS.map(s => { const v = F.win.map(a => secM(a, s.k)).filter(m => m && m.exact && m.att >= 5); return v.length >= 3 ? { s, lo: Math.min(...v.map(m => m.acc)), hi: Math.max(...v.map(m => m.acc)), nlo: Math.min(...v.map(m => m.net)), nhi: Math.max(...v.map(m => m.net)) } : null; }).filter(Boolean);
+    if (rows.length < 3) return;
+    const byA = rows.slice().sort((p, q) => (p.hi - p.lo) - (q.hi - q.lo)), byN = rows.slice().sort((p, q) => (q.nhi - q.nlo) - (p.nhi - p.nlo));
+    add({ id: 'secsteady', ch, kind: 'see', src: 'Sections', k: 'Steady and volatile', worth: 1,
+      t: [`Across ${F.winName} your steadiest section is `, bb(`${byA[0].s.name} (${pctRange(byA[0].lo, byA[0].hi)})`), ' and your most volatile ', bb(`${byA[byA.length - 1].s.name} (${pctRange(byA[byA.length - 1].lo, byA[byA.length - 1].hi)})`), '.'] });
+    const a = byN[0], z = byN[byN.length - 1];
+    add({ id: 'swing', ch: ch.concat('trendsMain'), kind: 'odd', src: 'Sections', k: 'The section that moves your total', worth: (a.nhi - a.nlo) / 5,
+      t: [`Across ${F.winName} ${a.s.name} moved your total most: from ${marks(a.nlo)} to ${marks(a.nhi)} marks, `, bb(`a ${marks(a.nhi - a.nlo)}-mark range`), `. ${z.s.name} moved it least (${marks(z.nlo)}–${marks(z.nhi)}).`] });
+  });
+  go(() => {
+    if (answered.length < 3) return;
+    const by = answered.slice().sort((p, q) => p.acc - q.acc), w = by[0], mid = by[by.length >> 1], best = by[by.length - 1];
+    const g1 = (w.att / w.n) * 1.25 * (mid.acc - w.acc), g2 = sum(by, r => (r.att / r.n) * 1.25 * (best.acc - r.acc));
+    if (g1 < 0.5) return;
+    add({ id: 'flat', ch, kind: 'if', src: 'Sections', k: 'A flatter line', worth: g1,
+      t: [`Bring ${w.s.name} up to your middle section (${mid.s.name}, ${pct(mid.acc, 0)}) and it adds `, bb(`${wzSigned(g1)} a paper`), `; bring every section up to your best (${best.s.name}, ${pct(best.acc, 0)}) and it is ${wzSigned(g2)}.`] });
+  });
+  go(() => {
+    const TP = M.TP.filter(a => a.secMode === 'counts' && a.sec && F.win.indexOf(a) < 0);
+    if (TP.length < 2 || n < 2) return;
+    const rows = SECS.map(s => ({ s, p: pooledSec(TP, s.k), w: S.find(r => r.s.k === s.k) })).filter(r => r.w && r.p.att >= 20 && r.w.att >= 20).map(r => Object.assign(r, { d: r.p.acc - r.w.acc })).sort((p, q) => Math.abs(q.d) - Math.abs(p.d));
+    const r = rows[0];
+    if (!r || Math.abs(r.d) < 0.1) return;
+    add({ id: `pyqmock:${r.s.k}`, ch, kind: 'odd', src: 'Sections', k: 'Old papers against fresh ones', worth: Math.abs(r.d) * (r.w.att / r.w.n) * 1.25 / 2,
+      t: [`${r.s.name}: ${pct(r.p.acc, 0)} on your timed PYQs (${r.p.C} of ${r.p.att}), ${pct(r.w.acc, 0)} across ${F.winName} (${r.w.C} of ${r.w.att}). `, bb(`A ${Math.round(Math.abs(r.d) * 100)}-point gap`), ', your widest between the old papers and the fresh ones', TP.every(a => a.prevSame) ? '; the PYQs were papers you had already seen.' : '.'] });
+  });
+});
+/* ── the same paper, sat twice ── */
+WIZ_FAMILIES.push(function wizRetakes(X, F, add, go) {
+  const pairs = X.pairs || [], ch = ['retake'];
+  if (!pairs.length) return;
+  const sc = a => a.m.cov * (1.25 * a.m.acc - 0.25);
+  pairs.forEach(p => go(() => {
+    const a = p.a0, z = p.a1;
+    if (a.m.acc == null || z.m.acc == null) return;
+    const d = sc(z) - sc(a), dc = (z.m.cov - a.m.cov) * (1.25 * a.m.acc - 0.25), da = z.m.cov * 1.25 * (z.m.acc - a.m.acc);
+    add({ id: `resplit:${p.paper}`, ch, kind: 'see', src: 'Retakes', k: `${p.paper}: what moved`, worth: Math.abs(d) * PAPER_MAX / 10,
+      t: [`${p.paper}: ${pct(sc(a), 0)} of the paper, then ${pct(sc(z), 0)}. Of the ${wzSigned(d * 100)} points, coverage (${pct(a.m.cov, 0)} → ${pct(z.m.cov, 0)}) gave ${wzSigned(dc * 100)} and accuracy (${pct(a.m.acc, 0)} → ${pct(z.m.acc, 0)}) gave `, bb(wzSigned(da * 100)), '.'] });
+    const rows = SECS.map(s => ({ s, x: secM(a, s.k), y: secM(z, s.k) })).filter(r => r.x && r.y && r.x.acc != null && r.y.acc != null).map(r => Object.assign(r, { d: r.y.acc - r.x.acc })).sort((u, v) => v.d - u.d);
+    if (rows.length >= 3) add({ id: `resec:${p.paper}`, ch, kind: 'odd', src: 'Retakes', k: `${p.paper}, section by section`, worth: 1,
+      t: [`${p.paper}: `, bb(`${rows[0].s.name} rose most (${pct(rows[0].x.acc, 0)} → ${pct(rows[0].y.acc, 0)})`), `; ${rows[rows.length - 1].s.name} ${rows[rows.length - 1].d < 0 ? 'fell most' : 'rose least'} (${pct(rows[rows.length - 1].x.acc, 0)} → ${pct(rows[rows.length - 1].y.acc, 0)}).`,
+        a.secFlag ? ' The earlier section figures do not reconcile with its totals, so read them as rough.' : ''] });
+    const la = decodeLog(a), lz = decodeLog(z);
+    if (la && lz && la.length === lz.length) {
+      const again = la.filter((q, i) => q.out === 'w' && lz[i].out === 'w').map(q => q.q), W0 = la.filter(q => q.out === 'w').length;
+      if (W0 >= 5 && again.length) add({ id: `rewrong:${p.paper}`, ch: ch.concat('qmap'), kind: 'act', src: 'Retakes', k: `${p.paper}: wrong both times`, worth: again.length * 1.25 / 3,
+        t: [`In ${p.paper}, `, bb(`${again.length} of the ${W0} you got wrong the first time were wrong again`), `: ${again.slice(0, 10).map(n => `Q${n}`).join(', ')}${again.length > 10 ? ' and more' : ''}. Seeing the paper once did not fix these: start there.`] });
+    }
+  }));
+  go(() => {
+    if (pairs.length < 2) return;
+    const by = pairs.filter(p => p.a0.m.pct != null && p.a1.m.pct != null).map(p => ({ p, d: p.a1.m.pct - p.a0.m.pct })).sort((u, v) => v.d - u.d);
+    if (by.length < 2) return;
+    add({ id: 'rerank', ch, kind: 'odd', src: 'Retakes', k: 'Biggest and smallest lift', worth: 0.8,
+      t: ['On a second sitting, your biggest lift was ', bb(`${by[0].p.paper}, ${wzSigned(by[0].d * 100)} points`), `; your smallest ${by[by.length - 1].p.paper}, ${wzSigned(by[by.length - 1].d * 100)}.`] });
+  });
+});
+
+/* ── along the paper: runs, stretches, sets ── */
+WIZ_FAMILIES.push(function wizPaper(X, F, add, go) {
+  const M = F.M, I = F.I, L = F.lwin, ch = ['paperRun', 'qmap'];
+  if (!L.length) return;
+  const live = a => decodeLog(a).filter(q => q.out !== 'x');
+  const secSpan = (qs) => { const a = qs[0].sec, z = qs[qs.length - 1].sec; return a === z ? (SEC_NAME[a] || 'the paper') : `${SEC_NAME[a] || '?'} into ${SEC_NAME[z] || '?'}`; };
+  /** maximal runs of one outcome, in printed order */
+  const runs = (a, out) => { const qs = live(a), r = []; let cur = null; qs.forEach(q => { if (q.out === out) { if (!cur) { cur = []; r.push(cur); } cur.push(q); } else cur = null; }); return r; };
+  const latest = L[L.length - 1], allow = (1 - M.spec.lo / PAPER_MAX) * 10;
+  L.slice(-2).forEach(a => go(() => {
+    const qs = live(a), cost = qs.map(q => (q.out === 'w' ? 1.25 : q.out === 's' ? 1 : 0));
+    let best = null;
+    for (let i = 0; i + 10 <= cost.length; i++) { const v = sum(cost.slice(i, i + 10)); if (!best || v > best.v) best = { i, v }; }
+    if (!best || best.v < 5) return;
+    const w = qs.slice(best.i, best.i + 10);
+    add({ id: `steep:${a.id}`, ch, kind: 'see', src: 'Paper', k: `Steepest stretch of ${a.short}`, worth: Math.max(0.5, (best.v - allow) / 2.5),
+      t: [bb(wzQs(w.map(q => q.q))), ` in ${a.short} (${secSpan(w)}): `, bb(`${marks(best.v)} marks`), ` dropped in 10 questions. Your target allows about ${wzNum(allow)} per 10.`] });
+  }));
+  go(() => {
+    const all = L.flatMap(a => runs(a, 'c').map(r => ({ a, r }))).sort((p, q) => q.r.length - p.r.length), top = all[0];
+    if (!top || top.r.length < 8) return;
+    const mine = all.find(x => x.a === latest);
+    add({ id: 'cleanrun', ch, kind: 'odd', src: 'Paper', k: 'Your longest clean run', worth: 0.8,
+      t: [`In ${F.lwinName} your longest run without a miss is `, bb(`${top.r.length} right in a row`), `: ${wzQs(top.r.map(q => q.q))} of ${top.a.short} (${secSpan(top.r)}).`, mine && top.a !== latest ? ` In ${latest.short} the longest was ${mine.r.length}.` : ''] });
+  });
+  go(() => {
+    const all = L.flatMap(a => runs(a, 'w').map(r => ({ a, r }))).sort((p, q) => q.r.length - p.r.length), top = all[0];
+    if (!top || top.r.length < 3) return;
+    add({ id: 'wrongrun', ch, kind: 'odd', src: 'Paper', k: 'Your longest run of wrong answers', worth: 1.2,
+      t: [bb(`${top.r.length} wrong in a row`), `: ${wzQs(top.r.map(q => q.q))} of ${top.a.short} (${secSpan(top.r)}), ${marks(top.r.length * 1.25)} marks in ${top.r.length} questions. ${F.lwinName[0].toUpperCase()}${F.lwinName.slice(1)} hold ${all.filter(x => x.r.length >= 3).length} runs of three or more.`] });
+  });
+  go(() => {
+    const a = latest, qs = live(a), W = qs.filter(q => q.out === 'w').length;
+    if (W < 8) return;
+    const alone = qs.filter((q, i) => q.out === 'w' && (!qs[i - 1] || qs[i - 1].out === 'c') && (!qs[i + 1] || qs[i + 1].out === 'c')).length;
+    const rs = runs(a, 'w').filter(r => r.length >= 3).sort((p, q) => q.length - p.length), inRuns = sum(rs, r => r.length);
+    add({ id: `alone:${a.id}`, ch, kind: 'odd', src: 'Paper', k: `Slips and runs in ${a.short}`, worth: 1.5,
+      t: [`${a.short}: ${W} wrong. `, bb(`${alone} stood alone between right answers`), ` and ${inRuns} came in runs of three or more`, rs.length ? ` (the longest ${wzQs(rs[0].map(q => q.q))}, ${secSpan(rs[0])})` : '', '. Alone looks like a slip; a run looks like a set you could not crack.'] });
+  });
+  go(() => {
+    const att = F.lq.filter(r => r.q.out === 'c' || r.q.out === 'w');
+    const rows = SECS.map(s => ({ s, w: att.filter(r => r.q.sec === s.k && r.q.out === 'w').length, n: att.filter(r => r.q.sec === s.k).length })).filter(r => r.n >= 10);
+    if (rows.length < 3) return;
+    const byN = rows.slice().sort((p, q) => q.w - p.w), byR = rows.slice().sort((p, q) => q.w / q.n - p.w / p.n);
+    add({ id: 'mostwrong', ch, kind: 'see', src: 'Paper', k: 'Most wrong, by count and by rate', worth: 1,
+      t: [`Across ${F.lwinName} `, bb(`${byN[0].s.name} has the most wrong answers (${byN[0].w})`), `, then ${byN[1].s.name} (${byN[1].w}). By rate it is `, bb(`${byR[0].s.name}: ${pct(byR[0].w / byR[0].n, 0)}`), ' of what you answer there.'] });
+  });
+  go(() => {
+    const top = runs(latest, 's').sort((p, q) => q.length - p.length)[0];
+    if (!top || top.length < 4) return;
+    add({ id: `blankrun:${latest.id}`, ch, kind: 'see', src: 'Paper', k: `Blanks in a row in ${latest.short}`, worth: top.length * 0.25,
+      t: [`${latest.short}: `, bb(`${top.length} blanks in a row`), ` at ${wzQs(top.map(q => q.q))} (${secSpan(top)}), of ${latest.S} blanks in the paper.`] });
+  });
+  go(() => {
+    /* the order you reached the questions in: the sections as you sat them, each in its printed order */
+    const reach = a => { const qs = live(a), o = Array.isArray(a.order) ? a.order : null; return o ? qs.slice().sort((p, q) => (o.indexOf(p.sec) - o.indexOf(q.sec)) || p.q - q.q) : null; };
+    const seqs = L.map(reach).filter(Boolean);
+    if (seqs.length < 2) return;
+    const firsts = seqs.flatMap(s => s.filter(q => q.out === 'c' || q.out === 'w').slice(0, 10)), firstSet = new Set(firsts);
+    const rest = seqs.flatMap(s => s.filter(q => (q.out === 'c' || q.out === 'w') && !firstSet.has(q)));
+    const k1 = firsts.filter(q => q.out === 'c').length, k2 = rest.filter(q => q.out === 'c').length, g = wzGap(I, k1, firsts.length, k2, rest.length);
+    if (g) {
+      const j = F.judge('firstten', g.p);
+      add({ id: 'firstten', ch, kind: 'odd', src: 'Paper', k: 'Your first ten answers', worth: j.lvl === 'sure' ? Math.abs(g.diff) * 12.5 : j.lvl === 'lean' ? 1 : 0.6,
+        t: ['The first 10 questions you answer in a paper: ', bb(`${pct(k1 / firsts.length, 0)} right`), ` across ${plural(seqs.length, 'paper')} (${k1} of ${firsts.length}), against ${pct(k2 / rest.length, 0)} for the rest.`, wzStand(j),
+          j.lvl === 'sure' && g.diff < 0 ? ' A cold start.' : j.lvl === 'none' ? ' No cold start to fix.' : ''] });
+    }
+    const lasts = seqs.flatMap(s => s.slice(-10)), c = lasts.filter(q => q.out === 'c').length, w = lasts.filter(q => q.out === 'w').length, s = lasts.filter(q => q.out === 's').length;
+    const end = F.endOf(L.filter(a => Array.isArray(a.order))), m10 = (c - 0.25 * w) / seqs.length, all10 = mean(L.map(a => a.m.net / a.M * 10)), inLast = end.k ? lasts.filter(q => q.sec === end.k).length : 0;
+    add({ id: 'lastten', ch: ch.concat('pace'), kind: 'see', src: 'Paper', k: 'The last ten you reach', worth: Math.max(0.5, (all10 - m10) / 1.5),
+      t: [`The last 10 questions you reach in a paper: ${c} right, ${w} wrong, ${s} blank over ${plural(seqs.length, 'paper')}. `, bb(`${wzNum(m10)} marks out of 10`), `, against ${wzNum(all10)} for the paper as a whole.`,
+        inLast * 2 >= lasts.length ? ` ${inLast} of those ${lasts.length} are ${SEC_NAME[end.k]}, the section you sit last: this is that section as much as the end of the paper.` : ''] });
+  });
+  /* from the pen: the passage sets */
+  F.penWin.slice(-2).forEach(x => go(() => {
+    const ps = (x.d.passages || []).filter(p => p.attemptedQuestions >= 3), bad = ps.filter(p => p.accuracy != null && p.accuracy <= 0.4).sort((p, q) => (q.wrong * 1.25 + q.skipped) - (p.wrong * 1.25 + p.skipped));
+    if (ps.length < 6 || !bad.length) return;
+    const t = bad[0], W = x.a.W, w = sum(bad, p => p.wrong);
+    add({ id: `wipeout:${x.a.id}`, ch, kind: 'act', src: 'Paper', k: `The sets that sank in ${x.a.short}`, worth: w * 1.25 / 4,
+      t: [`${x.a.short}: the set at ${wzQs(t.questionNumbers)} (${SEC_NAME[t.sectionId] || 'unsectioned'}) went ${t.correct} of ${t.attemptedQuestions} in ${wzClock(t.totalPassageBlockTimeMs)}, your costliest. `, bb(`${bad.length} of ${ps.length} sets fell to 40% or under`), `: they hold ${w} of your ${W} wrong answers.`] });
+  }));
+  go(() => {
+    if (!F.penWin.length) return;
+    const sweep = x => (x.d.passages || []).filter(p => p.attemptedQuestions >= 3 && p.wrong === 0 && p.skipped === 0).length, tot = x => (x.d.passages || []).filter(p => p.attemptedQuestions >= 3).length;
+    const cur = F.penWin[F.penWin.length - 1], best = F.penWin.slice().sort((p, q) => sweep(q) - sweep(p))[0];
+    if (tot(cur) < 6) return;
+    add({ id: `sweeps:${cur.a.id}`, ch, kind: 'odd', src: 'Paper', k: 'Clean sets', worth: 0.7,
+      t: ['Sets with every question right: ', bb(`${sweep(cur)} of ${tot(cur)} in ${cur.a.short}`), best !== cur ? `; your most is ${sweep(best)} of ${tot(best)}, in ${best.a.short}.` : ', your most on record.'] });
+  });
+  go(() => {
+    const sets = F.penWin.flatMap(x => (x.d.passages || []).map(p => { const qs = x.d.questions.filter(q => q.passageId === p.passageId).sort((u, v) => u.position - v.position); return qs.length >= 3 ? [qs[0], qs[qs.length - 1]] : null; }).filter(Boolean));
+    const ok = q => q.outcome === 'correct' || q.outcome === 'wrong';
+    const f = sets.map(s => s[0]).filter(ok), l = sets.map(s => s[1]).filter(ok);
+    if (f.length < 20 || l.length < 20) return;
+    const k1 = f.filter(q => q.outcome === 'correct').length, k2 = l.filter(q => q.outcome === 'correct').length, g = wzGap(I, k2, l.length, k1, f.length);
+    if (!g) return;
+    const j = F.judge('setpos', g.p);
+    add({ id: 'setpos', ch, kind: 'odd', src: 'Paper', k: 'First and last question of a set', worth: j.lvl === 'sure' ? Math.abs(g.diff) * 12 : 0.6,
+      t: [`Within a passage set you get the first question right ${pct(k1 / f.length, 0)} of the time and the last `, bb(pct(k2 / l.length, 0)), ` (${sets.length} sets, ${F.penName}).`, wzStand(j), j.lvl === 'none' ? ' No fade inside a set.' : ''] });
+  });
+});
+/* ── guesses, letters, and how an answer was arrived at ──
+   Whether a guess pays, whether educated beats random, whether a letter or a return visit costs you: those
+   are put to the pattern engine's tests and come through as tested readings. The lenses here look at what
+   the tests do not: where the guesses and the sure-but-wrong answers sit, and what was crossed out. */
+WIZ_FAMILIES.push(function wizGuess(X, F, add, go) {
+  const ch = ['guess'];
+  const att = F.lq.filter(r => r.q.out === 'c' || r.q.out === 'w');
+  const marked = att.filter(r => r.g);
+  /* only papers in which you marked guesses at all: elsewhere "unmarked" means nothing */
+  const marking = new Set(marked.map(r => r.a)), plain = att.filter(r => !r.g && marking.has(r.a));
+  if (marked.length < 6) return;
+  go(() => {
+    const wrong = plain.filter(r => r.q.out === 'w'), flagged = marked.filter(r => r.q.out === 'w').length, W = wrong.length + flagged;
+    if (W < 10) return;
+    add({ id: 'surewrong', ch: ch.concat('qmap'), kind: 'act', src: 'Guesses', k: 'Sure, and wrong', worth: wrong.length / marking.size * 0.25 + 1, fig: { n: 'wrong answers with no ring', v: `${wrong.length} of ${W}` },
+      t: [bb(`${wrong.length} of your ${W} wrong answers`), ` across ${plural(marking.size, 'paper')} carried no ring (${pct(wrong.length / W, 0)}): you were sure, and wrong.`,
+        wrong.length * 2 >= W ? ' Most of the 1.25s go on answers you believed.' : ` The other ${flagged} you had ringed: most of your wrong answers are ones you already doubted.`] });
+  });
+  go(() => {
+    const a = F.lwin.slice().reverse().find(x => marking.has(x));
+    if (!a) return;
+    const qs = att.filter(r => r.a === a && r.q.out === 'w'), un = qs.filter(r => !r.g);
+    if (qs.length < 8 || !un.length) return;
+    add({ id: `surewrong:${a.id}`, ch: ch.concat('qmap'), kind: 'act', src: 'Guesses', k: `Sure, and wrong, in ${a.short}`, worth: un.length * 0.2 + 0.5,
+      t: [`In ${a.short}, `, bb(`${un.length} of your ${qs.length} wrong answers carried no ring`), `; ${qs.length - un.length} were flagged as guesses. Re-solve the unflagged ones first: those are the ones you believed.`] });
+  });
+  go(() => {
+    const rows = SECS.map(s => ({ s, g: marked.filter(r => r.q.sec === s.k).length, n: att.filter(r => r.q.sec === s.k && marking.has(r.a)).length })).filter(r => r.n >= 10).sort((p, q) => q.g / q.n - p.g / p.n);
+    if (rows.length < 3 || !rows[0].g) return;
+    const lo = rows[rows.length - 1];
+    add({ id: 'guesssec', ch, kind: 'see', src: 'Guesses', k: 'Where you guess', worth: 1,
+      t: ['You ring ', bb(`${pct(rows[0].g / rows[0].n, 0)} of what you answer in ${rows[0].s.name}`), ` (${rows[0].g} of ${rows[0].n}); in ${lo.s.name}, ${pct(lo.g / lo.n, 0)}. ${pct(rows[0].g / marked.length, 0)} of all your guesses are in ${rows[0].s.name}.`] });
+  });
+  go(() => {
+    const per = marked.length / marking.size, share = marked.length / att.filter(r => marking.has(r.a)).length;
+    if (marking.size < 2) return;
+    add({ id: 'guessrate', ch, kind: 'see', src: 'Guesses', k: 'How much of a paper is a guess', worth: 1.2, fig: { n: 'guesses a paper', v: wzNum(per, 0) },
+      t: ['You ring ', bb(`${wzNum(per, 0)} answers a paper`), ` as guesses: ${pct(share, 0)} of everything you answer (${marked.length} of ${att.filter(r => marking.has(r.a)).length}, ${plural(marking.size, 'paper')}).`] });
+  });
+  go(() => {
+    const g = F.att.filter(r => r.q.guessKind && r.q.totalActiveTimeMs > 0), p = F.att.filter(r => !r.q.guessKind && r.q.totalActiveTimeMs > 0);
+    if (g.length < 10 || p.length < 30) return;
+    const mg = wzMedian(g.map(r => r.q.totalActiveTimeMs)), mp = wzMedian(p.map(r => r.q.totalActiveTimeMs));
+    add({ id: 'guesstime', ch: ch.concat('pace'), kind: 'odd', src: 'Guesses', k: 'How long a guess takes', worth: 0.9,
+      t: ['A question you end up ringing takes you ', bb(wzClock(mg)), `; one you do not ring, ${wzClock(mp)} (medians, ${F.penName}).`, mg > mp * 1.15 ? ' Your guesses are your slow questions, not quick punts.' : mg < mp * 0.85 ? ' You guess fast: a ring is a quick decision for you.' : ' About the same: a ring costs you no extra time.'] });
+  });
+});
+
+WIZ_FAMILIES.push(function wizOptions(X, F, add, go) {
+  const I = F.I, ch = ['options'], LT = ['A', 'B', 'C', 'D'];
+  const att = F.lq.filter(r => (r.q.out === 'c' || r.q.out === 'w') && r.q.ans && r.q.key);
+  if (att.length < 60) return;
+  const ok = l => l.filter(r => r.q.out === 'c').length;
+  go(() => {
+    const a = F.lwin[F.lwin.length - 1], os = optionStats(a);
+    if (!os) return;
+    const big = os.rows.slice().sort((p, q) => Math.abs(q.bias) - Math.abs(p.bias))[0];
+    if (!big || Math.abs(big.bias) < 4) return;
+    add({ id: `optbias:${a.id}`, ch, kind: 'see', src: 'Options', k: `A letter you leaned ${big.bias > 0 ? 'on' : 'away from'} in ${a.short}`, worth: 1,
+      t: ['In ', bb(a.short), ` you picked ${big.o} `, bb(`${Math.abs(big.bias)} times ${big.bias > 0 ? 'more' : 'fewer'}`), ` than the key had it (${big.picked} picks, ${big.inKey} in the key). When stuck between two, do not ${big.bias > 0 ? `default to ${big.o}` : `rule ${big.o} out by habit`}.`] });
+  });
+  go(() => {
+    const rows = LT.map(o => { const l = att.filter(r => r.q.key === o); return { o, n: l.length, k: ok(l) }; }).filter(r => r.n >= 10);
+    if (rows.length < 4) return;
+    const cs = I.chiSquare([rows.map(r => r.k), rows.map(r => r.n - r.k)]), by = rows.slice().sort((p, q) => q.k / q.n - p.k / p.n), hi = by[0], lo = by[by.length - 1];
+    if (!cs) return;
+    const j = F.judge('keyletter', cs.p);
+    add({ id: 'keyletter', ch, kind: 'odd', src: 'Options', k: 'By the letter the answer sits on', worth: j.lvl === 'sure' ? 1.5 : 0.6,
+      t: [`When the answer is ${hi.o} you find it ${pct(hi.k / hi.n, 0)} of the time; when it is ${lo.o}, `, bb(pct(lo.k / lo.n, 0)), ` (${att.length} answers, ${F.lwinName}).`, wzStand(j), j.lvl === 'none' ? ' No letter hides the answer from you.' : ''] });
+  });
+  go(() => {
+    const wrong = att.filter(r => r.q.out === 'w');
+    if (wrong.length < 30) return;
+    const tally = {};
+    wrong.forEach(r => { const k = r.q.ans + r.q.key; tally[k] = (tally[k] || 0) + 1; });
+    const top = Object.keys(tally).sort((p, q) => tally[q] - tally[p])[0];
+    if (tally[top] / wrong.length < 0.12) return;
+    add({ id: 'slip', ch, kind: 'odd', src: 'Options', k: 'Your commonest slip', worth: 0.9,
+      t: [`Your commonest slip is picking ${top[0]} when the answer is ${top[1]}: `, bb(`${tally[top]} of ${wrong.length} wrong answers (${pct(tally[top] / wrong.length, 0)})`), '; an even spread would put 8% on each pair.'] });
+  });
+  go(() => {
+    const g = att.filter(r => r.g);
+    if (g.length < 20) return;
+    const rows = LT.map(o => ({ o, p: g.filter(r => r.q.ans === o).length / g.length, k: g.filter(r => r.q.key === o).length / g.length })).sort((p, q) => Math.abs(q.p - q.k) - Math.abs(p.p - p.k)), t = rows[0];
+    if (Math.abs(t.p - t.k) < 0.08) return;
+    add({ id: 'guesspick', ch: ch.concat('guess'), kind: 'odd', src: 'Options', k: 'The letter you guess', worth: 0.8,
+      t: [`When you guess you pick ${t.o} `, bb(`${pct(t.p, 0)} of the time`), `; the answer is ${t.o} on ${pct(t.k, 0)} of those questions (${g.length} guesses).`] });
+  });
+});
+
+/* what the pen saw of each answer: friction, changes, the final two, what was crossed out */
+WIZ_FAMILIES.push(function wizPen(X, F, add, go) {
+  const I = F.I, A = F.att, nP = F.penWin.length;
+  if (A.length < 60) return;
+  const ok = l => l.filter(r => r.q.outcome === 'correct').length, rate = l => (l.length ? ok(l) / l.length : null);
+  go(() => {
+    const fr = A.filter(r => r.q.highFriction), rest = A.filter(r => !r.q.highFriction);
+    if (fr.length < 10) return;
+    const g = wzGap(I, ok(fr), fr.length, ok(rest), rest.length), af = rate(fr), ar = rate(rest);
+    if (!g) return;
+    const j = F.judge('friction', g.p);
+    add({ id: 'friction', ch: ['qmap', 'pace'], kind: 'act', src: 'Pen', k: 'Questions that fight back', worth: j.lvl === 'sure' ? fr.length / nP * Math.max(0, ar - af) * 1.25 / 2 + 0.5 : 0.6,
+      t: [`Questions that fought back (two of: slow, revisited, re-read, changed; ${fr.length} across ${F.penName}) came out `, bb(`${pct(af, 0)} right`), `, against ${pct(ar, 0)} for the rest.`, wzStand(j),
+        j.lvl === 'sure' && af < ar ? ' Once a question shows two of those signs: mark it, move on, come back.' : ''] });
+  });
+  go(() => {
+    const ch = F.scored.filter(r => r.q.firstAnswer && r.q.finalAnswer && r.q.firstAnswer !== r.q.finalAnswer);
+    if (ch.length < 5) return;
+    const t = k => ch.filter(r => r.q.changeType === k).length, net = sum(ch, r => r.q.marksEffectOfChange || 0);
+    const first = F.scored.filter(r => r.q.firstAnswer), fa = first.filter(r => r.q.firstAnswerWasCorrect).length / first.length, fin = rate(A);
+    add({ id: 'changes', ch: ['qmap', 'options'], kind: 'see', src: 'Pen', k: 'What changing your answer did', worth: Math.abs(net) / nP + 0.5, fig: { n: 'net from changing', v: `${wzSigned(net, 2)} marks` },
+      t: [`You changed ${ch.length} answers across ${F.penName}: ${t('wrong_to_right')} wrong to right, ${t('right_to_wrong')} right to wrong, ${t('wrong_to_wrong')} wrong to wrong. `, bb(`Net ${wzSigned(net, 2)} marks`),
+        `: changing ${net > 0 ? 'pays' : net < 0 ? 'costs you' : 'is a wash'}. Your first answers alone were ${pct(fa, 0)} right; your final ones ${pct(fin, 0)}.`] });
+  });
+  go(() => {
+    const f2 = A.filter(r => r.q.finalTwoOptions && r.q.finalTwoOptions.length === 2), lost = f2.filter(r => r.q.outcome === 'wrong');
+    if (lost.length < 6) return;
+    const other = lost.filter(r => r.q.finalTwoOptions.indexOf(r.q.officialAnswer) >= 0).length;
+    add({ id: 'finaltwolost', ch: ['guess', 'options'], kind: 'odd', src: 'Pen', k: 'The final twos you lost', worth: 1.2 + (lost.length - other) / nP * 0.6,
+      t: [`You were down to two options ${f2.length} times across ${F.penName} and lost ${lost.length}. In ${other} the answer was the other survivor; in `, bb(`${lost.length - other} it was an option you had already crossed out`), '.'] });
+  });
+  go(() => {
+    const el = F.scored.filter(r => (r.q.eliminatedOptions || []).length), hit = el.filter(r => r.q.officialAnswer && r.q.eliminatedOptions.indexOf(r.q.officialAnswer) >= 0);
+    if (el.length < 30 || !hit.length) return;
+    const w = hit.filter(r => r.q.outcome === 'wrong').length, c = hit.filter(r => r.q.outcome === 'correct').length, s = hit.length - w - c;
+    add({ id: 'struckkey', ch: ['options', 'guess', 'qmap'], kind: 'odd', src: 'Pen', k: 'Crossing out the right answer', worth: w / nP * 1.25 / 1.5 + 0.5, fig: { n: 'times you crossed out the answer', v: String(hit.length) },
+      t: ['You crossed out the right answer ', bb(`${hit.length} times`), ` across ${F.penName}: ${w} of those went wrong${c ? `, ${c} you still picked` : ''}${s ? `, ${s} you left blank` : ''}. That is ${pct(hit.length / el.length, 0)} of the ${el.length} questions where you crossed anything out; the ${w} wrong ones are ${marks(w * 1.25)} marks.`] });
+  });
+  go(() => {
+    const b = [0, 1, 2, 3].map(n => { const l = A.filter(r => (r.q.eliminatedOptions || []).length === n); return { n, l, k: ok(l) }; }).filter(x => x.l.length >= 8);
+    if (b.length < 3) return;
+    const word = ['none', 'one', 'two', 'three'], low = b.slice().sort((p, q) => p.k / p.l.length - q.k / q.l.length)[0];
+    add({ id: 'elim', ch: ['guess', 'options'], kind: 'see', src: 'Pen', k: 'By how many options you crossed out', worth: 1,
+      t: ['Right, by options crossed out: ', b.map(x => (x === low ? bb(`${word[x.n]} ${pct(x.k / x.l.length, 0)}`) : `${word[x.n]} ${pct(x.k / x.l.length, 0)}`)).flatMap((v, i) => (i ? [', ', v] : [v])), ` (${b.map(x => x.l.length).join(', ')} answers, ${F.penName}).`] });
+  });
+});
+/* ── the clock: half-hours, sections, and the time each question took ──
+   Whether accuracy falls across the half-hours is the pattern engine's test and comes through as a tested
+   reading; the lenses here say what each half-hour and each section earned. */
+WIZ_FAMILIES.push(function wizPace(X, F, add, go) {
+  const ch = ['pace'];
+  const all = F.timed.filter(a => a.intervals && a.intervals.length >= 4), iv = all.slice(-5);
+  if (!iv.length) return;
+  const name = iv.length === 1 ? iv[0].short : `your last ${iv.length} papers with a clock`, nB = Math.min(...iv.map(a => a.intervals.length));
+  const col = (i, j) => mean(iv.map(a => a.intervals[i][j])), lab = i => `${i ? i * 30 + 1 : 0}–${(i + 1) * 30} min`, last = nB - 1, endNote = F.endOf(iv).note;
+  go(() => {
+    const m = Array.from({ length: nB }, (_, i) => col(i, 3)), n = Array.from({ length: nB }, (_, i) => col(i, 0));
+    if (!(m[0] > 0)) return;
+    add({ id: 'decay', ch, kind: 'see', src: 'Pace', k: 'Marks by half-hour', worth: Math.max(0.5, (m[0] - m[last]) / 4), fig: { n: 'your last half-hour against your first', v: pct(m[last] / m[0], 0) },
+      t: [`Marks by half-hour, averaged over ${name}: `, bb(m.map(v => wzNum(v)).join(' → ')), ` from ${n.map(v => wzNum(v, 0)).join(', ')} answers. Your last half-hour earns ${pct(m[last] / m[0], 0)} of your first.`, endNote] });
+  });
+  go(() => {
+    const attempted = mean(iv.map(a => sum(a.intervals, x => x[0]))), extra = Math.max(0, Math.round(PAPER_MAX - attempted));
+    if (extra < 5) return;
+    add({ id: 'evenpace', ch, kind: 'if', src: 'Pace', k: 'An even thirty a block', worth: extra * 0.375 / 2,
+      t: [`You answer about ${Math.round(attempted)} of 120. An even 30 a half-hour adds `, bb(`${extra} answers`), '. If those go only half right (+0.375 each) that is still about ', bb(`+${Math.round(extra * 0.375)} marks`), ' a paper; under 20% right they would cost marks.'] });
+  });
+  go(() => {
+    const n = Array.from({ length: nB }, (_, i) => sum(iv, a => a.intervals[i][0])), N = sum(n);
+    const W = sum(iv, a => sum(a.intervals, x => x[2])), wl = sum(iv, a => a.intervals[last][2]);
+    if (W >= 20 && wl / W > n[last] / N + 0.05) add({ id: 'latewrong', ch, kind: 'see', src: 'Pace', k: 'Where the wrong answers fall on the clock', worth: (wl / W - n[last] / N) * W / iv.length * 1.25 / 2 + 0.5,
+      t: [`Your last half-hour holds ${pct(n[last] / N, 0)} of your answers and `, bb(`${pct(wl / W, 0)} of your wrong ones`), ` (${wl} of ${W}, ${name}).`, endNote] });
+    const half = Math.floor(nB / 2), n1 = sum(n.slice(0, half));
+    add({ id: 'frontload', ch, kind: 'see', src: 'Pace', k: 'How your answering is spread', worth: 0.9,
+      t: ['You do ', bb(`${pct(n1 / N, 0)} of your answering in the first hour`), ` (${wzNum(n1 / iv.length, 0)} of ${wzNum(N / iv.length, 0)} answers a paper, ${name}).`] });
+  });
+  go(() => {
+    const blocks = all.flatMap(a => a.intervals.map((x, i) => ({ a, i, x }))).filter(b => b.x[0] >= 5).sort((p, q) => q.x[3] - p.x[3]);
+    if (blocks.length < 8) return;
+    const hi = blocks[0], lo = blocks[blocks.length - 1];
+    add({ id: 'bestblock', ch, kind: 'odd', src: 'Pace', k: 'Your best and worst half-hours', worth: 0.8,
+      t: ['Best half-hour on record: ', bb(`${lab(hi.i)} of ${hi.a.short}, ${wzMw(hi.x[3])}`), ` from ${hi.x[0]} answers. Worst: ${lab(lo.i)} of ${lo.a.short}, ${marks(lo.x[3])} from ${lo.x[0]}.`] });
+  });
+});
+
+WIZ_FAMILIES.push(function wizSecTime(X, F, add, go) {
+  const M = F.M, ch = ['secTime'];
+  const hasT = a => a.secMode === 'counts' && a.sec && SECS.some(s => a.sec[s.k] && a.sec[s.k].t != null);
+  const T = F.timed.filter(hasT).slice(-5), a = T[T.length - 1];
+  if (!a) return;
+  const name = T.length === 1 ? a.short : `your last ${T.length} papers with section times`, over = T.length === 1 ? `in ${a.short}` : `across ${name}`;
+  const rows = SECS.map(s => ({ s, m: secM(a, s.k) })).filter(r => r.m && r.m.t);
+  go(() => {
+    if (rows.length < 2) return;
     rows.forEach(r => { r.per10 = r.m.net / (r.m.t / 600); });
-    const judged = rows.filter(r => r.m.att >= 5);
-    const bySpeed = judged.slice().sort((x, y) => x.per10 - y.per10), slow = bySpeed[0], best = bySpeed[bySpeed.length - 1], most = rows.slice().sort((x, y) => y.m.t - x.m.t)[0];
-    const out = [{ k: 'Time sink', t: [b(most.s.name), ` took ${mmss(most.m.t)} for ${marks(most.m.net)} marks in ${a.short}.`] }];
-    const blanks = sum(rows, r => Math.max(0, r.m.M - r.m.att));
-    if (slow && best && slow !== best) out.push({ k: 'Least return', t: [b(slow.s.name), `: ${marks(Math.round(slow.per10 * 10) / 10)} marks per 10 minutes, against `, b(`${best.s.name} ${marks(Math.round(best.per10 * 10) / 10)}`), blanks > 0 ? `. Cap your time per passage there and spend what you save on the ${blanks} questions you left blank.` : '. Cap your time per passage there and use what you save to re-check doubtful answers.'] });
+    const most = rows.slice().sort((p, q) => q.m.t - p.m.t)[0], judged = rows.filter(r => r.m.att >= 5).sort((p, q) => p.per10 - q.per10), slow = judged[0], best = judged[judged.length - 1];
+    const tot = sum(rows, r => r.m.t), net = sum(rows, r => r.m.net), blanks = sum(rows, r => Math.max(0, r.m.M - r.m.att));
+    add({ id: `sink:${a.id}`, ch, kind: 'see', src: 'Clock', k: `Where ${a.short}’s clock went`, worth: 1.3,
+      t: [bb(most.s.name), ` took ${mmss(most.m.t)} of ${a.short} for ${wzMw(most.m.net)}: `, bb(`${pct(most.m.t / tot, 0)} of the clock`), net > 0 ? ` for ${pct(most.m.net / net, 0)} of your marks.` : '.'] });
+    if (slow && best && slow !== best) add({ id: `least:${a.id}`, ch, kind: 'act', src: 'Clock', k: `Least return in ${a.short}`, worth: 1.6,
+      t: [bb(slow.s.name), `: ${wzNum(slow.per10)} marks per 10 minutes in ${a.short}, against `, bb(`${best.s.name} ${wzNum(best.per10)}`),
+        blanks > 0 ? `. Cap your time per set there and spend what you save on the ${blanks} questions you left blank.` : '. Cap your time per set there and use what you save to re-check doubtful answers.'] });
     rows.filter(r => r.m.att < 5 && r.m.M >= 5).forEach(r => {
       const lever = M.levers.find(l => l.s.k === r.s.k);
-      out.push({ k: 'Barely attempted', t: [b(r.s.name), `: ${r.m.att} of ${r.m.M} attempted in ${mmss(r.m.t)}, too few to judge. `, lever ? ['Your timed PYQs put ', b(`+${lever.gain.toFixed(1)} marks`), ' a paper here, so attempt it rather than cut it.'] : 'Attempt it before judging its return.'] });
+      add({ id: `barely:${a.id}:${r.s.k}`, ch, kind: 'act', src: 'Clock', k: `${r.s.name}, barely answered`, worth: lever ? lever.gain / 2 : 1,
+        t: [bb(r.s.name), `: ${r.m.att} of ${r.m.M} answered in ${mmss(r.m.t)} of ${a.short}, too few to judge. `, lever ? [`${M.leverFrom[0].toUpperCase()}${M.leverFrom.slice(1)} put `, bb(`+${lever.gain.toFixed(1)} marks`), ' a paper here, so answer it rather than cut it.'] : 'Answer it before judging its return.'] });
     });
-    return out;
-  },
-  topics(M, list) {
-    const a = list[list.length - 1];
-    if (!a.tree) return null;
-    const rows = a.tree.map(([k, sub, topic, C, W]) => ({ k, topic, C, W, acc: C + W ? C / (C + W) : null })).filter(r => r.acc != null && r.C + r.W >= 2).sort((x, y) => x.acc - y.acc).slice(0, 3);
-    if (!rows.length) return null;
-    return [{ k: 'Weakest topics', t: rows.map((r, i) => [i ? ', ' : '', b(`${r.topic} ${pct(r.acc, 0)}`)]).flat().concat([` in ${a.short}. Revise these before your next mock.`]) }];
-  },
-};
-/** Coach items for a card, or null. Errors in coaching never break a card. */
-function coach(key, ...args) {
-  if (!state.prefs.wiz || !COACH[key]) return null;
-  try { const M = wizModel(); return COACH[key](M, ...args); } catch (e) { console.warn('coach', key, e); return null; }
+  });
+  go(() => {
+    const pool = SECS.map(s => { const ms = T.map(x => secM(x, s.k)).filter(m => m && m.exact && m.t); return ms.length ? { s, t: sum(ms, m => m.t), att: sum(ms, m => m.att), net: sum(ms, m => m.net), M: sum(ms, m => m.M), n: ms.length } : null; }).filter(Boolean);
+    if (pool.length < 3) return;
+    const per = pool.filter(r => r.att >= 10).map(r => ({ r, v: r.t / r.att })).sort((p, q) => q.v - p.v);
+    if (per.length >= 3) add({ id: 'secpace', ch, kind: 'see', src: 'Clock', k: 'Seconds per answer, by section', worth: 1,
+      t: [`Seconds per answer ${over}: `, bb(`${per[0].r.s.name} ${wzNum(per[0].v, 0)}`), per.slice(1).map(x => `, ${x.r.s.name} ${wzNum(x.v, 0)}`).join(''), '. An even pace over 120 questions is 60.'] });
+    const ret = pool.filter(r => r.t >= 300).map(r => ({ r, v: r.net / (r.t / 600) })).sort((p, q) => q.v - p.v);
+    if (ret.length >= 3) add({ id: 'secreturn', ch: ch.concat('secProfile'), kind: 'see', src: 'Clock', k: 'Marks per ten minutes, by section', worth: 1.2,
+      t: [`Marks per 10 minutes ${over}: `, bb(`${ret[0].r.s.name} ${wzNum(ret[0].v)}`), ret.slice(1, -1).map(x => `, ${x.r.s.name} ${wzNum(x.v)}`).join(''), ', ', bb(`${ret[ret.length - 1].r.s.name} ${wzNum(ret[ret.length - 1].v)}`), '.'] });
+    const tot = sum(pool, r => r.t), Mq = sum(pool, r => r.M), sh = pool.map(r => ({ r, d: r.t / tot - r.M / Mq })).sort((p, q) => q.d - p.d)[0];
+    if (sh && sh.d > 0.04) add({ id: 'timeshare', ch, kind: 'see', src: 'Clock', k: 'Clock share against paper share', worth: 1.4,
+      t: [`${sh.r.s.name} is ${pct(sh.r.M / Mq, 0)} of the questions and takes `, bb(`${pct(sh.r.t / tot, 0)} of your clock`), ` (${mmss(sh.r.t / sh.r.n)} a paper, ${name}); an even pace would give it ${mmss(sh.r.M / Mq * tot / sh.r.n)}.`] });
+  });
+  go(() => {
+    const b = T[T.length - 2];
+    if (!b) return;
+    const d = SECS.map(s => ({ s, x: secM(b, s.k), y: secM(a, s.k) })).filter(r => r.x && r.y && r.x.t && r.y.t).map(r => Object.assign(r, { d: r.y.t - r.x.t })).sort((p, q) => Math.abs(q.d) - Math.abs(p.d))[0];
+    if (!d || Math.abs(d.d) < 120) return;
+    add({ id: `timechange:${b.id}>${a.id}`, ch, kind: 'odd', src: 'Clock', k: 'The section whose time moved most', worth: 1,
+      t: [`${d.s.name}: ${mmss(d.x.t)} in ${b.short}, `, bb(`${mmss(d.y.t)} in ${a.short}`), ` (${d.d > 0 ? '+' : MINUS}${mmss(Math.abs(d.d))}); its marks went ${marks(d.x.net)} → ${marks(d.y.net)}.`] });
+  });
+});
+
+/* from the pen: the time each question took, and what the clock did late in the paper */
+WIZ_FAMILIES.push(function wizClock(X, F, add, go) {
+  const I = F.I, W = F.penWin, nP = W.length, cur = W[nP - 1];
+  if (!nP) return;
+  const timedQ = F.att.filter(r => r.q.totalActiveTimeMs > 0), ok = l => l.filter(r => r.q.outcome === 'correct').length, end = F.endOf(W.map(x => x.a));
+  go(() => {
+    const last = x => { const o = (x.d.test && x.d.test.sectionOrder) || x.a.order || []; return o[o.length - 1]; };
+    const k = last(cur), same = W.filter(x => last(x) === k);
+    if (!k || same.length < Math.max(1, Math.ceil(nP * 0.6))) return;
+    const left = x => { const s = (x.d.sections || []).find(y => y.sectionId === k), dur = (x.d.test && x.d.test.timing && x.d.test.timing.wallClockMs) || x.a.timeSec * 1000; return s && s.enteredAt != null && dur ? { ms: dur - s.enteredAt, q: s.questionCount } : null; };
+    const ls = same.map(left).filter(Boolean), me = left(cur);
+    if (!ls.length || !me) return;
+    const avg = mean(ls.map(l => l.ms));
+    add({ id: 'squeeze', ch: ['secTime', 'pace'], kind: 'see', src: 'Clock', k: 'What is left for your last section', worth: 2, fig: { n: 'time left for it', v: wzClock(avg) },
+      t: [`You reach ${SEC_NAME[k]}, the section you sit last, with `, bb(`${wzClock(avg)} left`), ` on average (${cur.a.short}: ${wzClock(me.ms)}). That is ${wzNum(avg / 1000 / me.q, 0)} seconds for each of its ${me.q} questions.`] });
+  });
+  go(() => {
+    if (timedQ.length < 60) return;
+    const med = o => wzMedian(F.pq.filter(r => r.q.outcome === o && r.q.totalActiveTimeMs > 0).map(r => r.q.totalActiveTimeMs));
+    const c = med('correct'), w = med('wrong'), s = med('skipped'), wt = sum(F.pq.filter(r => r.q.outcome === 'wrong'), r => r.q.totalActiveTimeMs) / nP;
+    if (c == null || w == null) return;
+    add({ id: 'timeresult', ch: ['pace', 'secTime'], kind: 'see', src: 'Clock', k: 'Time on right answers and wrong ones', worth: 1.5,
+      t: [`Median time on a question: ${wzClock(c)} when you get it right, `, bb(`${wzClock(w)} when you get it wrong`), s != null ? `, ${wzClock(s)} when you leave it` : '', '. Wrong answers take ', bb(`${wzClock(wt)} of each paper`), ` (${F.penName}).`] });
+  });
+  go(() => {
+    if (timedQ.length < 80) return;
+    const ts = timedQ.map(r => r.q.totalActiveTimeMs), cuts = [0.25, 0.5, 0.75].map(p => wzQuant(ts, p));
+    const q = [0, 1, 2, 3].map(i => timedQ.filter(r => (i === 0 || r.q.totalActiveTimeMs > cuts[i - 1]) && (i === 3 || r.q.totalActiveTimeMs <= cuts[i])));
+    if (q.some(l => l.length < 10)) return;
+    const acc = q.map(l => ok(l) / l.length), lo = acc.indexOf(Math.min(...acc)), word = ['quickest quarter', 'second', 'third', 'slowest quarter'];
+    const inLast = l => l.filter(r => r.q.sectionId === end.k).length / l.length;
+    add({ id: 'quartiles', ch: ['pace'], kind: 'see', src: 'Clock', k: 'Right, by how long you took', worth: Math.max(0.6, (Math.max(...acc) - acc[lo]) * q[lo].length / nP * 1.25 / 3),
+      t: ['Right, by time spent on a question: ', acc.map((v, i) => (i === lo ? bb(`${word[i]} ${pct(v, 0)}`) : `${word[i]} ${pct(v, 0)}`)).flatMap((v, i) => (i ? [', ', v] : [v])),
+        `. The quickest quarter is under ${wzClock(cuts[0])}, the slowest over ${wzClock(cuts[2])} (${timedQ.length} answers, ${F.penName}).`,
+        lo === 0 ? [' Your fastest answers are your worst', end.k && inLast(q[0]) >= 0.3 ? `; ${pct(inLast(q[0]), 0)} of them are ${SEC_NAME[end.k]}, the section you sit last.` : '.'] : lo === 3 ? ' Your slowest answers are your worst.' : ''] });
+    const p90 = wzQuant(ts, 0.9), slow = timedQ.filter(r => r.q.totalActiveTimeMs >= p90), rest = timedQ.filter(r => r.q.totalActiveTimeMs < p90), g = wzGap(I, ok(slow), slow.length, ok(rest), rest.length);
+    if (!g) return;
+    const j = F.judge('sunk', g.p);
+    add({ id: 'sunk', ch: ['pace', 'qmap'], kind: 'act', src: 'Clock', k: 'Your slowest tenth', worth: j.lvl === 'sure' ? 2 : 1,
+      t: [`Your slowest tenth of answers (${wzClock(p90)} and over) take `, bb(`${wzClock(sum(slow, r => r.q.totalActiveTimeMs) / nP)} a paper`), ` and come out ${pct(ok(slow) / slow.length, 0)} right; the rest, ${pct(ok(rest) / rest.length, 0)}.`, wzStand(j),
+        j.lvl === 'sure' && g.diff < 0 ? ` Past ${wzClock(p90)} the extra time is not buying the answer.` : ''] });
+  });
+  go(() => {
+    const t = cur.d.test && cur.d.test.timing;
+    if (!t || !t.wallClockMs) return;
+    const lost = x => { const y = x.d.test && x.d.test.timing; return y ? (y.idleMs || 0) + (y.backgroundMs || 0) + (y.transitionMs || 0) : null; };
+    const me = lost(cur), avg = mean(W.map(lost).filter(v => v != null));
+    if (me == null || me < 120000) return;
+    add({ id: `idle:${cur.a.id}`, ch: ['pace', 'secTime'], kind: 'odd', src: 'Clock', k: `The clock outside any question in ${cur.a.short}`, worth: 0.8,
+      t: [`In ${cur.a.short}, `, bb(`${wzClock(me)} of the clock`), ` (${pct(me / t.wallClockMs, 0)}) was idle or moving between questions; across ${F.penName} it averages ${wzClock(avg)}.`] });
+  });
+  go(() => {
+    const rs = W.map(x => ({ x, r: x.d.test && x.d.test.lateTestSlowdown, d: x.d.test && x.d.test.lateTestAccuracyChange })).filter(v => v.r != null && v.d != null);
+    if (rs.length < 2) return;
+    const me = rs[rs.length - 1], r = mean(rs.map(v => v.r)), d = mean(rs.map(v => v.d));
+    add({ id: 'late', ch: ['pace'], kind: 'see', src: 'Clock', k: 'The last third of the clock', worth: 1.5,
+      t: ['In the last third of the clock your median question takes ', bb(`${r.toFixed(2)}× as long`), ` as before, and your accuracy moves ${wzSigned(d * 100)} points (average of ${rs.length} papers; ${me.x.a.short}: ${me.r.toFixed(2)}×, ${wzSigned(me.d * 100)}).`, end.note] });
+  });
+  go(() => {
+    const p15 = ((cur.d.test && cur.d.test.pace15) || []).filter(b => b.attempted >= 3).slice().sort((p, q) => q.marks - p.marks);
+    if (p15.length < 4) return;
+    const hi = p15[0], lo = p15[p15.length - 1], min = b => `${Math.round(b.from / 60000)}–${Math.round(b.to / 60000)}`;
+    add({ id: `quarter:${cur.a.id}`, ch: ['pace'], kind: 'odd', src: 'Clock', k: `Quarter-hours of ${cur.a.short}`, worth: 0.8,
+      t: [`In ${cur.a.short} your best quarter-hour was minutes ${min(hi)}: `, bb(`${wzMw(hi.marks)} from ${hi.attempted} answers`), `. Your worst: minutes ${min(lo)}, ${marks(lo.marks)} from ${lo.attempted}.`] });
+  });
+  go(() => {
+    const pass = F.att.filter(r => r.q.passageId), back = pass.filter(r => r.q.passageRevisitCount >= 1), none = pass.filter(r => !r.q.passageRevisitCount);
+    if (back.length < 15 || none.length < 15) return;
+    const read = sum(W, x => sum(x.d.passages || [], p => p.totalReadTimeMs || 0)) / nP, g = wzGap(I, ok(back), back.length, ok(none), none.length);
+    if (!g) return;
+    const j = F.judge('reread', g.p);
+    add({ id: 'reread', ch: ['pace', 'secTime'], kind: 'see', src: 'Clock', k: 'Going back to the passage', worth: j.lvl === 'sure' ? 1.5 : 0.8,
+      t: [`You go back into the passage on ${pct(back.length / pass.length, 0)} of passage questions; passage reading takes `, bb(`${wzClock(read)} a paper`), ` in all. Questions that sent you back come out ${pct(ok(back) / back.length, 0)} right, the others ${pct(ok(none) / none.length, 0)}.`, wzStand(j)] });
+  });
+  go(() => {
+    const sets = W.flatMap(x => (x.d.passages || []).filter(p => p.attemptedQuestions >= 3 && p.initialReadTimeMs > 0));
+    if (sets.length < 16) return;
+    const med = wzMedian(sets.map(p => p.initialReadTimeMs));
+    /* a first read of a few seconds is not a read: the passage was taken in while on its questions */
+    if (med < 30000) return;
+    const long = sets.filter(p => p.initialReadTimeMs > med), short = sets.filter(p => p.initialReadTimeMs <= med);
+    const k1 = sum(long, p => p.correct), n1 = sum(long, p => p.attemptedQuestions), k2 = sum(short, p => p.correct), n2 = sum(short, p => p.attemptedQuestions), g = wzGap(I, k1, n1, k2, n2);
+    if (!g) return;
+    const j = F.judge('readlong', g.p);
+    add({ id: 'readlong', ch: ['pace', 'secTime'], kind: 'odd', src: 'Clock', k: 'A longer first read', worth: j.lvl === 'sure' ? 1.5 : 0.6,
+      t: [`Sets where your first read of the passage ran past ${wzClock(med)} came out `, bb(`${pct(k1 / n1, 0)} right`), `; shorter first reads, ${pct(k2 / n2, 0)} (${n1} and ${n2} answers).`, wzStand(j)] });
+  });
+  go(() => {
+    const tr = (cur.d.test && cur.d.test.sectionTransitions) || [], secs = (cur.d.sections || []).length;
+    if (!secs || tr.length <= secs - 1) return;
+    add({ id: `switches:${cur.a.id}`, ch: ['secTime'], kind: 'odd', src: 'Clock', k: `Section changes in ${cur.a.short}`, worth: 0.5,
+      t: ['You changed section ', bb(`${tr.length} times`), ` in ${cur.a.short}; ${secs - 1} is the least a paper needs. ${plural(tr.length - secs + 1, 'detour')}.`] });
+  });
+});
+/* ── topics, and what the tests and the question model found ── */
+WIZ_FAMILIES.push(function wizTopics(X, F, add, go) {
+  const ix = X.ix, M = F.M;
+  if (!ix) return;
+  const at = x => (x.where ? ` (${x.where})` : ''), ch = ['secTrend'];
+  go(() => (ix.topics || []).forEach((x, i) => add({ id: `topic:${x.id}`, ch: i < 2 ? ch : [], kind: 'act', src: 'Topics', k: i ? 'A topic worth fixing' : 'Topic to fix first', worth: x.gain,
+    t: [bb(x.name), `${at(x)}: mastery ${pct(x.mastery, 0)} on ${x.attempted} answers; CLAT sets about ${x.perPaper.toFixed(1)} a paper here, worth `, bb(`+${x.gain.toFixed(2)}`), ' marks at your target accuracy.'] })));
+  go(() => {
+    const f = ix.forecast;
+    if (!f || M.level == null) return;
+    const d = f.expected - M.level;
+    add({ id: 'forecast', ch: ['trendsMain'], kind: 'see', src: 'Topics', k: 'Topic forecast', worth: Math.abs(d) >= 5 ? Math.abs(d) / 4 : 0.6, fig: { n: 'the forecast', v: marks(Math.round(f.expected * 4) / 4) },
+      t: ['Sat today, your topic mastery predicts ', bb(marks(Math.round(f.expected * 4) / 4)), ` (80% of ${INR.format(f.draws)} simulated papers ${marks(Math.round(f.p10))}–${marks(Math.round(f.p90))}), against your level of ${wzMk(M.level)}`,
+        Math.abs(d) >= 5 ? (d > 0 ? ': you know more than your recent papers show, so marks are being lost in the exam itself (time, nerves, second-guessing).' : ': your recent papers ran ahead of your topic record.') : '.'] });
+  });
+  go(() => (ix.trends || []).forEach(x => add({ id: `ttrend:${x.id}`, ch: [], kind: 'see', src: 'Topics', k: x.pp > 0 ? 'A topic on the rise' : 'A topic slipping', worth: Math.min(3, Math.abs(x.pp) / 5),
+    t: [bb(x.name), `${at(x)}: ${x.pp > 0 ? 'rising' : 'falling'} `, bb(`${wzSigned(x.pp)} points an attempt`), ` across ${x.n} answers (95% ${wzSigned(x.lo)} to ${wzSigned(x.hi)}).`] })));
+  go(() => (ix.blank || []).forEach(x => add({ id: `tblank:${x.id}`, ch: [], kind: 'act', src: 'Topics', k: 'A topic you never answer', worth: x.perPaper * 0.5,
+    t: [bb(x.name), `${at(x)}: ${x.seen} seen, `, bb('none answered'), `. CLAT sets about ${x.perPaper.toFixed(1)} a paper here.`] })));
+  go(() => (ix.bank || []).forEach(x => add({ id: `tbank:${x.id}`, ch: [], kind: 'see', src: 'Topics', k: 'Banked', worth: 0.7,
+    t: [bb(x.name), `${at(x)}: mastery `, bb(pct(x.mastery, 0)), ` on ${x.attempted} answers (80% range ${pctRange(x.lo, x.hi)}). Banked: keep it warm, do not rebuild it.`] })));
+  /* a split of a few seconds is answers locked without working, not a pace */
+  go(() => (ix.speed || []).filter(x => x.splitMs >= 10000).forEach(x => add({ id: `tspeed:${x.id}`, ch: [], kind: 'odd', src: 'Topics', k: 'Fast against slow, in one topic', worth: 1,
+    t: [bb(x.name), `${at(x)}: right ${pct(x.fast, 0)} on your quicker half and `, bb(`${pct(x.slow, 0)} on your slower half`), ` (split at ${wzClock(x.splitMs)}, ${x.n} answers).`] })));
+  go(() => (ix.slip || []).forEach(x => add({ id: `tslip:${x.id}`, ch: [], kind: 'see', src: 'Topics', k: x.recent > x.earlier ? 'Better lately' : 'Worse lately', worth: Math.min(3, Math.abs(x.recent - x.earlier) * 5),
+    t: [bb(x.name), `${at(x)}: `, bb(`${pct(x.recent, 0)} in your last 3 attempts`), ` (${x.rC} of ${x.rN}), ${pct(x.earlier, 0)} before (${x.eC} of ${x.eN}).`] })));
+  go(() => {
+    const p = ix.pareto;
+    if (!p || p.W < 30) return;
+    const thin = p.w / p.W < 0.3;
+    add({ id: 'tpareto', ch, kind: 'see', src: 'Topics', k: thin ? 'No one topic to blame' : 'Where the wrong answers pile up', worth: 1.6,
+      t: thin ? ['Your wrong answers are spread thin: your five worst topics hold only ', bb(`${pct(p.w / p.W, 0)} of them`), ` (${p.w} of ${p.W}): ${p.top.map(x => `${x.name} ${x.W}`).join(', ')}. No single chapter explains your wrong answers.`]
+        : [`${p.top.length} topics hold `, bb(`${pct(p.w / p.W, 0)} of your wrong answers`), ` (${p.w} of ${p.W}): ${p.top.map(x => `${x.name} ${x.W}`).join(', ')}.`] });
+  });
+});
+
+/** Which chart a tested pattern belongs beside. */
+const WIZ_TEST_CH = [[/^section-/, ['secTrend', 'secProfile']], [/^(fatigue|section-end|streaks)$/, ['paperRun']], [/^letter-/, ['options']], [/^guess-/, ['guess']], [/^blanks$/, ['marksWent', 'accCov']],
+  [/^clock$/, ['retake']], [/^pace$/, ['pace']], [/^trend-/, ['trendsMain']], [/^pen-(time|revisits)$/, ['pace', 'qmap']], [/^pen-changes$/, ['qmap', 'options']], [/^pen-final-two$/, ['guess', 'options']]];
+WIZ_FAMILIES.push(function wizTested(X, F, add, go) {
+  const ix = X.ix;
+  if (!ix) return;
+  const chOf = id => (WIZ_TEST_CH.find(([re]) => re.test(id)) || [null, []])[1];
+  const tone = { weakness: 2.5, habit: 1.5, strength: 1, neutral: 1 };
+  /* the engine's sentences use a dash where a reading uses a colon (a dash in a reading means a missing number) */
+  const say = s => String(s).replace(/\s—\s(?=and\b)/g, ', ').replace(/\s—\s/g, ': ').replace(/(^|[\s(=])-(?=\d)/g, `$1${MINUS}`);
+  /* two of the engine's tests look at the end of the paper without holding the section fixed (its fatigue test
+     does, and speaks for itself): the half-hours and where the blanks fall. Those say whose section the end
+     is, over the papers the test used, and are not called a weakness of yours. */
+  const endOfTest = id => (id === 'pace' ? F.endOf(X.A.filter(a => a.intervals && a.intervals.length >= 3)).note : id === 'blanks' ? F.endOf(X.A.filter(a => a.log && a.log.out)).note : '');
+  go(() => (ix.findings || []).forEach(f => { const end = endOfTest(f.id); add({ id: `pt:${f.id}`, ch: chOf(f.id), kind: 'see', src: 'Tested',
+    k: end ? 'A pattern that held up' : f.tone === 'strength' ? 'A strength that held up' : f.tone === 'habit' ? 'A habit that held up' : f.tone === 'weakness' ? 'A weakness that held up' : 'A pattern that held up',
+    worth: f.unit === 'marks' ? Math.abs(f.value) + 1 : tone[f.tone] || 1,
+    t: [say(f.title), end, ' ', mm(`Tested: ${say(f.eff)}; it holds after allowing for all ${ix.tests} tests (q ${f.q < 0.001 ? '< 0.001' : `= ${f.q.toFixed(3)}`}, n = ${f.n}).`)] }); }));
+  go(() => (ix.examined || []).forEach(e => add({ id: `ptx:${e.id}`, ch: chOf(e.id), kind: 'odd', src: 'Tested', k: 'Checked, and not a pattern', worth: 0.6,
+    t: [say(e.question), endOfTest(e.id), ' ', mm(say(e.detail))] })));
+  go(() => {
+    const md = ix.model;
+    if (!md) return;
+    if (md.status === 'earned' && md.careless) add({ id: 'careless', ch: ['qmap'], kind: 'act', src: 'Model', k: 'Careless answers', worth: md.careless * 1.25 / Math.max(1, md.attempts),
+      t: [bb(`${md.careless} wrong answers`), ' were ones the question model, checked on attempts it had not seen, rated easy for you: careless rather than hard. They are listed under Patterns.'] });
+    if (md.status === 'earned' && md.lucky) add({ id: 'lucky', ch: ['qmap'], kind: 'odd', src: 'Model', k: 'Lucky, or hard-won', worth: 0.8,
+      t: [bb(`${md.lucky} right answers`), ' were ones the question model expected you to miss: lucky, or hard-won. They are listed under Patterns; check which.'] });
+    if (md.status === 'earned' && md.top) add({ id: 'modelterm', ch: ['qmap'], kind: 'see', src: 'Model', k: 'What moves your odds most', worth: 1.2,
+      t: ['What moves your odds of a wrong answer most, with the rest held fixed: ', bb(`${md.top.feature}, ×${md.top.oddsRatio.toFixed(2)}`), ` (95% ×${md.top.lo.toFixed(2)}–${md.top.hi.toFixed(2)}).`] });
+  });
+  go(() => {
+    const d = ix.data;
+    if (!d || !ix.tests) return;
+    add({ id: 'tests', ch: [], kind: 'odd', src: 'Tested', k: 'How much has been tested', worth: 0.4,
+      t: [`${INR.format(d.questions)} questions from ${d.logged} of your attempts have been put through ${ix.tests} tests. `, bb(`${(ix.findings || []).length} held up`), ' after allowing for how many were run; the rest are listed under Patterns with the reason.'] });
+  });
+});
+/* WIZ:END */
+/* WIZ-UI:BEGIN */
+/* ── The readings on the page ────────────────────────────────────────────────
+   What has been read is kept on this device (a small history of each reading's
+   id, the sentence it was and how often it has been read), so the next visit is
+   dealt the ones you have not seen. Within a visit a chart keeps its deal:
+   nothing reshuffles under you when the page redraws. A reading counts as read
+   once its panel has actually been on screen for a moment, or when you ask for
+   the next ones. */
+const WIZ_SEEN_KEY = 'clat_dash_wiz_seen_v1';
+/* the list this replaced kept its figures under another name */
+try { localStorage.removeItem('clat_dash_wiz_digest_v1'); } catch (e) { /* nothing to tidy */ }
+const WIZ_TAKE = 3, WIZ_TAKE_ALL = 6, WIZ_VISIT_MS = 15 * 60000;
+const WIZ = { seen: null, pool: null, poolKey: '', dataKey: '', deals: new Map(), ix: null, ixKey: '', io: null, watched: new Set(), pending: new Set(), raf: 0, hiddenAt: 0 };
+/** The page each surface is on ('*' is the Overview list). Two panels on one page never say the same thing. */
+const WIZ_PAGE = { trendsMain: 'trends', marksWent: 'trends', accCov: 'trends', secTrend: 'sections', secProfile: 'sections', paperRun: 'questions', qmap: 'questions', guess: 'questions', options: 'questions',
+  pace: 'timing', secTime: 'timing', retake: 'overview', '*': 'overview' };
+function wizSeen() {
+  if (!WIZ.seen) { const v = store.get(WIZ_SEEN_KEY, null); WIZ.seen = v && typeof v === 'object' && v.items && typeof v.items === 'object' ? v.items : {}; }
+  return WIZ.seen;
 }
+function wizSeenSave(next) { WIZ.seen = next; store.set(WIZ_SEEN_KEY, { v: 1, items: next }); }
+/** The topics and patterns figures, kept in hand once both are in for this version of the data. */
+function wizIx() {
+  const key = wizDataKey();
+  if (WIZ.ixKey === key && WIZ.ix) return WIZ.ix;
+  const ix = wizInsights();
+  WIZ.ixKey = key; WIZ.ix = ix && ix.topics && ix.tests != null ? ix : null;
+  return ix;
+}
+/** Every reading the data supports now; worked out again only when the data, the target, the day or the analyses change. */
+function wizPoolNow() {
+  const M = wizModel(), ix = wizIx();
+  const dataKey = M.key + '|' + (NB ? NB.sig : ''), key = dataKey + '|' + (ix ? (ix.topics ? 't' : '') + (ix.tests != null ? 'p' : '') : '');
+  if (WIZ.pool && WIZ.poolKey === key) return WIZ.pool;
+  const pen = new Map();
+  state.attempts.forEach(a => { const d = a.telemetrySessionId && NB.bundles ? NB.bundles.get(a.telemetrySessionId) : null; if (d) pen.set(a.id, d); });
+  WIZ.pool = wizPool({ M, A: state.attempts, I: NBCore.insights, pen, ix, now: M.now, pairs: retakePairs(), tl: seatTL(), ai: seatAI(), onError: e => console.warn('wiz reading', e) });
+  WIZ.poolKey = key;
+  /* new data deals every chart again; the analyses arriving does not disturb a deal already on screen */
+  if (WIZ.dataKey !== dataKey) { WIZ.dataKey = dataKey; WIZ.deals.clear(); }
+  return WIZ.pool;
+}
+const wizIsRead = (seen, c) => !!(seen[c.id] && seen[c.id].h === c.h);
+/** The deal a surface keeps for this visit, made when it is first drawn (so it is the best of what is unread
+ *  at that moment). What another panel on the same page is holding is not dealt here; across pages nothing
+ *  is held back, so a list you never scroll to cannot keep the best readings from the charts — and a
+ *  surface that comes on screen holding something already read elsewhere deals again first (wizWatch).
+ *  `fresh` deals this surface again. `beside` counts its unread readings showing in another panel here. */
+function wizDealFor(ch, take, fresh) {
+  const pool = wizPoolNow(), k = ch || '*', seen = wizSeen(), had = WIZ.deals.get(k), held = new Set();
+  WIZ.deals.forEach((d, key) => { if (key !== k && WIZ_PAGE[key] === WIZ_PAGE[k]) d.items.forEach(c => held.add(c.id)); });
+  const count = own => {
+    const u = pool.filter(c => (!ch || c.ch.indexOf(ch) >= 0) && !wizIsRead(seen, c) && !own.has(c.id));
+    return { left: u.filter(c => !held.has(c.id)).length, beside: u.filter(c => held.has(c.id)).length };
+  };
+  if (had && !fresh) return Object.assign({ items: had.items, total: had.total }, count(new Set(had.items.map(c => c.id))));
+  const d = wizDeal(pool, seen, { ch, take, skip: held });
+  WIZ.deals.set(k, { items: d.items, total: d.total, here: new Set() });
+  return Object.assign({ items: d.items, total: d.total }, count(new Set(d.items.map(c => c.id))));
+}
+/** These readings have been read, on the surface `key`. */
+function wizRead(items, key) {
+  const seen = wizSeen(), fresh = items.filter(c => !wizIsRead(seen, c)), d = WIZ.deals.get(key);
+  if (d) items.forEach(c => d.here.add(c.id));
+  if (fresh.length) wizSeenSave(wizSeenAdd(seen, fresh, Date.now()));
+}
+/** Mark a surface's readings read once it has really been looked at: on screen, for a moment. A panel is
+ *  built before it is put on the page, so it is put under watch on the next frame, when it is there. If it
+ *  comes on screen holding readings that were read on another page meanwhile, it deals again first. */
+function wizWatch(el, items, key, repaint) {
+  el._wizItems = items; el._wizKey = key; el._wizRepaint = repaint;
+  clearTimeout(el._wizT);
+  if (!items.length) return;
+  const arm = t => { const its = t._wizItems; clearTimeout(t._wizT); t._wizT = setTimeout(() => { if (t.isConnected && t._wizOn && t._wizItems === its) wizRead(its, t._wizKey); }, 1500); };
+  if (typeof IntersectionObserver === 'undefined') { setTimeout(() => { if (el.isConnected && el.offsetParent && el._wizItems === items) wizRead(items, key); }, 2500); return; }
+  /* already on screen: a fresh deal after "Next" */
+  if (el._wizOn) { arm(el); return; }
+  if (!WIZ.io) WIZ.io = new IntersectionObserver(es => es.forEach(e => {
+    const t = e.target;
+    t._wizOn = e.isIntersecting && (e.intersectionRatio >= 0.35 || e.intersectionRect.height >= innerHeight * 0.4);
+    clearTimeout(t._wizT);
+    if (!t._wizOn || !t._wizItems || !t._wizItems.length) return;
+    const d = WIZ.deals.get(t._wizKey), seen = wizSeen();
+    if (d && t._wizRepaint && t._wizItems.some(c => wizIsRead(seen, c) && !d.here.has(c.id))) { t._wizRepaint(); return; }
+    arm(t);
+  }), { threshold: [0, 0.35, 0.7] });
+  WIZ.pending.add(el);
+  if (!WIZ.raf) WIZ.raf = requestAnimationFrame(() => {
+    WIZ.raf = 0;
+    WIZ.watched.forEach(w => { if (!w.isConnected) { WIZ.io.unobserve(w); WIZ.watched.delete(w); } });
+    WIZ.pending.forEach(w => { if (w.isConnected && !WIZ.watched.has(w)) { WIZ.watched.add(w); WIZ.io.observe(w); } });
+    WIZ.pending.clear();
+  });
+}
+/** A reading's text as nodes. */
+function wizNodes(t) {
+  return [].concat(t).flat(Infinity).filter(x => x != null && x !== false && x !== '').map(x => (typeof x === 'object' && !(x instanceof Node) ? (x.b != null ? H('b', { text: x.b }) : H('span', { class: 'kz-wiz-q', text: x.m })) : x));
+}
+/** What a changed reading was, the last time it was read. */
+function wizWas(c) {
+  if (!c.was) return null;
+  const fig = c.fig && c.was.v && c.was.v !== String(c.fig.v) ? `: ${c.fig.n} was ${c.was.v}` : '';
+  return H('span', { class: 'kz-wiz-was', text: `Changed since you read it on ${shortDate(c.was.at)}${fig}.` });
+}
+function wizNextBtn(left, onNext) {
+  return left > 0 ? H('button', { class: 'kz-wiz-next', type: 'button', title: `Deal the next readings: ${left} here that you have not read`, onclick: onNext }, ['Next', H('i', { text: `${left} unread` })]) : null;
+}
+/** What a surface says when it has nothing unread to deal. It only says "all" when that is so. */
+function wizDone(d, ch, repaint) {
+  if (!d.total) return H('p', { class: 'kz-wiz-done', text: 'No reading yet: this chart needs more attempts.' });
+  if (d.beside) return H('p', { class: 'kz-wiz-done', text: `${d.beside === 1 ? 'The one unread reading for this chart is' : `The ${d.beside} unread readings for this chart are`} showing beside another chart on this page.` });
+  return H('p', { class: 'kz-wiz-done' }, [`You have read all ${plural(d.total, 'reading')} ${ch ? 'this chart supports' : 'your attempts support'} so far. A new attempt, a re-scored paper or a new week brings more. `,
+    H('button', { class: 'btn plain small', type: 'button', onclick: () => { wizSeenSave(wizSeenClear(wizSeen(), wizPoolNow(), ch)); repaint(true); }, text: ch ? 'Read them again' : 'Start every reading again' })]);
+}
+/** The standing goal of the week, where a chart has one: it is the plan, not a reading, so it stays. */
+function wizPin(key) {
+  const M = wizModel(), w = M.thisWeek;
+  if (key === 'pace') return ['Target: 30 answers and about ', b(`${TGT.value('block')} marks`), ' every half-hour.'];
+  if (key === 'paperRun') return ['Click a square in the question map below to open that question in the paper.'];
+  if (!w) return null;
+  if (key === 'trendsMain') {
+    const st = wizStatus(M);
+    return ['This week: ', b(`${marks(w.target)}+`), ' on your next full mock', st && st.a ? (st.tone === 'good' ? `; ${st.a.short} met this week’s ${marks(st.goal)}` : `; ${st.a.short} was ${marks(st.goal - st.score)} short of this week’s ${marks(st.goal)}`) : '', '.'];
+  }
+  if (key === 'marksWent') return ['This week: at most ', b(`${w.wrong} wrong`), ` at ${w.att} answered`, M.peakWeek && M.peakWeek.wrong < w.wrong ? `; ${M.peakWeek.wrong} by the week of ${shortDate(M.peakWeek.start)}` : '', '.'];
+  if (key === 'accCov') return ['This week: answer ', b(`${w.att}+`), ' and hold ', b(`${pct(w.acc, 0)}+`), ' accuracy.'];
+  if (key === 'secTrend' && w.focus) return ['This week: ', b(w.focus.s.name), ` from ${pct(w.focus.acc, 0)} toward ${pct(Math.min(M.accLever, w.focus.acc + 0.08), 0)}.`];
+  if (key === 'qmap') {
+    const L = M.timed.filter(a => a.log && decodeLog(a)).slice(-1)[0];
+    if (!L) return null;
+    return ['This week: re-solve the ', b(`${L.W} wrong answers`), ` in ${L.short}`, w.focus ? `, ${w.focus.s.name} first` : '', '. Each square opens its question.'];
+  }
+  return null;
+}
+/** Whether a chart has anything to say; errors in coaching never break a card. */
+function coach(key) {
+  if (!state.prefs.wiz) return null;
+  try {
+    if (wizModel().level == null) return null;
+    return wizPoolNow().some(c => c.ch.indexOf(key) >= 0) || wizPin(key) ? { key } : null;
+  } catch (e) { console.warn('coach', key, e); return null; }
+}
+/* ── Coach panel beside a chart ── */
+function coachAside(h) {
+  const icon = () => S('svg', { viewBox: '0 0 16 16', width: 14, height: 14, 'aria-hidden': 'true' }, [
+    S('circle', { cx: 8, cy: 8, r: 6.4, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.4 }),
+    S('path', { d: 'M10.6 5.4 9 9 5.4 10.6 7 7Z', fill: 'currentColor' }),
+  ]);
+  const el = H('aside', { class: 'coach', 'aria-label': 'Benchmark Wiz readings' });
+  const paint = fresh => {
+    let d = { items: [], total: 0, left: 0, beside: 0 }, pin = null;
+    try { d = wizDealFor(h.key, WIZ_TAKE, fresh); pin = wizPin(h.key); } catch (e) { console.warn('coach', h.key, e); }
+    const next = () => { wizRead(d.items, h.key); paint(true); };
+    /* replaceChildren would print a null as text: only nodes go in */
+    el.replaceChildren(...[
+      H('div', { class: 'coach-h' }, [icon(), 'Benchmark Wiz', wizNextBtn(d.left, next)]),
+      ...d.items.map(c => H('div', { class: 'ci' }, [H('span', { class: 'ck', text: c.k }), H('div', {}, wizNodes(c.t)), wizWas(c)])),
+      d.items.length ? null : wizDone(d, h.key, paint),
+      pin ? H('p', { class: 'kz-wiz-pin' }, pin) : null,
+    ].filter(Boolean));
+    wizWatch(el, d.items, h.key, () => paint(true));
+  };
+  paint(false);
+  return el;
+}
+/** The coaching list on Overview: the week's goal, then the readings you have not seen, from every chart. */
+function wizDigestCard(M) {
+  const P = M.plan, w = M.thisWeek, list = H('ol', { class: 'wiz-dl' }), side = H('span', { class: 'kz-wiz-side' }), foot = H('div', {});
+  const row = (src, k, t, was) => H('li', {}, [H('span', { class: 'wiz-src', text: src }), H('span', { class: 'wiz-dk', text: k }), H('span', { class: 'wiz-dt' }, t), was || null]);
+  const plan = () => {
+    if (!w) return null;
+    const med = P.next.median, avgN = P.next.average;
+    return row('Plan', 'This week', ['Your next full mock needs ', b(`${marks(w.target)}+`), ` for the median of your last ${P.n} to keep to the ramp`,
+      med.score == null ? `: no single paper lifts it that far now; it takes ${med.attempts} papers at ${marks(ceilHalf(P.next.target))}+` : '',
+      avgN.score > w.target + 0.5 ? ['; the average of the same five needs ', b(`${marks(avgN.score)}+`), avgN.reachable ? '' : ', more than one paper holds'] : '',
+      `. After it the plan asks +${marks(half(P.perWeek))} a week, to ${marks(half(M.peak))} by the week of ${shortDate(M.peakWeek.start)}.`]);
+  };
+  const paint = fresh => {
+    let d = { items: [], total: 0, left: 0, beside: 0 }, ix = null;
+    try { d = wizDealFor(null, WIZ_TAKE_ALL, fresh); ix = wizIx(); } catch (e) { console.warn('wiz digest', e); }
+    list.replaceChildren(...[plan()].concat(d.items.map(c => row(c.src, c.k, wizNodes(c.t), wizWas(c)))).filter(Boolean));
+    side.replaceChildren(...[wizNextBtn(d.left, () => { wizRead(d.items, '*'); paint(true); })].filter(Boolean));
+    const notes = [];
+    if (!ix || !ix.topics || ix.tests == null) notes.push('Your topics and patterns are being worked out; their readings join this list in a moment.');
+    if (ix && ix.model && ix.model.status !== 'earned') notes.push(`The question-level model is still earning its say${ix.model.improvement != null ? `: ${pct(ix.model.improvement, 1)} better than the plain rule on attempts it had not seen, and it needs 2%` : ''}. Its predictions do not drive this list yet.`);
+    foot.replaceChildren(...(d.items.length ? [] : [wizDone(d, null, paint)]).concat(notes.map(n => H('p', { class: 'kz-note', text: n }))));
+    wizWatch(list, d.items, '*', () => paint(true));
+  };
+  paint(false);
+  return card('Coaching from all your data', 'Readings you have not seen yet, from every chart. The biggest marks first.', [list, foot], { aside: side, lede: true });
+}
+/* looked at again after a while away: a new visit, so every surface is dealt again */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { WIZ.hiddenAt = Date.now(); return; }
+  if (WIZ.hiddenAt && Date.now() - WIZ.hiddenAt > WIZ_VISIT_MS && NB.booted) { WIZ.deals.clear(); invalidate(); }
+});
+/* WIZ-UI:END */
 
 /* ── The Wiz card on Overview: where you stand, your path to exam day, this week's targets ── */
 /* ── The plan remembers what it asked for ──
@@ -14602,7 +15919,7 @@ function renderPlan(host, M) {
    question model) are read when they are current. When they are not, they are
    worked out while the page is idle and the Overview is drawn again with them,
    so the Wiz never waits on them and never quotes them stale. */
-const WIZ_CACHE_KEY = 'clat_dash_wiz_digest_v1';
+const WIZ_CACHE_KEY = 'clat_dash_wiz_digest_v2';
 /** Everything the topics and the patterns depend on: your attempts and their logs, NeoBook's records
  *  (which carry your corrections), the corrections kept here, your target, and the engines' versions. */
 function wizDataKey() {
@@ -14610,20 +15927,42 @@ function wizDataKey() {
   return state.attempts.map(a => a.id + '=' + a.m.net + ':' + (a.log ? a.log.out.length : a.tree ? a.tree.length : 0)).join(',') + '#' + (NB ? NB.sig : '') + '#' +
     (typeof tpxLocalCorrections === 'function' ? tpxLocalCorrections().length : 0) + '#' + JSON.stringify(state.prefs.target || {}) + '#' + (T ? T.CLASSIFIER_VERSION : '') + '#' + (ins ? ins.PATTERNS_VERSION : '');
 }
-/** What the coaching quotes from the topics and the patterns, small enough to keep. */
+/** What the readings quote from the topics and the patterns, small enough to keep. */
 function wizDistil(td, pr) {
   const out = {};
   if (td) {
-    const A = td.A;
-    out.topics = [...A.nodes.values()].filter(x => !x.facet && x.attempted > 0 && x.level !== 'section' && x.stake && x.stake.gainMarks > 0 &&
-      !x.children.some(c => { const k = A.nodes.get(c); return k && !k.facet && k.attempted > 0; })).sort((x, y) => y.stake.gainMarks - x.stake.gainMarks).slice(0, 2)
-      .map(x => ({ name: x.name, where: tpxPath(x.id, 0).split(' › ').slice(0, -1).join(' › '), mastery: x.mastery.mean, attempted: x.attempted, perPaper: x.stake.perPaper, gain: x.stake.gainMarks }));
+    const A = td.A, T = tpxT(), all = [...A.nodes.values()].filter(x => !x.facet), nodes = all.filter(x => x.level !== 'section');
+    const has = x => x.children.some(c => { const k = A.nodes.get(c); return k && !k.facet && k.attempted > 0; });
+    const pick = x => ({ id: x.id, name: x.name, where: tpxPath(x.id, 0).split(' › ').slice(0, -1).join(' › ') });
+    /* no topic twice over: never a node together with one above or below it */
+    const line = id => T.pathOf(id).map(n => n.id);
+    const apart = list => { const kept = []; list.forEach(x => { if (!kept.some(k => line(x.id).indexOf(k.id) >= 0 || line(k.id).indexOf(x.id) >= 0)) kept.push(x); }); return kept; };
+    const leaves = nodes.filter(x => x.attempted > 0 && !has(x)), by = f => (x, y) => f(y) - f(x);
+    out.topics = leaves.filter(x => x.stake && x.stake.gainMarks > 0).sort(by(x => x.stake.gainMarks)).slice(0, 6)
+      .map(x => Object.assign(pick(x), { mastery: x.mastery.mean, attempted: x.attempted, perPaper: x.stake.perPaper, gain: x.stake.gainMarks }));
     out.forecast = td.forecast ? { expected: td.forecast.expected, p10: td.forecast.p10, p90: td.forecast.p90, draws: td.forecast.draws } : null;
+    out.trends = apart(nodes.filter(x => x.trend && x.trend.p < 0.05 && x.trend.n >= 12).sort(by(x => Math.abs(x.trend.ppPerAttempt)))).slice(0, 4)
+      .map(x => Object.assign(pick(x), { pp: x.trend.ppPerAttempt, lo: x.trend.lo, hi: x.trend.hi, n: x.trend.n }));
+    out.blank = apart(nodes.filter(x => x.attempted === 0 && x.S >= 3 && x.stake && x.stake.perPaper >= 0.5).sort(by(x => x.stake.perPaper))).slice(0, 3)
+      .map(x => Object.assign(pick(x), { seen: x.S, perPaper: x.stake.perPaper }));
+    out.bank = apart(leaves.filter(x => x.attempted >= 12 && x.mastery.lo >= 0.75).sort(by(x => x.mastery.lo))).slice(0, 3)
+      .map(x => Object.assign(pick(x), { mastery: x.mastery.mean, lo: x.mastery.lo, hi: x.mastery.hi, attempted: x.attempted }));
+    out.speed = apart(nodes.filter(x => x.speed && x.speed.n >= 16 && x.speed.fastAcc != null && x.speed.slowAcc != null && Math.abs(x.speed.fastAcc - x.speed.slowAcc) >= 0.2).sort(by(x => Math.abs(x.speed.fastAcc - x.speed.slowAcc)))).slice(0, 3)
+      .map(x => Object.assign(pick(x), { fast: x.speed.fastAcc, slow: x.speed.slowAcc, n: x.speed.n, splitMs: x.speed.splitMs }));
+    const rn = x => x.recent.C + x.recent.W, en = x => x.earlier.C + x.earlier.W;
+    out.slip = apart(nodes.filter(x => x.recent.acc != null && x.earlier.acc != null && rn(x) >= 6 && en(x) >= 6 && Math.abs(x.recent.acc - x.earlier.acc) >= 0.2).sort(by(x => Math.abs(x.recent.acc - x.earlier.acc)))).slice(0, 4)
+      .map(x => Object.assign(pick(x), { recent: x.recent.acc, rC: x.recent.C, rN: rn(x), earlier: x.earlier.acc, eC: x.earlier.C, eN: en(x) }));
+    const top = leaves.slice().sort(by(x => x.W)).slice(0, 5);
+    out.pareto = { W: sum(all.filter(x => x.level === 'section'), x => x.W), w: sum(top, x => x.W), top: top.map(x => ({ name: x.name, W: x.W })) };
   }
   if (pr) {
-    out.findings = pr.findings.filter(f => f.q < 0.05 && (f.tone === 'weakness' || f.tone === 'habit')).slice(0, 2).map(f => ({ title: f.title, tone: f.tone, effect: f.effect, q: f.q }));
-    const md = pr.model;
-    out.model = { status: md.status, careless: md.careless ? md.careless.length : 0, attempts: md.attempts, improvement: md.cv ? md.cv.improvement : null };
+    out.tests = pr.tests;
+    out.data = { questions: pr.data.questions, logged: pr.data.logged, attempts: pr.data.attempts };
+    out.findings = pr.findings.map(f => ({ id: f.id, title: f.title, tone: f.tone, unit: f.effect.unit, value: f.effect.value, eff: ptEffect(f.effect), q: f.q, n: f.n }));
+    out.examined = pr.examined.filter(e => e.outcome === 'not-significant').map(e => ({ id: e.id, question: e.question, detail: e.detail }));
+    const md = pr.model, t0 = md.terms && md.terms[0];
+    out.model = { status: md.status, careless: md.careless ? md.careless.length : 0, lucky: md.lucky ? md.lucky.length : 0, attempts: md.attempts, improvement: md.cv ? md.cv.improvement : null,
+      top: t0 ? { feature: t0.feature, oddsRatio: t0.oddsRatio, lo: t0.lo, hi: t0.hi } : null };
   }
   return out;
 }
@@ -14655,50 +15994,6 @@ function wizInsights() {
   if (kept) return kept;
   wizWarm(key);
   return tdFresh || prFresh ? wizDistil(tdFresh ? TPX.data : null, prFresh ? PT.result : null) : null;
-}
-/** Coaching items from every analysis, the week's first, then by the marks each is worth. */
-function wizDigest(M) {
-  const P = M.plan, items = [], notes = [];
-  if (!P) return { items, notes };
-  const lo = M.spec.lo, w = M.thisWeek, add = (src, k, worth, t) => items.push({ src, k, worth, t });
-  if (w) {
-    const med = P.next.median, avgN = P.next.average;
-    add('Plan', 'This week', Infinity, ['Your next full mock needs ', b(`${marks(w.target)}+`), ` for the median of your last ${P.n} to keep to the ramp`,
-      med.score == null ? ` — no single paper lifts it that far now; it takes ${med.attempts} papers at ${marks(ceilHalf(P.next.target))}+` : '',
-      avgN.score > w.target + 0.5 ? ['; the average of the same five needs ', b(`${marks(avgN.score)}+`), avgN.reachable ? '' : ', more than one paper holds'] : '',
-      `. After it the plan asks +${marks(half(P.perWeek))} a week, to ${marks(half(M.peak))} by the week of ${shortDate(M.peakWeek.start)}.`]);
-  }
-  if (P.momentum && P.projected) {
-    const mo = P.momentum, gap = Math.max(0, M.peak - P.projected.level);
-    add('Trend', 'Pace', gap, ['Your scores have moved ', b(`${signed(mo.perWeek, 1)} a week`), ` over your last ${mo.n} timed attempts (95% range ${signed(mo.lo, 1)} to ${signed(mo.hi, 1)}); the plan needs +${marks(half(P.perWeek))}. At this pace you would be near `, b(marks(half(P.projected.level))), ` on exam day, where a paper reaches ${marks(lo)}+ ${pctChance(P.projected.chance)} of the time.`]);
-  }
-  const I = NBCore.insights, room = M.peak - lo, steadyAt = I.chanceAtLeast(M.peak, lo, 6);
-  if (P.chancePeak < 0.95) add('Trend', 'Steadiness', (steadyAt - P.chancePeak) * 12, ['Your papers swing about ', b(`±${marks(half(P.sigma))}`), ` around your level`,
-    room > 0 ? ` — more than the ${marks(half(room))} marks your range leaves above ${marks(lo)}` : '', `. So even at ${marks(half(M.peak))}, a paper lands at ${marks(lo)}+ about `, b(`${pctChance(P.chancePeak)} of the time`),
-    `; at a steady ±6 it would be ${pctChance(steadyAt)}. Steadiness is what makes it sure: fresh papers under full exam conditions, and no guessing below 1 in 5.`]);
-  const top = M.levers[0];
-  if (top && top.gain >= 0.5) add('Sections', 'Biggest section lever', top.gain, [b(`${top.s.name} ${pct(top.acc, 0)} → ${pct(M.accLever, 0)}`), ' accuracy is worth ', b(`+${top.gain.toFixed(1)} marks`), ` a paper at your attempt rate (${top.C} of ${top.attAll} right in your timed PYQs).`]);
-  const ix = wizInsights();
-  if (ix && ix.topics) {
-    ix.topics.forEach((x, i) => add('Topics', i ? 'Next topic' : 'Topic to fix first', x.gain, [b(x.name), ` (${x.where}): mastery ${tpxPct(x.mastery)} on ${x.attempted} questions; CLAT sets about ${x.perPaper.toFixed(1)} a paper here, worth `, b(`+${x.gain.toFixed(2)}`), ' marks at your target accuracy.']));
-    const f = ix.forecast;
-    if (f) {
-      const d = f.expected - M.level;
-      add('Topics', 'Topic forecast', Math.abs(d) >= 5 ? Math.abs(d) / 4 : 0.3, ['Sat today, your topic mastery predicts ', b(marks(Math.round(f.expected * 4) / 4)), ` (80% of ${f.draws.toLocaleString()} simulated papers ${marks(Math.round(f.p10))}–${marks(Math.round(f.p90))}), against your level of ${marks(half(M.level))}`,
-        Math.abs(d) >= 5 ? (d > 0 ? ' — you know more than your recent papers show, so marks are being lost in the exam itself: time, nerves, second-guessing.' : ' — your recent papers ran ahead of your topic record, partly on papers you had seen.') : '.']);
-    }
-  } else notes.push('Your topics and patterns are being worked out; they join this list in a moment.');
-  if (ix && ix.findings) ix.findings.forEach(f => add('Patterns', f.tone === 'habit' ? 'Habit' : 'Weakness',
-    f.effect.unit === 'marks' ? Math.abs(f.effect.value) : 0.8, [f.title, ' ', H('span', { class: 'muted', text: `(${ptEffect(f.effect)}; q = ${f.q.toFixed(3)})` })]));
-  if (ix && ix.model) {
-    const md = ix.model;
-    if (md.status === 'earned' && md.careless) add('Model', 'Careless answers', md.careless * 1.25 / Math.max(1, md.attempts), [b(`${md.careless} wrong answers`), ` were ones the question model, cross-validated on your attempts, rated easy for you — careless rather than hard. Re-read the stem before locking.`]);
-    else if (md.status !== 'earned') notes.push(`The question-level model is still earning its say${md.improvement != null ? `: ${pct(md.improvement, 1)} better than the plain rule on attempts it had not seen, and it needs 2%` : ''}. Its predictions do not drive this list yet.`);
-  }
-  if (M.wrongAvg != null && M.wrongAvg >= 8) add('Sections', 'Wrong answers', Math.max(0, M.wrongAvg - (M.thisWeek ? M.thisWeek.wrong * M.TP.length / Math.max(1, M.TP.length) : 0)) * 0.25,
-    ['You average ', b(`${Math.round(M.wrongAvg)} wrong`), ` per timed PYQ — ${Math.round(M.wrongAvg * 1.25)} marks at 1.25 each. Leaving a doubtful one blank still saves 0.25 over getting it wrong.`]);
-  const pinned = items.filter(x => x.worth === Infinity), rest = items.filter(x => x.worth !== Infinity).sort((x, y) => y.worth - x.worth);
-  return { items: pinned.concat(rest).slice(0, 7), notes };
 }
 /** This week's goal against what you scored: the latest timed attempt this week, judged by the goal that
  *  was set for the week before it (never one planned from it). good: met; warn: within 5; bad: further. */
@@ -15074,13 +16369,10 @@ function wizCard() {
     ]),
     levelHost,
   ], { cls: 'kz-level' });
-  const dg = wizDigest(M);
-  const digest = dg.items.length ? card('Coaching from all your data', 'The biggest marks first', [
-    H('ol', { class: 'wiz-dl' }, dg.items.map(it => H('li', {}, [H('span', { class: 'wiz-src', text: it.src }), H('span', { class: 'wiz-dk', text: it.k }), H('span', { class: 'wiz-dt' }, it.t)]))),
-    ...dg.notes.map(n => H('p', { class: 'kz-note', text: n })),
-  ]) : null;
+  let digest = null;
+  try { digest = wizDigestCard(M); } catch (e) { console.warn('wiz digest', e); }
   const maxGain = Math.max(0.1, ...M.levers.map(l => l.gain));
-  const levers = card('Where your next marks come from', `Per paper, if each section reached ${pct(M.accLever, 0)} accuracy`, [H('div', { class: 'wiz-levers' },
+  const levers = card('Where your next marks come from', `Per paper, if each section reached ${pct(M.accLever, 0)} accuracy (${M.leverFrom})`, [H('div', { class: 'wiz-levers' },
     M.levers.map(l => H('div', { class: 'lv' }, [
       H('span', { class: 'lv-n', text: l.s.name }),
       barCell(l.gain / maxGain, `+${l.gain.toFixed(1)}`, { small: `${pct(l.acc, 0)} → ${pct(M.accLever, 0)}`, title: `${l.s.name}: ${pct(l.acc, 0)} accuracy on about ${Math.round(l.att)} attempted per paper; at ${pct(M.accLever, 0)} that is +${l.gain.toFixed(1)} marks` }),
@@ -15812,7 +17104,8 @@ function boot() {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => moveThumb($('#tabs'), false));
   if (imported.total) toast(`Brought over ${plural(imported.total, 'item')} from your v13 dashboard`);
 }
-window.NBDash = { NB, loadNeoBook, refreshNeoBook, openAttempt, show, state, AV, buildModel, invalidate, nbPull, PULL, nbDevice, nbRemoveAttempt, AVC, nbMock, buildAnalysisExport };
+window.NBDash = { NB, loadNeoBook, refreshNeoBook, openAttempt, show, state, AV, buildModel, invalidate, nbPull, PULL, nbDevice, nbRemoveAttempt, AVC, nbMock, buildAnalysisExport,
+  wiz: { pool: () => wizPoolNow(), deal: (ch, take) => wizDeal(wizPoolNow(), wizSeen(), { ch, take }), seen: () => wizSeen(), state: WIZ } };
 const nbFirst = loadNeoBook();
 Promise.race([nbFirst, new Promise(r => setTimeout(r, 1200))]).then(() => { NB.booted = true; boot(); });
 nbFirst.then(() => { if (NB.booted && !NB.applied) { buildModel(); refreshChrome(); invalidate(); } })

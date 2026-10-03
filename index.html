@@ -2801,12 +2801,14 @@ var NBCore = (() => {
     extractContent: () => extractContent,
     garbledText: () => garbledText,
     hasContent: () => hasContent,
+    hasRawLog: () => hasRawLog,
     inferAttention: () => inferAttention,
     inferConfig: () => inferConfig,
     integrityIssues: () => integrityIssues,
     isAttemptId: () => isAttemptId,
     isCurrentMap: () => isCurrentMap,
     isEventChunk: () => isEventChunk,
+    isHollowDerived: () => isHollowDerived,
     lockOf: () => lockOf,
     looksLikeTestPaper: () => looksLikeTestPaper,
     mapConfidence: () => mapConfidence,
@@ -3091,6 +3093,28 @@ var NBCore = (() => {
   }
   var eventIdOf = (attemptId, seq) => `${attemptId}:${seq}`;
 
+  // src/mock/rawlog.ts
+  function hasRawLog(events) {
+    if (!events || !events.length) return false;
+    let first = null;
+    for (const e of events) {
+      if (e && typeof e.seq === "number" && isFinite(e.seq) && (!first || e.seq < first.seq)) first = e;
+    }
+    return !!first && (first.seq <= 1 || first.type === "MOCK_CREATED");
+  }
+  function isHollowDerived(d) {
+    const qs = d && Array.isArray(d.questions) ? d.questions : null;
+    if (!qs || !qs.length) return false;
+    for (const q of qs) {
+      if (!q) continue;
+      if (q["firstSeenAt"] != null || q["firstEngagedAt"] != null) return false;
+      if (Number(q["totalActiveTimeMs"]) > 0 || Number(q["blueLockCount"]) > 0 || Number(q["redInteractionCount"]) > 0) return false;
+      if (Array.isArray(q["answerHistory"]) && q["answerHistory"].length) return false;
+      if (Array.isArray(q["eliminatedOptions"]) && q["eliminatedOptions"].length) return false;
+    }
+    return true;
+  }
+
   // src/mock/db.ts
   var MIGRATIONS = [
     /* 0 → 1 */
@@ -3190,6 +3214,9 @@ var NBCore = (() => {
         out.sort((a, b) => a.seq - b.seq);
         return out;
       }),
+      /* chunks are keyed [attempt, n] and written in order, so the first one by key
+         holds the log's first events: a real log starts at the attempt's start */
+      hasLog: (id) => one("events", "readonly", (s) => s.openCursor(eventRange(id))).then((cur) => !!cur && isEventChunk(cur.value) && hasRawLog(cur.value.events)),
       putMap: (m) => put("maps", m),
       getMap: (id) => get("maps", id),
       mapsForFp: (fp) => one("maps", "readonly", (s) => s.index("fp").getAll(fp)),
@@ -10663,7 +10690,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "7a556ab3cbb7";
+  var CORE_BUILD = "77acc1fb6f3c";
   return __toCommonJS(index_exports);
 })();
 </script>
@@ -27321,6 +27348,11 @@ function finalizeAttempt(s, key){
   var job = dbp().then(function(db){
     return Promise.all([db.getSession(s.id), db.readEvents(s.id), mapToScore(s), guessSamples(db)]).then(function(r){
       var cur = r[0] || s, map = r[2].map;
+      /* never a score from no log: an attempt that came from the other device
+         without its pen record would be read as every question blank, and that
+         result would then travel back over the good one. It keeps the result it
+         came with, and is scored again on the device that holds its record. */
+      if(!CORE.hasRawLog(r[1])) throw new Error('this device does not hold the pen record of this attempt — it is scored on the device it was sat on');
       /* never a score against no map: "0 of 0" for an attempt whose every answer
          is in its log. It waits, key saved, until its paper has a map again */
       if(!map && wantsMap(cur)) throw new Error(r[2].scan
@@ -27339,6 +27371,7 @@ function finalizeAttempt(s, key){
         x.status = 'finalized';
         x.lastSeq = Math.max(x.lastSeq || 0, cur.lastSeq || 0);
         x.version = (x.version || 1) + 1; x.updatedAt = Date.now();
+        delete x.needsScore;                              /* every correction it holds is counted now */
         s.status = 'finalized';
         return db.putSession(x).then(function(){ return b; });
       });
@@ -27504,7 +27537,11 @@ function askGuesses(s, b){
     if(!ids.length) return;
     save.disabled = true; save.textContent = 'Saving…'; note.textContent = '';
     dbp().then(function(db){
-      return db.getSession(s.id).then(function(cur){
+      /* the labels are scored from the pen record: where that is not, nothing is written */
+      return db.hasLog(s.id).then(function(ok){
+        if(!ok) throw new Error('the pen record of this attempt is on your other device — change its labels there');
+        return db.getSession(s.id);
+      }).then(function(cur){
         cur = cur || s;
         var ov = cur.overrides || {};
         ov.guesses = Object.assign({}, ov.guesses || {}, picks);
@@ -27587,7 +27624,8 @@ MK.onKeySaved = scoreNow;
        for an attempt this device has deleted
      · the session record is written LAST, so an attempt is either wholly
        there or not there at all: nothing half-arrived is ever shown */
-var MSYNC = { on: true, busy: false, at: 0, inbox: {}, sent: 0, got: 0, pending: 0, err: null };
+var MSYNC = { on: true, busy: false, at: 0, inbox: {}, sent: 0, got: 0, pending: 0, err: null,
+              evn: {}, pushed: {}, unsettled: {} };
 /* Every part travels as text cut into slices of this size: a derived bundle or
    a two-hour event log is far larger than one frame, and slicing the text is
    exact where re-chunking the records would risk duplicates or holes. */
@@ -27606,16 +27644,49 @@ function msyncLive(){
     return list.filter(function(s){ return s.status === 'finalized'; });
   });
 }
+/** How many raw events this device holds for an attempt (0 where it has no
+ *  pen record of it), once per version: the service asks for a log it holds
+ *  less of, so a push that was cut short is made good. */
+function msyncEvents(db, s){
+  var k = s.id + '|' + (s.version || 1);
+  if(MSYNC.evn[k] != null) return Promise.resolve(MSYNC.evn[k]);
+  return db.readEvents(s.id).then(function(ev){
+    return (MSYNC.evn[k] = CORE.hasRawLog(ev) ? ev.length : 0);
+  }, function(){ return 0; });
+}
+/** Corrections that reached this device from one without the pen record are
+ *  not in its result yet: here, where the record is, the attempt is scored
+ *  again (which sends it on). Says how many were. */
+function msyncSettle(db, list){
+  var n = 0, chain = Promise.resolve();
+  list.forEach(function(s){
+    if(!s.needsScore || MSYNC.unsettled[s.id]) return;
+    chain = chain.then(function(){ return db.hasLog(s.id); }).then(function(here){
+      if(!here) return;
+      return MK.reScore(s).then(function(b){ if(b) n++; else MSYNC.unsettled[s.id] = 1; }, function(e){
+        MSYNC.unsettled[s.id] = 1;                          /* tried once per load: never a loop */
+        slogMock('not scored', s.id, (e && e.message) || e);
+      });
+    });
+  });
+  return chain.then(function(){ return n; });
+}
 /** Tell the service what this device has; it answers with what it has. */
 function msyncNow(why){
   if(!msyncReady() || MSYNC.busy) return Promise.resolve(false);
   MSYNC.busy = true;
   return dbp().then(function(db){
-    return Promise.all([msyncLive(), db.listTombstones()]);
+    return Promise.all([msyncLive(), db.listTombstones()]).then(function(r){
+      return msyncSettle(db, r[0]).then(function(n){
+        if(n) return null;                                  /* scored again: that sends it on */
+        return Promise.all(r[0].map(function(s){ return msyncEvents(db, s); })).then(function(counts){ return [r[0], r[1], counts]; });
+      });
+    });
   }).then(function(r){
-    var have = r[0].map(function(s){ return { attemptId: s.id, version: s.version || 1, updatedAt: s.updatedAt || 0 }; });
-    var tombs = r[1].map(function(t){ return { attemptId: t.attemptId, deletedAt: t.deletedAt, device: t.device, version: t.version }; });
     MSYNC.busy = false;
+    if(!r) return false;
+    var have = r[0].map(function(s, i){ return { attemptId: s.id, version: s.version || 1, updatedAt: s.updatedAt || 0, events: r[2][i] }; });
+    var tombs = r[1].map(function(t){ return { attemptId: t.attemptId, deletedAt: t.deletedAt, device: t.device, version: t.version }; });
     MSYNC.at = Date.now();
     return msyncEmit('mock.sync', { have: have, tombs: tombs, why: why || '' });
   }).catch(function(e){ MSYNC.busy = false; MSYNC.err = e; return false; });
@@ -27642,14 +27713,19 @@ function msyncPartsOf(id){
     });
   });
 }
-/** Send one attempt. Parts go one frame at a time; the last one says so. */
+/** Send one attempt. Parts go one frame at a time; the last one says so, and
+ *  every frame says how many there are, so the service stores the attempt only
+ *  once all of them are in. The same version goes at most twice per load: a
+ *  service that keeps asking is not answered in a loop. */
 function msyncPush(id){
   return msyncPartsOf(id).then(function(got){
     if(!got) return false;
-    var v = got.session.version || 1;
+    var v = got.session.version || 1, k = id + '|' + v;
+    if((MSYNC.pushed[k] || 0) >= 2) return false;
+    MSYNC.pushed[k] = (MSYNC.pushed[k] || 0) + 1;
     for(var i = 0; i < got.parts.length; i++){
       var p = got.parts[i];
-      msyncEmit('mock.part', { attemptId: id, part: p.part, idx: p.idx, version: v, body: p.body, first: i === 0, last: i === got.parts.length - 1 });
+      msyncEmit('mock.part', { attemptId: id, part: p.part, idx: p.idx, version: v, body: p.body, n: got.parts.length, first: i === 0, last: i === got.parts.length - 1 });
       MSYNC.sent++;
     }
     slogMock('sent', id, got.parts.length + ' parts');
@@ -27688,6 +27764,7 @@ function msyncApply(id){
           var kept = CORE.mergeOverrides(mine.overrides, session.overrides), more = CORE.overridesGain(mine.overrides, kept);
           if(!more.any) return false;
           mine.overrides = kept; mine.version = (mine.version || 1) + 1; mine.updatedAt = Date.now();
+          if(more.scoring) mine.needsScore = true;          /* cleared by the score that counts them */
           return db.putSession(mine).then(function(){ msyncMerged(mine, more); return false; });
         }
         /* corrections made here that the arriving copy never saw are kept, not replaced;
@@ -27695,6 +27772,8 @@ function msyncApply(id){
         var merged = CORE.mergeOverrides(mine && mine.overrides, session.overrides), gain = CORE.overridesGain(session.overrides, merged);
         if(merged) session.overrides = merged;
         if(gain.any){ session.version = (session.version || 1) + 1; session.updatedAt = Date.now(); }
+        /* the arriving result does not count what only this copy had */
+        if(gain.scoring) session.needsScore = true;
         var key = msyncJoin(box, 'key');
         var derived = msyncJoin(box, 'derived');
         var map = msyncJoin(box, 'map');
@@ -27712,14 +27791,28 @@ function msyncApply(id){
             if(!cur || (cur.rev || 0) < (map.rev || 0) || (cur.version || 0) < (map.version || 0)) return db.putMap(map);
           });
         });
-        if(evChunks.length) step = step.then(function(){ return db.replaceEvents(id, evChunks); });
+        /* a log is never cut short by a copy: the one here stays if it holds more
+           (a copy from a device without the pen record carries a stub) */
+        if(evChunks.length) step = step.then(function(){
+          return db.readEvents(id).then(function(cur){
+            if(evs.length > cur.length) return db.replaceEvents(id, evChunks);
+            if(evs.length < cur.length) slogMock('kept the longer log here', id, cur.length + ' events, not ' + evs.length);
+          });
+        });
         if(key) step = step.then(function(){ return db.putKey(key); });
-        if(derived) step = step.then(function(){ return db.putDerived(derived); });
+        /* nor is a real result replaced by one made from no log */
+        if(derived) step = step.then(function(){
+          return db.getDerived(id).then(function(cur){
+            if(cur && CORE.isHollowDerived(derived) && !CORE.isHollowDerived(cur)) return;
+            return db.putDerived(derived);
+          });
+        });
         return step.then(function(){ return db.putSession(session); }).then(function(){
           delete MSYNC.inbox[id];
           MSYNC.got++;
           slogMock('attempt arrived', id, evChunks.length + ' event blocks');
-          if(gain.any) msyncMerged(session, gain);
+          /* corrections that arrived uncounted are scored here if the pen record is */
+          if(gain.any || session.needsScore) msyncMerged(session, session.needsScore ? { any: true, scoring: true } : gain);
           refreshWaiting();
           return true;
         });
@@ -27731,7 +27824,11 @@ function msyncApply(id){
  *  again if an answer or a guess changed (which sends it on), else just sent on. */
 function msyncMerged(s, gain){
   slogMock('corrections merged', s.id, gain.scoring ? 'rescoring' : '');
-  setTimeout(function(){ if(gain.scoring) MK.reScore(s); else msyncNow('merged'); }, 300);
+  setTimeout(function(){
+    if(!gain.scoring){ msyncNow('merged'); return; }
+    /* where the pen record is not, the merged corrections still go on: the device that holds it scores them */
+    MK.reScore(s).then(null, function(e){ slogMock('not scored here', s.id, (e && e.message) || e); msyncNow('merged'); });
+  }, 300);
 }
 /** A tombstone from the other device: remove the attempt here too. */
 function msyncTomb(t){
