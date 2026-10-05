@@ -2866,7 +2866,7 @@ var NBCore = (() => {
   // src/mock/constants.ts
   var TELEMETRY_VERSION = 1;
   var MAP_VERSION = 2;
-  var MAP_BUILD = 6;
+  var MAP_BUILD = 7;
   var METRICS_VERSION = 2;
   var MOCK_DB_NAME = "neobook-mock";
   var MOCK_DB_VERSION = 2;
@@ -4640,11 +4640,11 @@ var NBCore = (() => {
   function hasContent(map) {
     return !!(map && map.content && map.content.v === CONTENT_VERSION && map.questions.some((q) => q.text));
   }
-  var LABEL = /^[(\[{]?([A-Da-d1-4]|¢c?|c¢)[)\]}.:]?$/;
+  var LABEL = /^[(\[{]?([A-Da-d1-4]|[¢©]c?|c[¢©])[)\]}.:]?$/;
   var labelFor = (t, L) => {
     const m = LABEL.exec(t);
     if (!m || !m[1]) return false;
-    const k = /¢/.test(m[1]) ? "C" : /\d/.test(m[1]) ? "ABCD".charAt(Number(m[1]) - 1) : m[1].toUpperCase();
+    const k = /[¢©]/.test(m[1]) ? "C" : /\d/.test(m[1]) ? "ABCD".charAt(Number(m[1]) - 1) : m[1].toUpperCase();
     return k === L;
   };
   var ANSWER_LINE = /\s*\bcorrect\s+(?:answer|option)\b.*$/i;
@@ -4775,7 +4775,7 @@ var NBCore = (() => {
     const up2 = (c) => c.toUpperCase();
     let m = s.match(/^\(([A-Ea-e])\)[.,:;]?$/);
     if (m && m[1]) return { L: up2(m[1]), conf: 1, num: false };
-    if (/^\((?:¢c?|c¢)\)[.,:;]?$/.test(s)) return { L: "C", conf: 0.85, num: false };
+    if (/^\((?:[¢©]c?|c[¢©])\)[.,:;]?$/.test(s)) return { L: "C", conf: 0.95, num: false };
     m = s.match(/^\[([A-Ea-e])\][.,:;]?$/);
     if (m && m[1]) return { L: up2(m[1]), conf: 0.95, num: false };
     if (lineStart || t.segStart) {
@@ -5427,24 +5427,19 @@ var NBCore = (() => {
       if (i === 0 || c.n <= chain2[i - 1].n) segStarts.push(i);
     });
     const dominant = (() => {
-      const tallyR = /* @__PURE__ */ new Map(), tallyL = /* @__PURE__ */ new Map();
-      chain2.forEach((c) => {
-        const r = Math.round(c.r / 3), x = Math.round(c.x / 3);
-        tallyR.set(r, (tallyR.get(r) || 0) + 1);
-        tallyL.set(x, (tallyL.get(x) || 0) + 1);
-      });
-      const top = (t) => {
+      const most = (vals) => {
         let k = 0, n = 0;
-        t.forEach((v, key) => {
-          if (v > n) {
-            n = v;
-            k = key;
+        for (const v of vals) {
+          const c = vals.filter((w) => Math.abs(w - v) <= 4).length;
+          if (c > n) {
+            n = c;
+            k = v;
           }
-        });
+        }
         return [k, n];
       };
-      const [rk, rn] = top(tallyR), [lk, ln] = top(tallyL);
-      return rn >= ln ? { side: "r", v: rk * 3 } : { side: "l", v: lk * 3 };
+      const [rk, rn] = most(chain2.map((c) => c.r)), [lk, ln] = most(chain2.map((c) => c.x));
+      return rn >= ln ? { side: "r", v: rk } : { side: "l", v: lk };
     })();
     chain2.forEach((c, i) => {
       var _a, _b, _c;
@@ -10690,7 +10685,7 @@ var NBCore = (() => {
   }
 
   // src/index.ts
-  var CORE_BUILD = "77acc1fb6f3c";
+  var CORE_BUILD = "5b1e8b9c8f91";
   return __toCommonJS(index_exports);
 })();
 </script>
