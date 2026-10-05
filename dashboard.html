@@ -10060,7 +10060,9 @@ function metrics(a) {
     pct: a.M ? net / a.M : null,
     acc: att ? a.C / att : null,
     cov: a.M ? att / a.M : null,
-    wrongCost: 1.25 * a.W, skipCost: a.S,
+    /* marks lost to wrong answers = negative marking, 0.25 each; a blank loses nothing.
+       What wrong and blank questions did not score is counted apart: gap = unscored + penalty */
+    wrongCost: 0.25 * a.W, unscored: a.W + a.S,
     gap: a.M - net,
     perAtt: att ? net / att : null,
   };
@@ -10072,7 +10074,7 @@ function secM(a, k) {
     return {
       exact: true, M, att, C: s.C, W: s.W, S: s.S, x, net,
       acc: att ? s.C / att : null, pct: M ? net / M : null, cov: M ? att / M : null,
-      wrongCost: 1.25 * s.W, skipCost: s.S, lost: 1.25 * s.W + s.S, t: s.t == null ? null : s.t, q: s.q || null,
+      wrongCost: 0.25 * s.W, unscored: s.W + s.S, lost: 1.25 * s.W + s.S, t: s.t == null ? null : s.t, q: s.q || null,
     };
   }
   if (a.secMode === 'acc' && a.secAcc && a.secAcc[k] != null) return { exact: false, acc: a.secAcc[k] / 100, flag: a.secFlag || null };
@@ -10462,7 +10464,7 @@ function pooledSec(list, k) {
   const r = { C: 0, W: 0, S: 0, M: 0, n: 0 };
   list.forEach(a => { const s = secM(a, k); if (s && s.exact) { r.C += s.C; r.W += s.W; r.S += s.S; r.M += s.M; r.n++; } });
   r.att = r.C + r.W; r.acc = r.att ? r.C / r.att : null; r.net = r.C - 0.25 * r.W;
-  r.wrongCost = 1.25 * r.W; r.skipCost = r.S; r.lost = r.wrongCost + r.skipCost; r.perQ = r.M ? r.lost / r.M : null;
+  r.wrongCost = 0.25 * r.W; r.unscored = r.W + r.S; r.lost = r.unscored + r.wrongCost; r.perQ = r.M ? r.lost / r.M : null;
   return r;
 }
 function outcomeAgg(arr) {
@@ -11186,7 +11188,7 @@ const SEC_METRICS = {
     fmtAll: a => `${pct(a.m.pct, 1)} · ${marks(a.m.net)}/${a.M}`,
   },
   lost: {
-    name: 'Marks lost per question', lo: 0, hi: 1.25, ticks: [0, 0.25, 0.5, 0.75, 1, 1.25], tick: v => v.toFixed(2), get target() { return TGT.band('lost'); }, get tLabel() { return TGT.label('lost'); },
+    name: 'Marks dropped per question', lo: 0, hi: 1.25, ticks: [0, 0.25, 0.5, 0.75, 1, 1.25], tick: v => v.toFixed(2), get target() { return TGT.band('lost'); }, get tLabel() { return TGT.label('lost'); },
     sec: (a, k) => { const m = secM(a, k); return m && m.exact && m.M ? m.lost / m.M : null; },
     all: a => a.m.gap / a.M,
     fmtSec: (a, k) => { const m = secM(a, k); return `${(m.lost / m.M).toFixed(2)} · ${m.W} wrong, ${m.S} blank`; },
@@ -11217,7 +11219,7 @@ function secCell(a, k, metric, compact = false) {
   }
   if (metric === 'pct') return barCell(Math.max(0, m.pct), pct(m.pct, 0), { compact, target: TGT.band('pct'), small: `${marks(m.net)}/${m.M}` });
   if (metric === 'cov') return barCell(m.cov, pct(m.cov, 0), { compact, target: TGT.band('cov'), small: `${m.att}/${m.M}` });
-  return barCell(m.M ? m.lost / m.M : null, m.M ? (m.lost / m.M).toFixed(2) : '—', { compact, max: 1.25, cost: true, target: TGT.band('lost'), small: `${marks(m.lost)} of ${m.M}`, title: `${m.W} wrong × 1.25 + ${m.S} blank` });
+  return barCell(m.M ? m.lost / m.M : null, m.M ? (m.lost / m.M).toFixed(2) : '—', { compact, max: 1.25, cost: true, target: TGT.band('lost'), small: `${marks(m.lost)} of ${m.M}`, title: `${m.W + m.S} not scored (${m.W} wrong, ${m.S} blank) + ${marks(0.25 * m.W)} negative marking` });
 }
 
 /* ────────────── Overview ────────────── */
@@ -11315,8 +11317,8 @@ function latestCard(L) {
     H('div', { class: 'kpis' }, [
       kpi('Accuracy', pct(L.m.acc), `${L.C} of ${L.m.att} attempted`, g ? gapText('acc', L.m.acc) : null, series(a => a.m.acc)),
       kpi('Coverage', pct(L.m.cov), `${L.m.att} of ${L.M} questions`, g ? gapText('cov', L.m.cov) : null, series(a => a.m.cov)),
-      kpi('Wrong answers', String(L.W), `cost ${marks(L.m.wrongCost)} marks`, null, series(a => a.W)),
-      kpi('Left blank', String(L.S), `cost ${marks(L.m.skipCost)} marks`, null, series(a => a.S)),
+      kpi('Wrong answers', String(L.W), `${MINUS}${marks(L.m.wrongCost)} negative marking`, null, series(a => a.W)),
+      kpi('Left blank', String(L.S), 'no penalty', null, series(a => a.S)),
     ]),
     note ? small(`Small lines show your ${note} in date order, ending at this attempt.`, { fontSize: '12px', marginTop: '-6px' }) : null,
     cmp,
@@ -11329,7 +11331,8 @@ function buildInsights() {
   const T = A.filter(a => a.cohort === 'pyq_t');
   if (T.length >= 2) {
     const gap = sum(T, a => a.m.gap), wc = sum(T, a => a.m.wrongCost);
-    if (gap > 0) out.push({ tone: 'bad', icon: '×', parts: ['Wrong answers, not blanks, cost you most: ', b(pct(wc / gap, 0)), ` of the marks dropped across your ${T.length} timed PYQs (`, b(marks(wc)), ' of ', b(marks(gap)), '). Each wrong answer costs 1.25 marks: the mark you miss plus the 0.25 penalty.'] });
+    const wn = sum(T, a => a.W);
+    if (wc > 0) out.push({ tone: 'bad', icon: '×', parts: ['Negative marking cost you ', b(marks(wc)), ` marks across your ${T.length} timed PYQs: `, b(`${wn} wrong answers × 0.25`), `. Blanks cost nothing; of the ${marks(gap)} marks you dropped, ${marks(gap - wc)} were questions not scored.`] });
     const pooled = SECS.map(s => Object.assign({ s }, pooledSec(T, s.k))).filter(r => r.att > 0);
     if (pooled.length >= 2) {
       const sorted = pooled.slice().sort((p, q) => p.acc - q.acc), lo = sorted[0], hi = sorted[sorted.length - 1];
@@ -11497,16 +11500,16 @@ function renderTrends(el) {
   });
   const lossCfg = () => {
     const l = list();
-    const maxLoss = Math.max(0.1, ...l.map(a => Math.max(a.m.wrongCost, a.m.skipCost) / a.M));
+    const maxLoss = Math.max(0.1, ...l.map(a => Math.max(a.m.wrongCost, a.m.unscored) / a.M));
     const hi = Math.ceil(maxLoss * 5) / 5;
     const ticks = []; for (let v = 0; v <= hi + 1e-9; v += hi <= 0.4 ? 0.1 : 0.2) ticks.push(Math.round(v * 10) / 10);
     return {
-      list: l, maxCols: 1, panelH: 150, padR: 90, ariaLabel: 'Share of scorable marks lost to wrong answers and to blanks, by attempt',
+      list: l, maxCols: 1, panelH: 150, padR: 90, ariaLabel: 'Share of scorable marks lost to negative marking and not scored, by attempt',
       panels: [{
-        title: 'Share of scorable marks lost', name: 'Lost', lo: 0, hi, ticks, tick: pctTick,
+        title: 'Share of scorable marks', name: 'Share', lo: 0, hi, ticks, tick: pctTick,
         series: [
-          { label: 'Wrong answers', color: 'var(--bad)', value: a => a.m.wrongCost / a.M, fmt: a => `${pct(a.m.wrongCost / a.M)} · ${a.W} × 1.25 = ${marks(a.m.wrongCost)}`, end: a => `wrong ${pct(a.m.wrongCost / a.M, 0)}` },
-          { label: 'Left blank', color: 'var(--warn-ink)', value: a => a.m.skipCost / a.M, fmt: a => `${pct(a.m.skipCost / a.M)} · ${a.S} blank`, end: a => `blank ${pct(a.m.skipCost / a.M, 0)}` },
+          { label: 'Negative marking', color: 'var(--bad)', value: a => a.m.wrongCost / a.M, fmt: a => `${pct(a.m.wrongCost / a.M)} · ${a.W} × 0.25 = ${marks(a.m.wrongCost)}`, end: a => `penalty ${pct(a.m.wrongCost / a.M, 0)}` },
+          { label: 'Not scored', color: 'var(--warn-ink)', value: a => a.m.unscored / a.M, fmt: a => `${pct(a.m.unscored / a.M)} · ${a.W} wrong + ${a.S} blank`, end: a => `not scored ${pct(a.m.unscored / a.M, 0)}` },
         ],
       }],
     };
@@ -11528,7 +11531,7 @@ function renderTrends(el) {
       mainHost,
     ], { coach: coach('trendsMain') }),
     H('div', { class: 'grid-2' }, [
-      card('Where the marks went', 'The share of each paper’s scorable marks lost to wrong answers (1.25 each) and to blanks (1 each). Lower is better.', [lineLegend([{ label: 'Lost to wrong answers', color: 'var(--bad)' }, { label: 'Left blank', color: 'var(--warn-ink)' }]), lossHost], { coach: coach('marksWent') }),
+      card('Where the marks went', 'Red is negative marking: 0.25 lost for each wrong answer, as a share of the paper. Amber is what went unscored: every wrong or blank question. Lower is better for both.', [lineLegend([{ label: 'Lost to negative marking', color: 'var(--bad)' }, { label: 'Not scored (wrong + blank)', color: 'var(--warn-ink)' }]), lossHost], { coach: coach('marksWent') }),
       card('Accuracy and coverage, side by side', 'Two bars per attempt: aqua is how much of the paper you attempted, blue is how much of that you got right. A high score needs both bars tall.', [
         H('div', { class: 'legend', style: { marginBottom: '10px' } }, [H('span', { class: 'k' }, [H('i', { class: 'sw', style: { background: 'var(--bar-2)' } }), 'Coverage']), H('span', { class: 'k' }, [H('i', { class: 'sw', style: { background: 'var(--bar)' } }), 'Accuracy'])]),
         pathHost,
@@ -11606,13 +11609,13 @@ function renderSections(el) {
     H('div', { class: 'filters' }, [
       H('span', { class: 'lbl', text: 'Show' }), cohortFilter('secCohorts', present, () => renderSections(el)),
       H('span', { class: 'lbl', text: 'Measure' }),
-      segControl([['acc', 'Accuracy'], ['pct', 'Score %'], ['lost', 'Marks lost / Q'], ['cov', 'Coverage']], P.secMetric, v => { P.secMetric = v; savePrefs(); renderSections(el); }, { label: 'Section measure' }),
+      segControl([['acc', 'Accuracy'], ['pct', 'Score %'], ['lost', 'Marks dropped / Q'], ['cov', 'Coverage']], P.secMetric, v => { P.secMetric = v; savePrefs(); renderSections(el); }, { label: 'Section measure' }),
     ]),
     card(`${MET.name} by section, attempt by attempt`, 'One panel per section, attempts in date order. Hover any panel to read the same attempt in all six.', [
       H('div', { class: 'legend', style: { marginBottom: '12px' } }, [...new Set(shown.map(a => a.cohort))].map(k => H('span', { class: 'k' }, [glyph(k), COHORTS[k].name]))),
       trendHost,
       numbersToggle('Show the numbers', () => [sectionHeatTable(P.secMetric, shown.length ? shown : list), small('n/a = not attempted · — = only section accuracy was recorded · ⚠ = recorded values that don’t reconcile with the totals.')]),
-    ], { foot: P.secMetric === 'lost' ? 'Marks lost per question = (1.25 × wrong + blanks) ÷ scorable questions in that section, so big and small sections compare fairly.' : null, coach: coach('secTrend') }),
+    ], { foot: P.secMetric === 'lost' ? 'Marks dropped per question = (questions not scored + 0.25 × wrong as negative marking) ÷ scorable questions in that section, so big and small sections compare fairly.' : null, coach: coach('secTrend') }),
     card(`Section profile · ${MET.name.toLowerCase()}`, 'One line per attempt across the five sections, so each attempt’s shape sits side by side. The boldest blue line is your latest timed PYQ; orange is your latest mock; grey lines are older mocks.', [profileHost], { coach: coach('secProfile') }),
     pairs.length ? card('Same paper, second attempt · section accuracy', 'Grey = your earlier try at the paper, blue = your latest.', [pairHost], { foot: pairs.some(p => p.a0.secFlag) ? '⚠ marks a paper whose earlier section values don’t reconcile with its totals, so treat those changes as rough.' : null }) : null,
   );
@@ -11918,7 +11921,7 @@ function runCard(L) {
   const host = H('div', { class: 'chart' });
   const legend = lineLegend(L.map(a => ({ label: `${a.paper} · ${a.when}`, color: attemptLineStyle(a, L).color })));
   mountChart(host, () => renderPaperRun(host, L));
-  return card('Where along the paper you dropped marks', 'Each line climbs 1.25 for a wrong answer and 1 for a blank, in question order. Flat stretches are clean runs; steep stretches are where marks leaked.', [legend, host], {
+  return card('Where along the paper you dropped marks', 'Each line climbs 1 for every question not scored, plus 0.25 negative marking on a wrong answer, in question order. Flat stretches are clean runs; steep stretches are where marks leaked.', [legend, host], {
     foot: 'Shaded bands follow the latest paper’s sections; the other papers place Legal and Logical within two questions of it. Hover for each paper’s answer and key at that question.',
     coach: coach('paperRun', L),
   });
@@ -12091,7 +12094,7 @@ function buildAnalysisExport(st, bundles) {
     if (m.exact) Object.assign(row, {
       questions: m.M, attempted: m.att, correct: m.C, wrong: m.W, blank: m.S, withdrawn: m.x,
       score: r2(m.net), coverage: r4(m.cov),
-      marksLost: { wrong: r2(m.wrongCost), blank: r2(m.skipCost), total: r2(m.lost) },
+      marksLost: { negativeMarking: r2(m.wrongCost), notScored: m.unscored, dropped: r2(m.lost) },
       timeSec: m.t == null ? null : m.t,
       questionRange: m.q || null,
     });
@@ -12146,7 +12149,7 @@ function buildAnalysisExport(st, bundles) {
         correct: a.C, wrong: a.W, blank: a.S, withdrawn: (a.withdrawn || []).length,
         attempted: m.att, score: r2(m.net), scoreOutOf: a.M,
         accuracy: r4(m.acc), coverage: r4(m.cov), marksPerAttempt: r4(m.perAtt),
-        marksLost: { wrong: r2(m.wrongCost), blank: r2(m.skipCost), total: r2(m.gap) },
+        marksLost: { negativeMarking: r2(m.wrongCost), notScored: m.unscored, dropped: r2(m.gap) },
       },
       withdrawnQuestions: a.withdrawn || null,
       timeSec: a.timeSec == null ? null : a.timeSec,
@@ -12200,7 +12203,7 @@ function buildAnalysisExport(st, bundles) {
     accuracy: { stepByStep: step(r => r.totals.accuracy, 'ratio'), firstToLast: span(r => r.totals.accuracy, 'ratio') },
     coverage: { stepByStep: step(r => r.totals.coverage, 'ratio'), firstToLast: span(r => r.totals.coverage, 'ratio') },
     attempted: { stepByStep: step(r => r.totals.attempted, 'count'), firstToLast: span(r => r.totals.attempted, 'count') },
-    marksLost: { stepByStep: step(r => r.totals.marksLost.total, 'marks'), firstToLast: span(r => r.totals.marksLost.total, 'marks') },
+    marksLost: { stepByStep: step(r => r.totals.marksLost.dropped, 'marks'), firstToLast: span(r => r.totals.marksLost.dropped, 'marks') },
     bySection: Object.fromEntries(SECS.map(s => [s.k, {
       name: s.name, stepByStep: step(secAcc(s.k), 'ratio'), firstToLast: span(secAcc(s.k), 'ratio'),
     }])),
@@ -12234,7 +12237,7 @@ function buildAnalysisExport(st, bundles) {
     accuracyOverAttempts: { x: series.map(r => r.short), y: series.map(r => r.totals.accuracy), units: 'fraction 0-1' },
     coverageOverAttempts: { x: series.map(r => r.short), y: series.map(r => r.totals.coverage), units: 'fraction 0-1' },
     sectionAccuracy: { x: series.map(r => r.short), series: SECS.map(s => ({ key: s.k, name: s.name, y: series.map(secAcc(s.k)) })), units: 'fraction 0-1' },
-    marksLost: { x: series.map(r => r.short), wrong: series.map(r => r.totals.marksLost.wrong), blank: series.map(r => r.totals.marksLost.blank), units: 'marks' },
+    marksLost: { x: series.map(r => r.short), negativeMarking: series.map(r => r.totals.marksLost.negativeMarking), notScored: series.map(r => r.totals.marksLost.notScored), units: 'marks' },
     paceByHalfHour: rows.filter(r => r.intervals).map(r => ({ attempt: r.short, blocks: r.intervals })),
     optionMix: { labels: mix.rows.map(r => r.option), picked: mix.rows.map(r => r.picked), share: mix.rows.map(r => r.share), accuracy: mix.rows.map(r => r.accuracy) },
   };
@@ -12259,7 +12262,7 @@ function buildAnalysisExport(st, bundles) {
         scoring: '+1 correct, -0.25 wrong, 0 blank; a withdrawn question is excluded from the scorable total',
         accuracy: 'correct / attempted, as a fraction of 1',
         coverage: 'attempted / scorable, as a fraction of 1',
-        marksLost: 'wrong = 1.25 per wrong answer (the mark and the penalty), blank = 1 per blank',
+        marksLost: 'negativeMarking = 0.25 per wrong answer; a blank loses nothing; notScored = wrong + blank questions; dropped = scorable - score = notScored + negativeMarking',
         change: 'a ratio moves by percentage POINTS (deltaPoints) and by a fraction of its earlier value (deltaRelative)',
         time: 'seconds unless the field name ends in Ms',
         absent: 'null means not recorded, never zero',
@@ -13094,7 +13097,7 @@ function avPlain(a) {
     kpi('Score', `${marks(m.net)} / ${a.M}`, pct(m.pct), gapText('pct', m.pct)),
     kpi('Accuracy', pct(m.acc), `${a.C} of ${m.att} attempted`, gapText('acc', m.acc)),
     kpi('Coverage', pct(m.cov), `${m.att} of ${a.M} attempted`),
-    kpi('Marks dropped', marks(m.gap), `${marks(1.25 * a.W)} to wrong · ${a.S} to blanks`),
+    kpi('Marks dropped', marks(m.gap), `${a.W + a.S} not scored · ${marks(0.25 * a.W)} negative marking`),
   ]));
   if (a.secMode === 'counts') out.push(card('Sections', 'Right, wrong and blank in each section.', [avSecTable(SECS.filter(s => a.sec && a.sec[s.k]).map(s => {
     const x = secM(a, s.k);
@@ -13707,10 +13710,10 @@ function fairnessCard() {
       def('Score %', 'Net marks ÷ scorable marks. Net = right − 0.25 × wrong. Withdrawn questions are excluded.'),
       def('Accuracy', 'Right ÷ attempted.'),
       def('Coverage', 'Attempted ÷ scorable questions.'),
-      def('Marks dropped', 'Scorable − net = 1.25 × wrong + 1 × blank. Per question, it is divided by the scorable questions.'),
+      def('Marks dropped', 'Scorable − net = questions not scored (wrong + blank) + 0.25 × wrong (negative marking). Marks lost to a wrong answer are the 0.25 penalty; a blank loses nothing. Per question, it is divided by the scorable questions.'),
       def('Guess break-even', '20% accuracy. A guess earns +1 with probability p and −0.25 otherwise, so it pays only when p is above 20%.'),
       def('Score identity', 'Score % = coverage × (1.25 × accuracy − 0.25). It is why the Trends view shows coverage and accuracy side by side.'),
-      def('Guiding light', `Your target: ${TGT.text()} (${TGT.value('pct')}). At full coverage that needs about ${TGT.value('acc')} accuracy, at most ${TGT.value('lost')} marks lost per question, and about 30 questions and ${TGT.value('block')} marks per 30-minute block. Change it with Edit next to the Guiding light switch.`),
+      def('Guiding light', `Your target: ${TGT.text()} (${TGT.value('pct')}). At full coverage that needs about ${TGT.value('acc')} accuracy, at most ${TGT.value('lost')} marks dropped per question, and about 30 questions and ${TGT.value('block')} marks per 30-minute block. Change it with Edit next to the Guiding light switch.`),
     ])]),
   ]);
 }
@@ -14271,7 +14274,7 @@ function refreshTargetPreview() {
     H('div', { class: 'tp-grid' }, [
       row('Score', TGT.value('pct', spec)),
       row('Accuracy', TGT.value('acc', spec)),
-      row('Marks lost per question', spec.range ? TGT.value('lost', spec) : `≤ ${TGT.value('lost', spec)}`),
+      row('Marks dropped per question', spec.range ? TGT.value('lost', spec) : `≤ ${TGT.value('lost', spec)}`),
       row('Each 30 minutes', `30 questions · ${TGT.value('block', spec)} marks`),
     ]),
     targetStrip(spec),
@@ -14622,7 +14625,7 @@ WIZ_FAMILIES.push(function wizLevel(X, F, add, go) {
   go(() => {
     if (wAvg == null || wAvg < 3) return;
     add({ id: 'tax', ch: ch.concat('marksWent'), kind: 'see', src: 'Marks', k: 'What wrong answers take', worth: wAvg * 0.25, fig: { n: 'wrong answers a paper', v: wzNum(wAvg) },
-      t: ['You average ', bb(`${wzNum(wAvg)} wrong answers`), ` across ${F.recName}: ${wzNum(wAvg * 1.25)} marks gone at 1.25 each, `, bb(`${wzNum(wAvg * 0.25)} of them pure penalty`), ' that a blank would have kept.'] });
+      t: ['You average ', bb(`${wzNum(wAvg)} wrong answers`), ` across ${F.recName}: `, bb(`${wzNum(wAvg * 0.25)} marks of negative marking a paper`), ', at 0.25 each, that a blank would have kept.'] });
   });
   go(() => {
     const B = BENCH.bands2025, b = B.find(([m]) => level >= m), q = B.find(([m]) => quota >= m);
@@ -14777,17 +14780,17 @@ WIZ_FAMILIES.push(function wizLevel(X, F, add, go) {
 WIZ_FAMILIES.push(function wizLoss(X, F, add, go) {
   const M = F.M, rec = F.rec, lo = M.spec.lo, T = F.timed;
   if (!rec.length) return;
-  const ch = ['marksWent'], gap = mean(rec.map(a => a.m.gap)), wc = mean(rec.map(a => a.m.wrongCost)), sk = mean(rec.map(a => a.m.skipCost)), wAvg = mean(rec.map(a => a.W));
+  const ch = ['marksWent'], gap = mean(rec.map(a => a.m.gap)), wc = mean(rec.map(a => a.m.wrongCost)), sk = mean(rec.map(a => a.m.unscored)), wAvg = mean(rec.map(a => a.W));
   go(() => {
     if (!(gap > 0)) return;
     add({ id: 'loss', ch, kind: 'see', src: 'Marks', k: 'What you drop', worth: gap / 8, fig: { n: 'marks dropped a paper', v: wzNum(gap) },
-      t: [`Across ${F.recName} you drop `, bb(`${wzNum(gap)} marks a paper`), `: ${wzNum(wc)} (${pct(wc / gap, 0)}) to wrong answers, ${wzNum(sk)} to blanks.`] });
+      t: [`Across ${F.recName} you drop `, bb(`${wzNum(gap)} marks a paper`), `: ${wzNum(sk)} questions not scored, and ${wzNum(wc)} to negative marking on wrong answers.`] });
   });
   F.win.slice(-2).forEach(a => go(() => {
     const rows = SECS.map(s => ({ s, m: secM(a, s.k) })).filter(r => r.m && r.m.exact).map(r => Object.assign(r, { lost: r.m.lost })).sort((p, q) => q.lost - p.lost), tot = sum(rows, r => r.lost), Mq = sum(rows, r => r.m.M);
     if (rows.length < 3 || !(tot > 0)) return;
     add({ id: `losssec:${a.id}`, ch: ch.concat('secTrend'), kind: 'see', src: 'Marks', k: `Where ${a.short} leaked`, worth: 1.5,
-      t: [`In ${a.short}, ${rows[0].s.name} dropped `, bb(`${marks(rows[0].lost)} of your ${marks(tot)} lost marks`), ` (${pct(rows[0].lost / tot, 0)}) from ${pct(rows[0].m.M / Mq, 0)} of the paper; ${rows[1].s.name} ${marks(rows[1].lost)}, ${rows[2].s.name} ${marks(rows[2].lost)}.`] });
+      t: [`In ${a.short}, ${rows[0].s.name} dropped `, bb(`${marks(rows[0].lost)} of your ${marks(tot)} dropped marks`), ` (${pct(rows[0].lost / tot, 0)}) from ${pct(rows[0].m.M / Mq, 0)} of the paper; ${rows[1].s.name} ${marks(rows[1].lost)}, ${rows[2].s.name} ${marks(rows[2].lost)}.`] });
   }));
   T.slice(-4).forEach((cur, i, l) => go(() => {
     const prev = l[i - 1];
@@ -14808,7 +14811,7 @@ WIZ_FAMILIES.push(function wizLoss(X, F, add, go) {
     const allow = PAPER_MAX - lo;
     if (!(gap > allow)) return;
     add({ id: 'allowance', ch, kind: 'see', src: 'Marks', k: 'What your target allows', worth: Math.max(0.5, (gap - allow) / 4),
-      t: [`Your target’s low end allows ${marks(allow)} marks dropped in a paper. You drop ${wzNum(gap)}, ${wzNum(wc)} of it in wrong answers: even with no blank left, wrong answers would have to fall from ${wzNum(wAvg)} to `, bb(`${Math.floor(allow / 1.25)} or fewer`), '.'] });
+      t: [`Your target’s low end allows ${marks(allow)} marks dropped in a paper. You drop ${wzNum(gap)}, ${wzNum(wc)} of it negative marking. A wrong answer drops 1.25 against a right one (the mark not scored and the 0.25 penalty), so even with no blank left, wrong answers would have to fall from ${wzNum(wAvg)} to `, bb(`${Math.floor(allow / 1.25)} or fewer`), '.'] });
   });
   go(() => {
     const rows = F.sec.filter(r => r.att > 0), S = sum(rows, r => r.S / r.n), val = sum(rows, r => (r.S / r.n) * (1.25 * r.acc - 0.25));
@@ -14819,7 +14822,7 @@ WIZ_FAMILIES.push(function wizLoss(X, F, add, go) {
   go(() => {
     if (T.length < 6) return;
     const a = T.slice(-3), z = T.slice(-6, -3), f = (l, g) => mean(l.map(x => g(x) / x.M));
-    const w1 = f(a, x => x.m.wrongCost), w0 = f(z, x => x.m.wrongCost), b1 = f(a, x => x.m.skipCost), b0 = f(z, x => x.m.skipCost);
+    const w1 = f(a, x => x.W), w0 = f(z, x => x.W), b1 = f(a, x => x.S), b0 = f(z, x => x.S);
     const dir = d => (d > 0.01 ? 1 : d < -0.01 ? -1 : 0), dw = dir(w1 - w0), db = dir(b1 - b0), word = d => (d > 0 ? 'are up' : d < 0 ? 'are down' : 'held');
     if (!dw && !db) return;
     const verdict = dw > 0 && db < 0 ? 'You are trading blanks for wrong answers.' : dw < 0 && db > 0 ? 'You are trading wrong answers for blanks.' : `Wrong answers ${word(dw)}; blanks ${word(db)}.`;
@@ -14830,7 +14833,7 @@ WIZ_FAMILIES.push(function wizLoss(X, F, add, go) {
     if (T.length < 4) return;
     const by = T.slice().sort((p, q) => q.W - p.W), hi = by[0], low = by[by.length - 1];
     add({ id: 'costliest', ch, kind: 'odd', src: 'Marks', k: 'Your costliest paper', worth: 1,
-      t: [`For wrong answers, your costliest timed paper is ${hi.short}: `, bb(`${hi.W} wrong, ${marks(hi.m.wrongCost)} marks`), `. Your cleanest is ${low.short} with ${low.W} (${marks(low.m.wrongCost)}).`] });
+      t: [`For wrong answers, your costliest timed paper is ${hi.short}: `, bb(`${hi.W} wrong, ${MINUS}${marks(hi.m.wrongCost)} negative marking`), `. Your cleanest is ${low.short} with ${low.W} (${MINUS}${marks(low.m.wrongCost)}).`] });
   });
   go(() => {
     const clean = F.cnt.flatMap(a => SECS.map(s => ({ a, s, m: secM(a, s.k) }))).filter(r => r.m && r.m.exact && r.m.W === 0 && r.m.att >= 10);
