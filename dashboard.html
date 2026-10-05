@@ -13123,7 +13123,7 @@ const AV_RENDER = {
       kpi('Score', `${marks(t.score)} / ${marks(t.scorableTotal)}`, pct(t.scorePct), c.full ? gapText('pct', t.scorePct) : null),
       kpi('Accuracy', pct(t.accuracy), `${t.correct} of ${t.attempted} attempted`, c.full ? gapText('acc', t.accuracy) : null),
       kpi('Coverage', pct(t.coverage), `${t.attempted} of ${t.correct + t.wrong + t.skipped} scorable`),
-      kpi('Marks dropped', marks(t.marksDropped), `${marks(t.negativeMarks)} to wrong answers · ${t.skipped} to blanks`),
+      kpi('Marks dropped', marks(t.marksDropped), `${t.wrong + t.skipped} not scored · ${marks(t.negativeMarks)} negative marking`),
       kpi('Time used', msTxt(tm.wallClockMs), dur ? `of ${msTxt(dur)}` : null),
       kpi('Marks per minute', t.timeVsResult.marksPerMinute == null ? '—' : t.timeVsResult.marksPerMinute.toFixed(2), t.timeVsResult.msPerNetMark ? `${msTxt(t.timeVsResult.msPerNetMark)} per net mark` : null),
     ]));
@@ -15106,7 +15106,7 @@ WIZ_FAMILIES.push(function wizPaper(X, F, add, go) {
     const all = L.flatMap(a => runs(a, 'w').map(r => ({ a, r }))).sort((p, q) => q.r.length - p.r.length), top = all[0];
     if (!top || top.r.length < 3) return;
     add({ id: 'wrongrun', ch, kind: 'odd', src: 'Paper', k: 'Your longest run of wrong answers', worth: 1.2,
-      t: [bb(`${top.r.length} wrong in a row`), `: ${wzQs(top.r.map(q => q.q))} of ${top.a.short} (${secSpan(top.r)}), ${marks(top.r.length * 1.25)} marks in ${top.r.length} questions. ${F.lwinName[0].toUpperCase()}${F.lwinName.slice(1)} hold ${all.filter(x => x.r.length >= 3).length} runs of three or more.`] });
+      t: [bb(`${top.r.length} wrong in a row`), `: ${wzQs(top.r.map(q => q.q))} of ${top.a.short} (${secSpan(top.r)}), ${MINUS}${marks(top.r.length * 0.25)} negative marking in ${top.r.length} questions. ${F.lwinName[0].toUpperCase()}${F.lwinName.slice(1)} hold ${all.filter(x => x.r.length >= 3).length} runs of three or more.`] });
   });
   go(() => {
     const a = latest, qs = live(a), W = qs.filter(q => q.out === 'w').length;
@@ -15194,7 +15194,7 @@ WIZ_FAMILIES.push(function wizGuess(X, F, add, go) {
     if (W < 10) return;
     add({ id: 'surewrong', ch: ch.concat('qmap'), kind: 'act', src: 'Guesses', k: 'Sure, and wrong', worth: wrong.length / marking.size * 0.25 + 1, fig: { n: 'wrong answers with no ring', v: `${wrong.length} of ${W}` },
       t: [bb(`${wrong.length} of your ${W} wrong answers`), ` across ${plural(marking.size, 'paper')} carried no ring (${pct(wrong.length / W, 0)}): you were sure, and wrong.`,
-        wrong.length * 2 >= W ? ' Most of the 1.25s go on answers you believed.' : ` The other ${flagged} you had ringed: most of your wrong answers are ones you already doubted.`] });
+        wrong.length * 2 >= W ? ' Most of your negative marking goes on answers you believed.' : ` The other ${flagged} you had ringed: most of your wrong answers are ones you already doubted.`] });
   });
   go(() => {
     const a = F.lwin.slice().reverse().find(x => marking.has(x));
